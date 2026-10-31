@@ -127,6 +127,12 @@ export async function makeInvoicesHarness(): Promise<InvoicesHarness> {
   // Дефолт VAT = NONE; тести, що перевіряють ПДВ, перевизначають це у кейсі.
   const settings: Record<string, Fn> = {
     getDefaultVatRate: vi.fn().mockResolvedValue({ vatMode: 'NONE', vatRate: 0 }),
+    // Довідник податків (BR-INV-002: ставка рядків з наряду — лише з нього, зокрема вимкнені).
+    getTaxRates: vi
+      .fn()
+      .mockResolvedValue(
+        [0, 7, 20].map(rate => ({ id: `tr-${rate}`, name: `${rate}%`, rate, isActive: true })),
+      ),
     // §13: invoiceDueDays керує дефолтним терміном оплати.
     getOrganisationSettings: vi.fn().mockResolvedValue({ invoiceDueDays: 7 }),
   };

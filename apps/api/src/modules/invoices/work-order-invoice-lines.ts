@@ -1,5 +1,5 @@
 import type { VatMode } from '@prisma/client';
-import { calcLineVat } from '../../common/utils/vat';
+import { calcLineVat, calcVatOnBase } from '../../common/utils/vat';
 import { lineAmount, money, sumMoney } from '../../common/utils/money';
 
 /**
@@ -16,6 +16,10 @@ import { lineAmount, money, sumMoney } from '../../common/utils/money';
  * 2. Наряд рахує ПДВ від суми, рядки — кожен від себе, тому підсумки можуть розійтись на
  *    копійки. Різницю забирає останній рядок. Якщо вона більша за копійку на рядок — це вже не
  *    округлення, а наряд, чиї тотали не відповідають рядкам: помилка, а не вирівнювання.
+ * 3. Ставка рядків — зі ДОВІДНИКА податків організації (зокрема вимкнені: ставку могли вимкнути
+ *    після завершення наряду), і лише та, що дає рівно ПДВ наряду за формулою наряду
+ *    (`calcVatOnBase` від його бази). Вільна ставка, виведена з тоталів (20,01 %), — не ставка:
+ *    такого рахунку бухгалтер не проведе. Немає такої ставки → помилка (TECH-DEBT (б) №6).
  */
 export interface WorkOrderForInvoice {
   totalNet: number;
@@ -51,7 +55,11 @@ export interface InvoiceLineDraft {
 }
 
 export class WorkOrderTotalsMismatchError extends Error {
-  constructor(readonly detail: string) {
+  constructor(
+    readonly detail: string,
+    /** `vatRate` — суми зійшлись би, але ПДВ наряду не дає жодна ставка довідника. */
+    readonly reason: 'totals' | 'vatRate' = 'totals',
+  ) {
     super(`Тотали наряду не відповідають його рядкам: ${detail}`);
   }
 }
@@ -164,9 +172,31 @@ function residualTarget(
   return lines[lines.length - 1];
 }
 
+/**
+ * Ставки довідника, що дають рівно ПДВ наряду (`totalAmount − totalNet`) за формулою наряду:
+ * база — сума без ПДВ («ПДВ зверху») або до сплати («ПДВ у ціні»). Ставка з налаштувань — першою
+ * (з двох ставок, що на малій базі дають однаковий ПДВ, рахунок бере чинну).
+ */
+function exactRates(
+  wo: WorkOrderForInvoice,
+  vatMode: VatMode,
+  settingsVat: { vatMode: VatMode; vatRate: number },
+  taxRates: readonly number[],
+): number[] {
+  const vat = money(wo.totalAmount - wo.totalNet);
+  const base = vatMode === 'INCLUSIVE' ? wo.totalAmount : wo.totalNet;
+  const ordered = [
+    ...(settingsVat.vatMode !== 'NONE' ? [settingsVat.vatRate] : []),
+    ...taxRates,
+  ].filter(r => r > 0 && taxRates.includes(r));
+  return [...new Set(ordered)].filter(r => calcVatOnBase(base, r, vatMode) === vat);
+}
+
 export function buildInvoiceLinesFromWorkOrder(
   wo: WorkOrderForInvoice,
   settingsVat: { vatMode: VatMode; vatRate: number },
+  /** Ставки довідника податків організації (`TaxRate.rate`), зокрема вимкнені. */
+  taxRates: readonly number[],
 ): InvoiceLineDraft[] {
   const count = wo.lines.length + wo.parts.length;
   const tolerance = count * KOPECK + EPS;
@@ -175,16 +205,15 @@ export function buildInvoiceLinesFromWorkOrder(
   const vatMode = effectiveMode(wo, base, tolerance, settingsVat.vatMode);
   if (count === 0) return [];
 
-  // Ставка: з налаштувань; якщо з нею рядки не сходяться з нарядом (ставку змінили після
-  // завершення наряду або ПДВ в організації вимкнули) — та, що випливає з самого наряду.
-  const derivedRate =
-    wo.totalNet > 0 ? money(((wo.totalAmount - wo.totalNet) / wo.totalNet) * 100) : 0;
-  const candidates =
-    vatMode === 'NONE'
-      ? [0]
-      : settingsVat.vatMode !== 'NONE' && settingsVat.vatRate > 0
-        ? [settingsVat.vatRate, derivedRate]
-        : [derivedRate];
+  // Ставка: з налаштувань, а якщо ПДВ наряду дає інша ставка довідника (ставку змінили чи ПДВ
+  // в організації вимкнули після завершення наряду) — вона.
+  const candidates = vatMode === 'NONE' ? [0] : exactRates(wo, vatMode, settingsVat, taxRates);
+  if (candidates.length === 0)
+    throw new WorkOrderTotalsMismatchError(
+      `ПДВ наряду ${money(wo.totalAmount - wo.totalNet)} не дає жодна ставка довідника ` +
+        `(${taxRates.join(', ') || 'порожній'})`,
+      'vatRate',
+    );
 
   let lastGap = { net: 0, vat: 0 };
   for (const rate of candidates) {

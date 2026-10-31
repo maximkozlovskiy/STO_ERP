@@ -409,6 +409,8 @@ export const en: Record<string, string> = {
     'A work order invoice is closed by a payment — use «Pay»',
   'err.invoice.workOrderTotalsMismatch':
     'Work order total does not match its lines — the invoice was not generated. Check the work order labour and parts',
+  'err.invoice.workOrderVatRateUnknown':
+    'The work order VAT does not match any rate in the tax rates list — the invoice was not generated. Recalculate the work order at the current rate',
   'err.invoice.activeExists': 'An active invoice already exists for this work order',
   'err.invoice.counterpartyNotFound': 'Counterparty not found',
   'err.invoice.onlyDraftEditable': 'Only a draft can be edited',

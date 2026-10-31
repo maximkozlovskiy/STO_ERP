@@ -555,6 +555,7 @@ export const VALIDATION_KEYS = [
   'err.invoice.onlyCompletedInvoiceable',
   'err.invoice.workOrderInvoicePaidViaPayment',
   'err.invoice.workOrderTotalsMismatch',
+  'err.invoice.workOrderVatRateUnknown',
   'err.invoice.activeExists',
   'err.invoice.counterpartyNotFound',
   'err.invoice.onlyDraftEditable',

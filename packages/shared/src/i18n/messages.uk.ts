@@ -412,6 +412,8 @@ export const uk: Record<string, string> = {
     'Рахунок наряду закривається оплатою — скористайтесь «Оплатити»',
   'err.invoice.workOrderTotalsMismatch':
     'Сума наряду не відповідає його рядкам — рахунок не сформовано. Перевірте роботи й запчастини наряду',
+  'err.invoice.workOrderVatRateUnknown':
+    'ПДВ наряду не відповідає жодній ставці з довідника податків — рахунок не сформовано. Перерахуйте наряд за чинною ставкою',
   'err.invoice.activeExists': 'Для цього наряду вже існує активний рахунок',
   'err.invoice.counterpartyNotFound': 'Контрагента не знайдено',
   'err.invoice.onlyDraftEditable': 'Редагувати можна лише чернетку',

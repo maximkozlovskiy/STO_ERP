@@ -366,6 +366,35 @@ describe('InvoicesService — create-from-work-order', () => {
     });
 
     // guards: BR-INV-002
+    it('ПДВ наряду не дає жодна ставка довідника (140,07 на 700) → 400 «ставка», запис відкочується', async () => {
+      settingsMock.getDefaultVatRate.mockResolvedValue({ vatMode: 'EXCLUSIVE', vatRate: 20 });
+      const { tx, order } = arrange({ ...WO_EXCL, totalNet: 700, totalAmount: 840.07 });
+
+      const err = await service.createFromWorkOrder(ORG, WO_ID).catch((e: unknown) => e);
+
+      expect(err).toBeInstanceOf(BadRequestException);
+      expect((err as Error).message).toMatch(/ставці з довідника податків/);
+      expect(settingsMock.getTaxRates).toHaveBeenCalledWith(ORG);
+      expect(order).toContain('tx-rollback');
+      expect(tx.invoiceLine.createMany).not.toHaveBeenCalled();
+    });
+
+    // guards: BR-INV-002
+    it('ставку вимкнено в довіднику після завершення наряду → рахунок із нею (вимкнені теж рахуються)', async () => {
+      settingsMock.getDefaultVatRate.mockResolvedValue({ vatMode: 'EXCLUSIVE', vatRate: 7 });
+      settingsMock.getTaxRates.mockResolvedValue([
+        { id: 'tr-7', name: '7%', rate: 7, isActive: true },
+        { id: 'tr-20', name: '20%', rate: 20, isActive: false },
+      ]);
+      const { tx } = arrange(WO_EXCL);
+
+      await service.createFromWorkOrder(ORG, WO_ID);
+
+      expect(lineData(tx).map(l => l.vatRate)).toEqual([20, 20]);
+      expect(updateArg(tx).data).toMatchObject({ amount: 840, totalVat: 140 });
+    });
+
+    // guards: BR-INV-002
     it('наряд у валюті: base-сума рахунку = сума до сплати × курс на дату рахунку', async () => {
       settingsMock.getDefaultVatRate.mockResolvedValue({ vatMode: 'EXCLUSIVE', vatRate: 20 });
       const { tx } = arrange(WO_EXCL, 'cur-usd');

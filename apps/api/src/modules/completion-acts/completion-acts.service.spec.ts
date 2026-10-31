@@ -481,6 +481,58 @@ describe('CompletionActsService — sign() idempotency + auto-invoice', () => {
     expect(prisma.completionAct.create).not.toHaveBeenCalled();
   });
 
+  // TECH-DEBT (б) №51: наряд, сплачений повністю до «Виставлено», стає «Оплачено» без акта — акт
+  // для нього формується (ті самі статуси, що й рахунок з наряду). Мутація: повернути в гейт
+  // INVOICEABLE_STATUSES (без PAID) → кейс PAID червоніє; додати ARCHIVED → червоніє ARCHIVED.
+  // guards: BR-WO-037
+  it.each(['COMPLETED', 'INVOICED', 'PAID'])(
+    'createFromWorkOrder(): наряд %s → чернетка акта створюється',
+    async status => {
+      prisma.workOrder.findFirst
+        .mockResolvedValueOnce(woForAct(status))
+        .mockResolvedValueOnce({ status });
+      prisma.completionAct.findFirst.mockResolvedValue(null);
+      prisma.completionAct.create.mockResolvedValueOnce({
+        ...signedActRow,
+        status: CompletionActStatus.DRAFT,
+        signedAt: null,
+        signedBy: null,
+      });
+
+      const res = await service.createFromWorkOrder(ORG, WO_ID);
+
+      expect(res.status).toBe(CompletionActStatus.DRAFT);
+      expect(prisma.completionAct.create).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  // guards: BR-WO-037
+  it.each(['DRAFT', 'IN_PROGRESS', 'ARCHIVED', 'CANCELLED'])(
+    'createFromWorkOrder(): наряд %s → 400, акт не створено',
+    async status => {
+      prisma.workOrder.findFirst.mockResolvedValueOnce(woForAct(status));
+      prisma.completionAct.findFirst.mockResolvedValueOnce(null);
+
+      await expect(service.createFromWorkOrder(ORG, WO_ID)).rejects.toThrow(
+        'Акт можна сформувати лише для завершеного наряду',
+      );
+      expect(prisma.completionAct.create).not.toHaveBeenCalled();
+    },
+  );
+
+  // guards: BR-WO-037
+  it('createFromWorkOrder(): «Оплачено» перевіряється й під блокуванням (архівували між читаннями → 400)', async () => {
+    prisma.workOrder.findFirst
+      .mockResolvedValueOnce(woForAct('PAID'))
+      .mockResolvedValueOnce({ status: 'ARCHIVED' });
+    prisma.completionAct.findFirst.mockResolvedValueOnce(null);
+
+    await expect(service.createFromWorkOrder(ORG, WO_ID)).rejects.toThrow(
+      'Акт можна сформувати лише для завершеного наряду',
+    );
+    expect(prisma.completionAct.create).not.toHaveBeenCalled();
+  });
+
   // guards: BR-WO-006
   it('createFromWorkOrder(): чернетка створюється в транзакції під блокуванням наряду', async () => {
     prisma.workOrder.findFirst

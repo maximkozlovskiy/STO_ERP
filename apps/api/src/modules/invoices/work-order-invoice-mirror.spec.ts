@@ -278,6 +278,7 @@ function makeService(opts: { wo: MemRow; invoices?: MemRow[]; lines?: MemRow[] }
   prisma.$transaction = vi.fn((cb: (tx: unknown) => Promise<unknown>) => cb(prisma));
   const settings = {
     getDefaultVatRate: vi.fn().mockResolvedValue({ vatMode: 'NONE', vatRate: 0 }),
+    getTaxRates: vi.fn().mockResolvedValue([]),
     getOrganisationSettings: vi.fn().mockResolvedValue({ invoiceDueDays: 7 }),
   };
   const service = new InvoicesService(

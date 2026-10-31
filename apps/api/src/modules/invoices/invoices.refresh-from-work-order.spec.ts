@@ -507,5 +507,18 @@ describe('InvoicesService — refresh-from-work-order', () => {
       expect(tx.invoiceLine.createMany).not.toHaveBeenCalled();
       expect(tx.invoice.update).not.toHaveBeenCalled();
     });
+
+    // guards: BR-INV-002
+    it('ПДВ наряду не дає жодна ставка довідника (20,01 %) → 400 «ставка», старі рядки лишаються', async () => {
+      settingsMock.getDefaultVatRate.mockResolvedValue({ vatMode: 'EXCLUSIVE', vatRate: 20 });
+      const { tx, order } = arrange({ ...WO_EXCL, totalAmount: 840.07 });
+
+      const err = await service.refreshFromWorkOrder(ORG, WO_ID).catch((e: unknown) => e);
+
+      expect(err).toBeInstanceOf(BadRequestException);
+      expect((err as Error).message).toMatch(/ставці з довідника податків/);
+      expect(order).toEqual(['tx-begin', 'deleteMany', 'tx-rollback']);
+      expect(tx.invoice.update).not.toHaveBeenCalled();
+    });
   });
 });

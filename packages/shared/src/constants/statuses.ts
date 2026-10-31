@@ -119,6 +119,9 @@ export const WO_INVOICE_CREATABLE_STATUSES: readonly string[] = Object.freeze([
   'INVOICED',
   'PAID',
 ]);
+// Акт виконаних робіт з наряду (BR-WO-006, рішення власника 2026-10-30, TECH-DEBT (б) №51): ті самі
+// статуси, що й рахунок з наряду — «Оплачено» теж (наряд, сплачений до «Виставлено», акта ще не має).
+export const WO_COMPLETION_ACT_STATUSES: readonly string[] = WO_INVOICE_CREATABLE_STATUSES;
 /** Ролі, яким дозволено `POST /payments` (оплата клієнта з рахунку чи наряду). */
 export const PAYMENT_CREATE_ROLES: readonly string[] = Object.freeze([
   'OWNER',
@@ -142,6 +145,16 @@ export const COMPLETION_ACT_READ_ROLES: readonly string[] = Object.freeze([
   'RECEPTIONIST',
 ]);
 export const INVOICE_READ_ROLES: readonly string[] = COMPLETION_ACT_READ_ROLES;
+/**
+ * Ролі, яким API дозволяє сформувати, підписати й скасувати акт (`completion-acts.controller`:
+ * `POST from-work-order`, `PATCH :id/sign`, `DELETE :id`). Бухгалтер акт лише читає — сторінка наряду
+ * не показує йому кнопок, на які сервер відповів би 403.
+ */
+export const COMPLETION_ACT_WRITE_ROLES: readonly string[] = Object.freeze([
+  'OWNER',
+  'ADMIN',
+  'RECEPTIONIST',
+]);
 /**
  * Ролі, яким видно закупівельні ціни: собівартість товару, ціна рядка наряду, очікувана ціна й
  * ціна пропозиції позиції списку купівлі (BR-SOFR-010). Решта ролей отримує `null` (fail-closed).

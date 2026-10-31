@@ -8,7 +8,8 @@
  *   · у кожному рядку priceWithoutVat + vatAmount = priceWithVat;
  *   · режим ПДВ рядків визначає НАРЯД (його тотали), а не поточні налаштування;
  *   · копійчану різницю «ПДВ від суми» проти «Σ ПДВ рядків» забирає останній рядок;
- *   · різниця понад копійку на рядок — WorkOrderTotalsMismatchError, а не вирівнювання.
+ *   · різниця понад копійку на рядок — WorkOrderTotalsMismatchError, а не вирівнювання;
+ *   · ставка рядків — лише зі довідника податків і лише та, що дає РІВНО ПДВ наряду.
  *
  * Тотали наряду в кейсах рахуються так само, як їх рахує BR-WO-007:
  * `calcVatOnBase(база)` + `splitWorkOrderTotal`.
@@ -30,6 +31,14 @@ type Row = [quantity: number, unitPrice: number];
 const NONE = { vatMode: 'NONE' as VatMode, vatRate: 0 };
 const EXCL20 = { vatMode: 'EXCLUSIVE' as VatMode, vatRate: 20 };
 const INCL20 = { vatMode: 'INCLUSIVE' as VatMode, vatRate: 20 };
+/** Довідник податків організації за замовчуванням: ставки, з якими рахує наряд у кейсах. */
+const DIRECTORY = [0, 7, 14, 20];
+
+const build = (
+  source: WorkOrderForInvoice,
+  settingsVat: { vatMode: VatMode; vatRate: number },
+  taxRates: readonly number[] = DIRECTORY,
+) => buildInvoiceLinesFromWorkOrder(source, settingsVat, taxRates);
 
 /** Наряд із робіт і запчастин; тотали задаються явно — саме їх функція мусить відтворити. */
 function wo(
@@ -85,7 +94,7 @@ describe('buildInvoiceLinesFromWorkOrder — рядки рахунку з нар
     it('без ПДВ: рядки без ПДВ, ставка 0, Σ = сума наряду', () => {
       const source = wo([[2, 100]], [[1, 500]], { totalNet: 700, totalAmount: 700 });
 
-      const lines = buildInvoiceLinesFromWorkOrder(source, NONE);
+      const lines = build(source, NONE);
 
       expect(lines).toHaveLength(2);
       for (const l of lines) {
@@ -101,7 +110,7 @@ describe('buildInvoiceLinesFromWorkOrder — рядки рахунку з нар
     it('ПДВ зверху 20%: рядок = сума без ПДВ + ПДВ, Σ з ПДВ = totalAmount наряду', () => {
       const source = wo([[2, 100]], [[1, 500]], { totalNet: 700, totalAmount: 840 });
 
-      const lines = buildInvoiceLinesFromWorkOrder(source, EXCL20);
+      const lines = build(source, EXCL20);
 
       expect(lines.map(l => [l.priceWithoutVat, l.vatAmount, l.priceWithVat, l.vatRate])).toEqual([
         [200, 40, 240, 20],
@@ -115,7 +124,7 @@ describe('buildInvoiceLinesFromWorkOrder — рядки рахунку з нар
       // 700 з ПДВ у ціні: ПДВ = 116.67, без ПДВ = 583.33.
       const source = wo([[2, 100]], [[1, 500]], { totalNet: 583.33, totalAmount: 700 });
 
-      const lines = buildInvoiceLinesFromWorkOrder(source, INCL20);
+      const lines = build(source, INCL20);
 
       expect(lines.map(l => l.priceWithVat)).toEqual([200, 500]);
       expect(lines.map(l => l.vatRate)).toEqual([20, 20]);
@@ -139,7 +148,7 @@ describe('buildInvoiceLinesFromWorkOrder — рядки рахунку з нар
         { totalNet: 99.99, totalAmount: 119.99 },
       );
 
-      const lines = buildInvoiceLinesFromWorkOrder(source, EXCL20);
+      const lines = build(source, EXCL20);
 
       expect(lines.map(l => [l.priceWithoutVat, l.vatAmount, l.priceWithVat])).toEqual([
         [33.33, 6.67, 40],
@@ -154,7 +163,7 @@ describe('buildInvoiceLinesFromWorkOrder — рядки рахунку з нар
       // 700 з ПДВ у ціні: наряд — ПДВ 116.67 / без ПДВ 583.33; рядки — 33.33 + 83.33 = 116.66.
       const source = wo([[2, 100]], [[1, 500]], { totalNet: 583.33, totalAmount: 700 });
 
-      const lines = buildInvoiceLinesFromWorkOrder(source, INCL20);
+      const lines = build(source, INCL20);
 
       expect(lines[1]).toMatchObject({
         priceWithoutVat: 416.66,
@@ -169,7 +178,7 @@ describe('buildInvoiceLinesFromWorkOrder — рядки рахунку з нар
       // Два рядки на 700.00, наряд каже 700.02: по копійці на рядок.
       const source = wo([[2, 100]], [[1, 500]], { totalNet: 700.02, totalAmount: 700.02 });
 
-      const lines = buildInvoiceLinesFromWorkOrder(source, NONE);
+      const lines = build(source, NONE);
 
       expect(lines.map(l => l.priceWithVat)).toEqual([200, 500.02]);
       expectLinesMatchWorkOrder(lines, source);
@@ -190,7 +199,7 @@ describe('buildInvoiceLinesFromWorkOrder — рядки рахунку з нар
         { totalNet: 99.99, totalAmount: 119.99 },
       );
 
-      const lines = buildInvoiceLinesFromWorkOrder(source, EXCL20);
+      const lines = build(source, EXCL20);
 
       expect(lines.map(l => [l.priceWithoutVat, l.vatAmount, l.priceWithVat])).toEqual([
         [33.33, 6.67, 40],
@@ -219,7 +228,7 @@ describe('buildInvoiceLinesFromWorkOrder — рядки рахунку з нар
       ];
       const source = wo(works, parts, totalsLikeRecalc(works, parts, 'EXCLUSIVE', 7));
 
-      const lines = buildInvoiceLinesFromWorkOrder(source, { vatMode: 'EXCLUSIVE', vatRate: 7 });
+      const lines = build(source, { vatMode: 'EXCLUSIVE', vatRate: 7 });
 
       for (const l of lines) {
         expect(l.priceWithoutVat).toBeGreaterThanOrEqual(0);
@@ -235,7 +244,7 @@ describe('buildInvoiceLinesFromWorkOrder — рядки рахунку з нар
     it('наряд «старої моделі» (налаштування — ПДВ зверху 20%, але totalNet = totalAmount) → рядки без ПДВ', () => {
       const source = wo([[2, 100]], [[1, 500]], { totalNet: 700, totalAmount: 700 });
 
-      const lines = buildInvoiceLinesFromWorkOrder(source, EXCL20);
+      const lines = build(source, EXCL20);
 
       for (const l of lines) {
         expect(l.vatRate).toBe(0);
@@ -248,10 +257,10 @@ describe('buildInvoiceLinesFromWorkOrder — рядки рахунку з нар
     });
 
     // guards: BR-INV-002
-    it('ставку змінили після завершення (налаштування 7%, наряд рахований на 20%) → ставка з наряду', () => {
+    it('ставку змінили після завершення (налаштування 7%, наряд рахований на 20%) → ставка 20 з довідника', () => {
       const source = wo([[2, 100]], [[1, 500]], { totalNet: 700, totalAmount: 840 });
 
-      const lines = buildInvoiceLinesFromWorkOrder(source, { vatMode: 'EXCLUSIVE', vatRate: 7 });
+      const lines = build(source, { vatMode: 'EXCLUSIVE', vatRate: 7 }, [7, 20]);
 
       expect(lines.map(l => [l.vatRate, l.vatAmount, l.priceWithVat])).toEqual([
         [20, 40, 240],
@@ -261,10 +270,11 @@ describe('buildInvoiceLinesFromWorkOrder — рядки рахунку з нар
     });
 
     // guards: BR-INV-002
-    it('ПДВ в організації вимкнули після завершення наряду з ПДВ → рядки з ПДВ наряду', () => {
+    it('ПДВ в організації вимкнули після завершення наряду з ПДВ → ставка наряду з довідника (вимкнена)', () => {
       const source = wo([[2, 100]], [[1, 500]], { totalNet: 700, totalAmount: 840 });
 
-      const lines = buildInvoiceLinesFromWorkOrder(source, NONE);
+      // Вимкнена ставка лишається в довіднику (`isActive: false`) — її й бере рахунок.
+      const lines = build(source, NONE, [20]);
 
       expect(lines.map(l => l.vatRate)).toEqual([20, 20]);
       expect(sum(lines, 'priceWithVat')).toBe(840);
@@ -276,10 +286,86 @@ describe('buildInvoiceLinesFromWorkOrder — рядки рахунку з нар
       // Сума рядків 700 = totalAmount наряду (ПДВ у ціні), а не totalNet.
       const source = wo([[2, 100]], [[1, 500]], { totalNet: 583.33, totalAmount: 700 });
 
-      const lines = buildInvoiceLinesFromWorkOrder(source, EXCL20);
+      const lines = build(source, EXCL20);
 
       expect(lines.map(l => l.priceWithVat)).toEqual([200, 500]);
       expect(sum(lines, 'vatAmount')).toBe(116.67);
+      expectLinesMatchWorkOrder(lines, source);
+    });
+  });
+
+  describe('ставка ПДВ — зі довідника, до копійки з нарядом (TECH-DEBT (б) №6)', () => {
+    const vatRateError = (fn: () => unknown) => {
+      try {
+        fn();
+      } catch (e) {
+        return e instanceof WorkOrderTotalsMismatchError ? e.reason : 'other';
+      }
+      return 'no error';
+    };
+
+    // guards: BR-INV-002
+    it('ПДВ наряду 140,07 на 700 (ставка 20,01 %) — у довіднику лише 20 → помилка «ставка», не рахунок', () => {
+      // Раніше ставка виводилась з тоталів (20,01 %), рядки сходились, і рахунок виходив зі
+      // ставкою, якої в довіднику немає.
+      const source = wo([[2, 100]], [[1, 500]], { totalNet: 700, totalAmount: 840.07 });
+
+      expect(vatRateError(() => build(source, EXCL20, [0, 7, 20]))).toBe('vatRate');
+    });
+
+    // guards: BR-INV-002
+    it('ПДВ на копійку більший за 20 % (840,01) — вирівнюванням не рятується → помилка «ставка»', () => {
+      // Копійка в межах допуску «копійка на рядок»: раніше ставка 20 з налаштувань проходила,
+      // а різницю ПДВ забирав останній рядок — рахунок ішов зі ставкою 20 і ПДВ 140,01.
+      const source = wo([[2, 100]], [[1, 500]], { totalNet: 700, totalAmount: 840.01 });
+
+      expect(vatRateError(() => build(source, EXCL20, [20]))).toBe('vatRate');
+    });
+
+    // guards: BR-INV-002
+    it('порожній довідник при наряді з ПДВ → помилка «ставка»', () => {
+      const source = wo([[2, 100]], [[1, 500]], { totalNet: 700, totalAmount: 840 });
+
+      expect(vatRateError(() => build(source, EXCL20, []))).toBe('vatRate');
+    });
+
+    // guards: BR-INV-002
+    it('ставка з налаштувань поза довідником не береться, навіть якщо дає ПДВ наряду → помилка', () => {
+      // Налаштування кажуть 20 (застаріла відповідь кешу), у довіднику її немає — рахунок не
+      // бере ставку, якої в довіднику немає.
+      const source = wo([[2, 100]], [[1, 500]], { totalNet: 700, totalAmount: 840 });
+
+      expect(vatRateError(() => build(source, EXCL20, [7, 14]))).toBe('vatRate');
+    });
+
+    // guards: BR-INV-002
+    it('ПДВ дає інша ставка довідника (14), ніж у налаштуваннях (20) → 14', () => {
+      // 700 × 14 % = 98: наряд рахували, поки ставка за замовчуванням була 14.
+      const source = wo([[2, 100]], [[1, 500]], { totalNet: 700, totalAmount: 798 });
+
+      const lines = build(source, EXCL20, [7, 14, 20]);
+
+      expect(lines.map(l => l.vatRate)).toEqual([14, 14]);
+      expectLinesMatchWorkOrder(lines, source);
+    });
+
+    // guards: BR-INV-002
+    it('дві ставки дають той самий ПДВ на малій базі → ставка з налаштувань, а не перша в довіднику', () => {
+      // 0,10 × 7 % = 0,007 → 0,01; 0,10 × 14 % = 0,014 → 0,01: обидві «точні».
+      const source = wo([], [[1, 0.1]], { totalNet: 0.1, totalAmount: 0.11 });
+
+      const lines = build(source, { vatMode: 'EXCLUSIVE', vatRate: 14 }, [7, 14]);
+
+      expect(lines.map(l => l.vatRate)).toEqual([14]);
+    });
+
+    // guards: BR-INV-002
+    it('«ПДВ у ціні»: ставка перевіряється від суми до сплати — 7 % на 1070 дає рівно 70', () => {
+      const source = wo([[1, 1070]], [], { totalNet: 1000, totalAmount: 1070 });
+
+      const lines = build(source, { vatMode: 'INCLUSIVE', vatRate: 20 }, [7, 20]);
+
+      expect(lines.map(l => [l.vatRate, l.vatAmount, l.priceWithVat])).toEqual([[7, 70, 1070]]);
       expectLinesMatchWorkOrder(lines, source);
     });
   });
@@ -289,36 +375,28 @@ describe('buildInvoiceLinesFromWorkOrder — рядки рахунку з нар
     it('наряд без ПДВ: сума наряду 1000 при рядках на 700 → WorkOrderTotalsMismatchError', () => {
       const source = wo([[2, 100]], [[1, 500]], { totalNet: 1000, totalAmount: 1000 });
 
-      expect(() => buildInvoiceLinesFromWorkOrder(source, NONE)).toThrow(
-        WorkOrderTotalsMismatchError,
-      );
+      expect(() => build(source, NONE)).toThrow(WorkOrderTotalsMismatchError);
     });
 
     // guards: BR-INV-002
     it('наряд із ПДВ: ні сума без ПДВ (650), ні до сплати (780) не збігаються з рядками на 700 → помилка', () => {
       const source = wo([[2, 100]], [[1, 500]], { totalNet: 650, totalAmount: 780 });
 
-      expect(() => buildInvoiceLinesFromWorkOrder(source, EXCL20)).toThrow(
-        WorkOrderTotalsMismatchError,
-      );
+      expect(() => build(source, EXCL20)).toThrow(WorkOrderTotalsMismatchError);
     });
 
     // guards: BR-INV-002
     it('розбіжність понад копійку на рядок (два рядки, 3 копійки) → помилка', () => {
       const source = wo([[2, 100]], [[1, 500]], { totalNet: 700.03, totalAmount: 700.03 });
 
-      expect(() => buildInvoiceLinesFromWorkOrder(source, NONE)).toThrow(
-        WorkOrderTotalsMismatchError,
-      );
+      expect(() => build(source, NONE)).toThrow(WorkOrderTotalsMismatchError);
     });
 
     // guards: BR-INV-002
     it('порожній наряд із ненульовою сумою → помилка (рахунок на суму без рядків не виставляється)', () => {
       const source = wo([], [], { totalNet: 500, totalAmount: 500 });
 
-      expect(() => buildInvoiceLinesFromWorkOrder(source, NONE)).toThrow(
-        WorkOrderTotalsMismatchError,
-      );
+      expect(() => build(source, NONE)).toThrow(WorkOrderTotalsMismatchError);
     });
   });
 
@@ -327,7 +405,7 @@ describe('buildInvoiceLinesFromWorkOrder — рядки рахунку з нар
     it('порожній наряд із нульовою сумою → []', () => {
       const source = wo([], [], { totalNet: 0, totalAmount: 0 });
 
-      expect(buildInvoiceLinesFromWorkOrder(source, EXCL20)).toEqual([]);
+      expect(build(source, EXCL20)).toEqual([]);
     });
 
     // guards: BR-INV-002
@@ -344,7 +422,7 @@ describe('buildInvoiceLinesFromWorkOrder — рядки рахунку з нар
         { totalNet: 1000, totalAmount: 1000 },
       );
 
-      const lines = buildInvoiceLinesFromWorkOrder(source, NONE);
+      const lines = build(source, NONE);
 
       expect(lines.map(l => l.description)).toEqual([
         'Робота 0',
@@ -362,7 +440,7 @@ describe('buildInvoiceLinesFromWorkOrder — рядки рахунку з нар
       // 2.5 год × 333.33 = 833.325 → 833.33; 3 шт × 0.33 = 0.99.
       const source = wo([[2.5, 333.33]], [[3, 0.33]], { totalNet: 834.32, totalAmount: 834.32 });
 
-      const lines = buildInvoiceLinesFromWorkOrder(source, NONE);
+      const lines = build(source, NONE);
 
       expect(lines.map(l => [l.quantity, l.unitPrice])).toEqual([
         [2.5, 333.33],
@@ -380,7 +458,7 @@ describe('buildInvoiceLinesFromWorkOrder — рядки рахунку з нар
         parts: [{ goodId: null, name: null, quantity: 1, unitPrice: 200 }],
       };
 
-      const lines = buildInvoiceLinesFromWorkOrder(source, NONE);
+      const lines = build(source, NONE);
 
       expect(lines).toHaveLength(2);
       for (const l of lines) expect(l.description.trim().length).toBeGreaterThan(0);
@@ -409,7 +487,7 @@ describe('buildInvoiceLinesFromWorkOrder — рядки рахунку з нар
             const totals = totalsLikeRecalc(works, parts, vatMode, settingsRate);
             const source = wo(works, parts, totals);
 
-            const lines = buildInvoiceLinesFromWorkOrder(source, {
+            const lines = build(source, {
               vatMode,
               vatRate: settingsRate,
             });
@@ -449,7 +527,7 @@ describe('buildInvoiceLinesFromWorkOrder — рядки рахунку з нар
             const totals = totalsLikeRecalc(works, parts, vatMode, settingsRate);
             const source = wo(works, parts, totals);
 
-            const lines = buildInvoiceLinesFromWorkOrder(source, {
+            const lines = build(source, {
               vatMode,
               vatRate: settingsRate,
             });
@@ -479,7 +557,7 @@ describe('buildInvoiceLinesFromWorkOrder — рядки рахунку з нар
       quantity: 1,
       unitPrice: 0.06,
     }));
-    const lines = buildInvoiceLinesFromWorkOrder(
+    const lines = build(
       { totalNet: 0.5, totalAmount: 0.6, lines: [], parts },
       { vatMode: 'INCLUSIVE', vatRate: 20 },
     );

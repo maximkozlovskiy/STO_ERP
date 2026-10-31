@@ -6,6 +6,7 @@ import {
   formatVehicleLabel,
   TRANSACTION_TIMEOUT_MS,
   translateError,
+  WO_COMPLETION_ACT_STATUSES,
 } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { lineAmount, money, sumMoney } from '../../common/utils/money';
@@ -14,7 +15,6 @@ import { DocumentNumberService } from '../document-number/document-number.servic
 import { InvoicesService } from '../invoices/invoices.service';
 import { PdfService } from '../pdf/pdf.service';
 import { OrgPrintInfoService } from '../pdf/org-print-info.service';
-import { INVOICEABLE_STATUSES } from '../work-orders/work-orders.fsm';
 import { lockWorkOrdersForUpdate } from '../work-orders/work-order-stock-requirements';
 import {
   settleIfFullyPaidInTx,
@@ -160,9 +160,9 @@ export class CompletionActsService {
       throw new NotFoundException(
         translateError('err.completionAct.workOrderNotFound', getLocale()),
       );
-    // Use shared INVOICEABLE_STATUSES — same whitelist as InvoicesService.createFromWorkOrder,
-    // avoids drift between the two guards.
-    if (!INVOICEABLE_STATUSES.includes(wo.status)) {
+    // BR-WO-006: ті самі статуси, що й рахунок з наряду (WO_INVOICE_CREATABLE_STATUSES) — разом
+    // із «Оплачено»: наряд, сплачений повністю до «Виставлено», акта ще не має (TECH-DEBT (б) №51).
+    if (!WO_COMPLETION_ACT_STATUSES.includes(wo.status)) {
       throw new BadRequestException(
         translateError('err.completionAct.workOrderNotCompleted', getLocale()),
       );
@@ -189,7 +189,7 @@ export class CompletionActsService {
           throw new NotFoundException(
             translateError('err.completionAct.workOrderNotFound', getLocale()),
           );
-        if (!INVOICEABLE_STATUSES.includes(locked.status)) {
+        if (!WO_COMPLETION_ACT_STATUSES.includes(locked.status)) {
           throw new BadRequestException(
             translateError('err.completionAct.workOrderNotCompleted', getLocale()),
           );

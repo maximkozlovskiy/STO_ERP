@@ -288,7 +288,7 @@ export class InvoicesService {
 
     // Налаштування ПДВ читаємо ПОЗА Serializable tx (як і термін оплати). Режим рядків однаково
     // визначає сам наряд (work-order-invoice-lines.ts) — звідси береться лише ставка.
-    const settingsVat = await this.settingsService.getDefaultVatRate(orgId);
+    const { settingsVat, taxRates } = await this.workOrderVatContext(orgId);
 
     // Serializable isolation + re-check `existing` within the tx prevents two concurrent
     // createFromWorkOrder calls from BOTH passing the pre-check and creating duplicate invoices.
@@ -363,6 +363,7 @@ export class InvoicesService {
           // треба було окремо «оновити з наряду», більше не існує ні на мить.
           await this.writeLinesFromWorkOrder(tx, orgId, created.id, workOrderId, {
             settingsVat,
+            taxRates,
             currencyId: wo.currencyId,
             documentDate,
           });
@@ -1101,6 +1102,18 @@ export class InvoicesService {
    * Спільне для createFromWorkOrder і refreshFromWorkOrder: раніше рядки вмів будувати лише refresh,
    * і щойно створений рахунок лишався порожнім, доки його не «оновлять з наряду».
    */
+  /** Ставка за замовчуванням і довідник податків (зокрема вимкнені) для рядків з наряду. */
+  private async workOrderVatContext(orgId: string): Promise<{
+    settingsVat: { vatMode: VatMode; vatRate: number };
+    taxRates: number[];
+  }> {
+    const [settingsVat, rates] = await Promise.all([
+      this.settingsService.getDefaultVatRate(orgId),
+      this.settingsService.getTaxRates(orgId),
+    ]);
+    return { settingsVat, taxRates: rates.map(r => Number(r.rate)) };
+  }
+
   private async writeLinesFromWorkOrder(
     tx: Prisma.TransactionClient,
     orgId: string,
@@ -1108,6 +1121,8 @@ export class InvoicesService {
     workOrderId: string,
     ctx: {
       settingsVat: { vatMode: VatMode; vatRate: number };
+      /** Ставки довідника податків (зокрема вимкнені) — BR-INV-002, ставка рядків. */
+      taxRates: readonly number[];
       currencyId: string | null;
       documentDate: Date;
     },
@@ -1169,12 +1184,18 @@ export class InvoicesService {
           })),
         },
         ctx.settingsVat,
+        ctx.taxRates,
       );
     } catch (err) {
       if (err instanceof WorkOrderTotalsMismatchError) {
         this.logger.warn(`Наряд ${workOrderId}: ${err.message}`);
         throw new BadRequestException(
-          translateError('err.invoice.workOrderTotalsMismatch', getLocale()),
+          translateError(
+            err.reason === 'vatRate'
+              ? 'err.invoice.workOrderVatRateUnknown'
+              : 'err.invoice.workOrderTotalsMismatch',
+            getLocale(),
+          ),
         );
       }
       throw err;
@@ -1334,7 +1355,7 @@ export class InvoicesService {
     // Ставка ПДВ — з налаштувань org (НЕ хардкод 20%); режим рядків визначає сам наряд
     // (work-order-invoice-lines.ts): борг уже нараховано на wo.totalAmount, рахунок мусить вийти
     // рівно на цю суму.
-    const settingsVat = await this.settingsService.getDefaultVatRate(orgId);
+    const { settingsVat, taxRates } = await this.workOrderVatContext(orgId);
 
     // WO lines+parts fetched inside tx to close TOCTOU between pre-check (reads WO contents)
     // and createMany (writes invoice lines). ReadCommitted allows concurrent addLine/refreshFromWorkOrder
@@ -1359,6 +1380,7 @@ export class InvoicesService {
           });
           await this.writeLinesFromWorkOrder(tx, orgId, existing.id, workOrderId, {
             settingsVat,
+            taxRates,
             currencyId: invInTx.currencyId,
             documentDate: invInTx.documentDate ?? new Date(),
           });
