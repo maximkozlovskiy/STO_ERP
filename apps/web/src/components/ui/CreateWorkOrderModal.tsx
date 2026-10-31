@@ -36,8 +36,13 @@ import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { useConflictCheck } from '@/hooks/useConflictCheck';
 import { useEscapeLayer } from '@/hooks/useEscapeLayer';
 import { useConfirm } from '@/hooks/useConfirm';
-import { useReferenceData } from '@/hooks/useReferenceData';
-import type { Branch } from '@/hooks/useReferenceData';
+import {
+  mayRead,
+  useReferenceData,
+  vehicleLabel,
+  WO_REFERENCE_READ_ROLES,
+} from '@/hooks/useReferenceData';
+import type { Branch, Vehicle } from '@/hooks/useReferenceData';
 import { useStockTotals } from '@/hooks/useStockTotals';
 import { useWorkOrderActions } from '@/hooks/useWorkOrderActions';
 import { getCached, setCache } from '@/lib/ref-cache';
@@ -160,6 +165,8 @@ interface WorkOrderDetail {
   status: string;
   branchId: string;
   vehicleId: string;
+  /** Підпис авто й назва підйомника — для ролі без довідників авто й підйомників. */
+  vehicleSummary?: string;
   counterpartyId: string;
   counterpartyName?: string;
   contractId?: string | null;
@@ -169,6 +176,7 @@ interface WorkOrderDetail {
   totalAmount?: number;
   paidAmount?: number;
   liftId?: string | null;
+  liftName?: string | null;
   description?: string | null;
   inMileage?: number | null;
   priority?: string;
@@ -550,6 +558,7 @@ export function CreateWorkOrderModal({
 
   const [counterpartyDisplayName, setCounterpartyDisplayName] = useState('');
   const [cpPhone, setCpPhone] = useState('');
+  const { employee: currentEmployee } = useAuth();
   // A3-modal: довідники + org-налаштування винесено у useReferenceData (self-contained ref-data + settings).
   const {
     branches,
@@ -568,13 +577,14 @@ export function CreateWorkOrderModal({
     recalcActualHoursEnabled,
     loadVehicles: loadVehiclesRef,
     loadContracts,
+    seedOwnLift,
     employeesById,
     warehousesById,
     unitsById,
     vehiclesById,
     liftsById,
     branchesById,
-  } = useReferenceData();
+  } = useReferenceData(currentEmployee?.role);
   const [cpPickerOpen, setCpPickerOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [transitioning, setTransitioning] = useState(false);
@@ -624,7 +634,6 @@ export function CreateWorkOrderModal({
   const [linkedDocsCounts, setLinkedDocsCounts] = useState<LinkedDocumentsCounts | null>(null);
   const [activeTab, setActiveTab] = useState<'main' | 'documents'>('main');
   const linkedNav = useLinkedNav();
-  const { employee: currentEmployee } = useAuth();
   const canOpenWarranties = canViewWarranties(currentEmployee?.role);
   const linkedConfig = useMemo(
     () => workOrderLinkedConfig(linkedNav, { canOpenWarranties }),
@@ -677,9 +686,11 @@ export function CreateWorkOrderModal({
   // already ending Z / ±HH:MM). Без цієї нормалізації backend new Date("2026-06-10T14:00")
   // парсить як UTC → +2/+3h зсув → false positives.
   // Без підйомника перевіряти нічого: механіка картка наряду не обирає, а сервер на запит без
-  // ресурсу відповідає «конфлікту немає», не читаючи календар.
+  // ресурсу відповідає «конфлікту немає», не читаючи календар. Роль без доступу до перевірки
+  // («Бухгалтер») наряд лише переглядає — запиту, на який сервер відповів би 403, немає.
+  const mayCheckConflicts = mayRead(WO_REFERENCE_READ_ROLES.conflictCheck, currentEmployee?.role);
   useEffect(() => {
-    if (!open || !form.liftId || !form.plannedStartAt || !form.plannedEndAt) {
+    if (!open || !mayCheckConflicts || !form.liftId || !form.plannedStartAt || !form.plannedEndAt) {
       clearConflict();
       return;
     }
@@ -702,6 +713,7 @@ export function CreateWorkOrderModal({
     form.plannedEndAt,
     form.liftId,
     open,
+    mayCheckConflicts,
     workOrderId,
     checkConflict,
     clearConflict,
@@ -906,8 +918,22 @@ export function CreateWorkOrderModal({
         });
         setCounterpartyDisplayName(wo.counterpartyName ?? '');
         setCpPhone('');
+        // Роль без довідників авто й підйомників бачить у полях лише значення самого наряду.
+        seedOwnLift(wo.liftId ? { id: wo.liftId, name: wo.liftName ?? '' } : null);
         if (wo.counterpartyId) {
-          loadVehicles(wo.counterpartyId, wo.vehicleId);
+          loadVehicles(
+            wo.counterpartyId,
+            wo.vehicleId,
+            wo.vehicleId
+              ? {
+                  id: wo.vehicleId,
+                  make: '',
+                  model: '',
+                  licensePlate: null,
+                  summary: wo.vehicleSummary,
+                }
+              : undefined,
+          );
           loadContracts(wo.counterpartyId);
         }
       })
@@ -973,11 +999,16 @@ export function CreateWorkOrderModal({
 
   // A3-modal: loadVehicles/loadContracts у useReferenceData. Тонка обгортка передає onSingleVehicle-колбек
   // (auto-select single vehicle) → хук лишається form-agnostic, а form-мутація тут (spine).
-  const loadVehicles = (cpId: string, keepVehicleId?: string) =>
-    loadVehiclesRef(cpId, keepVehicleId, vehicleId => {
-      // Авто-вибір єдиного авто — програмний (shouldDirty:false), як branch-autoselect.
-      if (!getValues('vehicleId')) setValue('vehicleId', vehicleId, { shouldDirty: false });
-    });
+  const loadVehicles = (cpId: string, keepVehicleId?: string, ownVehicle?: Vehicle) =>
+    loadVehiclesRef(
+      cpId,
+      keepVehicleId,
+      vehicleId => {
+        // Авто-вибір єдиного авто — програмний (shouldDirty:false), як branch-autoselect.
+        if (!getValues('vehicleId')) setValue('vehicleId', vehicleId, { shouldDirty: false });
+      },
+      ownVehicle,
+    );
 
   const [workPickerOpen, setWorkPickerOpen] = useState(false);
   const [editWorkPickerOpen, setEditWorkPickerOpen] = useState(false);
@@ -1031,6 +1062,7 @@ export function CreateWorkOrderModal({
     parts,
     newPart.goodId,
     editingPart.goodId,
+    mayRead(WO_REFERENCE_READ_ROLES.stockTotals, currentEmployee?.role),
   );
 
   // BR-WO-029: товар обрано → склад очищується й підбирається, щойно прийдуть залишки товару.
@@ -2344,9 +2376,7 @@ export function CreateWorkOrderModal({
               vehicleId={form.vehicleId || null}
               vehicleSummary={(() => {
                 const v = form.vehicleId ? vehiclesById.get(form.vehicleId) : null;
-                return v
-                  ? `${v.make} ${v.model}${v.licensePlate ? ` (${v.licensePlate})` : ''}`
-                  : null;
+                return v ? vehicleLabel(v, p => ` (${p})`) : null;
               })()}
             />
           </>
@@ -2448,8 +2478,7 @@ export function CreateWorkOrderModal({
                           <option value="">{t('addLine.choose')}</option>
                           {vehicles.map(v => (
                             <option key={v.id} value={v.id}>
-                              {v.make} {v.model}
-                              {v.licensePlate ? ` (${v.licensePlate})` : ''}
+                              {vehicleLabel(v, p => ` (${p})`)}
                             </option>
                           ))}
                         </Select>
@@ -2606,9 +2635,7 @@ export function CreateWorkOrderModal({
                     {
                       label: (() => {
                         const v = form.vehicleId ? vehiclesById.get(form.vehicleId) : null;
-                        return v
-                          ? `${v.make} ${v.model}${v.licensePlate ? ` · ${v.licensePlate}` : ''}`
-                          : null;
+                        return v ? vehicleLabel(v, p => ` · ${p}`) : null;
                       })(),
                       primary: true,
                       maxWidth: 'max-w-45',

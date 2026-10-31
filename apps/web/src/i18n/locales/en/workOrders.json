@@ -232,6 +232,7 @@
     "notCreated": "Invoice not issued",
     "createdToast": "Invoice No. {{number}} created",
     "createError": "Invoice creation error",
+    "statusNotChanged": "Invoice No. {{number}} was created, but the work order was not moved to «Invoiced»: {{reason}}",
     "refreshedToast": "Invoice lines refreshed from work order",
     "refreshError": "Invoice refresh error",
     "pdfError": "PDF download error",

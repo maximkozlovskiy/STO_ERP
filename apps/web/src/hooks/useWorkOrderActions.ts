@@ -23,6 +23,18 @@ export const INVOICE_PRINT_ROLES: readonly string[] = [
   'RECEPTIONIST',
 ];
 
+/**
+ * Ролі, яким сервер дозволяє `POST /work-orders/:id/transition` (`work-orders.controller.ts`).
+ * «Бухгалтер» рахунок наряду створює, а статус наряду не переводить — йому «Виставити рахунок»
+ * лише створює рахунок (BR-WO-037).
+ */
+export const WO_TRANSITION_ROLES: readonly string[] = [
+  'OWNER',
+  'ADMIN',
+  'RECEPTIONIST',
+  'MECHANIC',
+];
+
 type ShareToken = ApiSchema<'WorkOrderShareTokenResponseDto'>;
 
 /**
@@ -368,15 +380,9 @@ export function useWorkOrderActions({
     invoiceBusyRef.current = true;
     setInvoiceLoading(true);
     try {
-      if (currentStatus === 'COMPLETED') {
-        const updated = await apiFetch<{ status?: string } | null>(
-          `/work-orders/${workOrderId}/transition`,
-          { method: 'POST', body: JSON.stringify({ status: 'INVOICED' }) },
-        );
-        // Статус — з відповіді: сплачений повністю наряд іде далі до «Оплачено» (BR-WO-016).
-        setCurrentStatus(updated?.status ?? 'INVOICED');
-        onUpdated?.();
-      }
+      // BR-WO-037: спершу рахунок, потім перехід «Виконано» → «Виставлено». Сервер створює рахунок
+      // і для «Виконано» (`WO_INVOICE_CREATABLE_STATUSES`), а зворотного переходу FSM не має: збій
+      // створення після переходу лишав наряд «Виставлено» без рахунку.
       const invoice = await apiFetch<{ id: string; number: string }>(
         `/invoices/from-work-order/${workOrderId}`,
         { method: 'POST' },
@@ -384,7 +390,8 @@ export function useWorkOrderActions({
       // тригернути перезавантаження LinkedDocumentsPanel, інакше "Документи"
       // tab не показує щойно створений рахунок без manual tab-switch.
       setLinkedDocsRefreshKey(k => k + 1);
-      // «Друк рахунку» з'являється одразу, без повторного запиту рахунку наряду.
+      // «Друк рахунку» з'являється одразу, без повторного запиту рахунку наряду. Покоління — до
+      // переходу нижче: `/find`, який перехід перезапустить, читає вже закомічений рахунок.
       createdInSeqRef.current = findSeqRef.current;
       if (mayPrintInvoice) setInvoiceForPrint({ id: invoice.id, number: invoice.number });
       if (features.toastEnabled) {
@@ -393,13 +400,30 @@ export function useWorkOrderActions({
           onClick: () => window.open(`/invoices/${invoice.id}`, '_blank'),
         });
       }
+      if (currentStatus === 'COMPLETED' && !!role && WO_TRANSITION_ROLES.includes(role)) {
+        try {
+          const updated = await apiFetch<{ status?: string } | null>(
+            `/work-orders/${workOrderId}/transition`,
+            { method: 'POST', body: JSON.stringify({ status: 'INVOICED' }) },
+          );
+          // Статус — з відповіді: сплачений повністю наряд іде далі до «Оплачено» (BR-WO-016).
+          setCurrentStatus(updated?.status ?? 'INVOICED');
+        } catch (e: unknown) {
+          // Рахунок уже є, наряд лишився «Виконано» — стан, який сервер допускає; перевести
+          // можна кнопкою статусу. Повторне «Виставити рахунок» тут не потрібне.
+          const reason = e instanceof Error ? e.message : '';
+          const msg = t('invoice.statusNotChanged', { number: invoice.number, reason });
+          if (features.toastEnabled) toast.error(msg);
+          else setError(msg);
+        }
+      }
+      onUpdated?.();
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : '';
       if (msg.includes('вже існує')) {
         setInvoiceConflict(true);
       } else {
-        // Наряд лишається «Виставлено»: зворотного переходу в «Виконано» FSM не має (колишній
-        // «відкат» сервер завжди відхиляв), рахунок можна створити повторно кнопкою.
+        // Рахунку немає, і наряд не переведено — «Виставити рахунок» можна повторити.
         if (features.toastEnabled) toast.error(msg || t('invoice.createError'));
         else setError(msg || t('invoice.createError'));
       }

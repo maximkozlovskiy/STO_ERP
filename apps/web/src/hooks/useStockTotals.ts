@@ -29,6 +29,8 @@ export function useStockTotals(
   parts: { goodId: string }[],
   newPartGoodId: string,
   editingPartGoodId: string,
+  /** Роль читає `GET /goods/stock-totals` — інакше залишків не запитуємо (сервер відповів би 403). */
+  enabled = true,
 ): StockTotals {
   const [stockTotalsMap, setStockTotalsMap] = useState<Map<string, number>>(new Map());
   // key = `${goodId}:${warehouseId}` → quantity on that specific warehouse
@@ -54,7 +56,7 @@ export function useStockTotals(
   }, [parts, newPartGoodId, editingPartGoodId]);
 
   useEffect(() => {
-    if (!stockGoodIdsKey) {
+    if (!stockGoodIdsKey || !enabled) {
       setStockTotalsMap(new Map());
       setStockWarehouseMap(new Map());
       setStockFreeByGood(new Map());
@@ -99,7 +101,7 @@ export function useStockTotals(
     return () => {
       cancelled = true;
     };
-  }, [stockGoodIdsKey]);
+  }, [stockGoodIdsKey, enabled]);
 
   return { stockTotalsMap, stockWarehouseMap, stockFreeByGood };
 }

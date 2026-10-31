@@ -53,7 +53,36 @@ export interface Vehicle {
   make: string;
   model: string;
   licensePlate: string | null;
+  /**
+   * Готовий підпис авто з відповіді наряду (`vehicleSummary`) — для ролі, якій довідник авто не
+   * віддається: картка показує авто свого наряду без `GET /vehicles`.
+   */
+  summary?: string;
 }
+
+/** Підпис авто в полі й зведенні картки; `plate` — як подати номер («(AA…)» чи «· AA…»). */
+export function vehicleLabel(v: Vehicle, plate: (licensePlate: string) => string): string {
+  if (v.summary) return v.summary;
+  return `${v.make} ${v.model}${v.licensePlate ? plate(v.licensePlate) : ''}`;
+}
+
+/**
+ * Ролі, яким api віддає довідники картки наряду — дзеркало `@Roles` на `GET /lifts`
+ * (`zones.controller.ts`), `GET /vehicles` (`vehicles.controller.ts`) і залишки товарів. Іншим ролям («Бухгалтер»
+ * читає наряд, але не довідники) картка їх не запитує — сервер відповів би 403, а підпис авто й
+ * підйомника дає сам наряд (`vehicleSummary`, `liftName`).
+ */
+export const WO_REFERENCE_READ_ROLES = {
+  lifts: ['OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC'],
+  vehicles: ['OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC'],
+  /** `GET /goods/stock-totals` (`goods.controller.ts`) — залишки запчастин картки. */
+  stockTotals: ['OWNER', 'ADMIN', 'RECEPTIONIST', 'STOREKEEPER', 'MECHANIC'],
+  /** `POST /calendar/slots/check-conflicts` (`calendar.controller.ts`) — зайнятість підйомника. */
+  conflictCheck: ['OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC'],
+} as const satisfies Record<string, readonly string[]>;
+
+export const mayRead = (roles: readonly string[], role: string | undefined) =>
+  !!role && roles.includes(role);
 /**
  * Договір у полі «Договір» картки наряду. Лише поля, які віддає й механіку звужена відповідь
  * `GET /counterparties/:id/contracts` (id, номер, тип; рішення власника 2026-10-16, друге).
@@ -71,7 +100,9 @@ export interface Unit {
 
 export type VatMode = 'NONE' | 'EXCLUSIVE' | 'INCLUSIVE';
 
-export function useReferenceData() {
+export function useReferenceData(role?: string) {
+  const canReadLifts = mayRead(WO_REFERENCE_READ_ROLES.lifts, role);
+  const canReadVehicles = mayRead(WO_REFERENCE_READ_ROLES.vehicles, role);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [lifts, setLifts] = useState<Lift[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
@@ -106,17 +137,6 @@ export function useReferenceData() {
         })
         .catch(() => {});
     }
-
-    const cachedLifts = getCached<Lift[]>('cache:lifts');
-    if (cachedLifts) setLifts(cachedLifts);
-    // Always re-fetch to avoid stale deleted lifts appearing in the select
-    apiFetch<Lift[] | { items: Lift[] }>('/lifts')
-      .then(r => {
-        const list = Array.isArray(r) ? r : (r.items ?? []);
-        setLifts(list);
-        setCache('cache:lifts', list);
-      })
-      .catch(() => {});
 
     // Кеш вкладки пишуть і сторінки, що не відсіюють «Шинний готель» (наряд, склад) — відсіяти й тут.
     const cachedWarehouses = getCached<Warehouse[]>('cache:warehouses');
@@ -187,6 +207,26 @@ export function useReferenceData() {
       .catch(() => {});
   }, []);
 
+  useEffect(() => {
+    if (!canReadLifts) return;
+    const cachedLifts = getCached<Lift[]>('cache:lifts');
+    if (cachedLifts) setLifts(cachedLifts);
+    // Always re-fetch to avoid stale deleted lifts appearing in the select
+    apiFetch<Lift[] | { items: Lift[] }>('/lifts')
+      .then(r => {
+        const list = Array.isArray(r) ? r : (r.items ?? []);
+        setLifts(list);
+        setCache('cache:lifts', list);
+      })
+      .catch(() => {});
+  }, [canReadLifts]);
+
+  /** Роль без `GET /lifts`: у полі «Підйомник» — лише підйомник самого наряду (з його відповіді). */
+  const seedOwnLift = (lift: Lift | null) => {
+    if (canReadLifts) return;
+    setLifts(lift ? [lift] : []);
+  };
+
   /**
    * Per-CP vehicles. Race-safe через req-id. Auto-select single vehicle НЕ мутує form напряму —
    * повертає через `onSingleVehicle` (модал сам вирішує setForm), щоб хук лишався form-agnostic.
@@ -195,9 +235,15 @@ export function useReferenceData() {
     cpId: string,
     keepVehicleId?: string,
     onSingleVehicle?: (vehicleId: string) => void,
+    /** Авто самого наряду — перелік для ролі без `GET /vehicles`. */
+    ownVehicle?: Vehicle,
   ) => {
     if (!cpId) return;
     const reqId = ++vehicleReqRef.current;
+    if (!canReadVehicles) {
+      setVehicles(ownVehicle ? [ownVehicle] : []);
+      return;
+    }
     apiFetch<Vehicle[]>(`/vehicles?counterpartyId=${cpId}`)
       .then(list => {
         if (reqId !== vehicleReqRef.current) return;
@@ -244,6 +290,7 @@ export function useReferenceData() {
     recalcActualHoursEnabled,
     loadVehicles,
     loadContracts,
+    seedOwnLift,
     employeesById,
     warehousesById,
     unitsById,
