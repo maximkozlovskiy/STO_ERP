@@ -3,10 +3,15 @@
 // Assertion, і з кореневим імпортом усі матчери (toBeInTheDocument тощо) перестали
 // резолвитись — 476 помилок TS2339 у тестах, попри зелений прогін.
 import '@testing-library/jest-dom/vitest';
+import { configure } from '@testing-library/react';
 
 // i18n: ініціалізуємо i18next (lng='uk' за замовчуванням, бо localStorage порожній у jsdom) →
 // t() резолвить українські каталоги → існуючі тести, що асертять укр. текст, лишаються green.
 import '@/i18n/config';
+
+// `findBy*` / `waitFor` чекають 3 с замість 1 с: у повному прогоні картки документів рендеряться
+// в рази повільніше, ніж окремо (вимір — vitest.config.ts, `testTimeout`).
+configure({ asyncUtilTimeout: 3000 });
 
 // jsdom does not implement Element.prototype.scrollIntoView — stub it so components
 // that scroll the active item into view (CommandPalette, Select, list virtualizers)
