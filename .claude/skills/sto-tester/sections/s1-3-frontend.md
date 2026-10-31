@@ -181,7 +181,7 @@ done
 # Модалка може мати savingRef і використовувати його у edit/transition-handler, АЛЕ забути у create.
 ```
 
-- [ ] Concurrent double-submit у create/save-модалці (Bug #630, #632-#634) — `T1.3-001`
+- [ ] Concurrent double-submit у create/save-модалці (Bug #630, #632-#634; сторінки й хуки — #1033) — `T1.3-001`
 - [ ] Multi-request submit — per-row idempotency, не лише per-header (Bug #755, HIGH/гроші) — `T1.3-002`
 - [ ] Кожен list-fetch в `useEffect` має: `let cancelled=false` + `return () => {cancelled=true}`; `setLoading(true)` перед; `.finally(() => !cancelled && setLoading(false))`; `.catch((e) => !cancelled && setError(...))`; у JSX `{loading && <Spinner/>}` + `{!loading && items.length===0 && <Empty/>}`
 - [ ] `new Date()` у render path → `useState<Date|null>(null)` + `useEffect(() => setToday(new Date()), [])`
@@ -331,4 +331,4 @@ done
 - [ ] Дію відкрито новому класу записів: «₴» без валюти в DTO (Bug #1018) — `T1.3-104`
 - [ ] Передзаповнення `setValue` поверх `reset()`: повторне вікно без правок «змінене» (Bug #1027) — `T1.3-107`
 - [ ] Спосіб оплати не йде за джерелом коштів: банк записано «Готівкою» (Bug #1025) — `T1.3-108`
-- [ ] Ширина модалки «мінус бічне меню» без нижньої межі: на 390px картка 174px (Bug #1028) — `T1.3-109`
+- [ ] Ширина модалки «мінус бічне меню» без нижньої межі: на 390px картка 174px (Bug #1028; шапка й таблиці — #1031, #1032) — `T1.3-109`
