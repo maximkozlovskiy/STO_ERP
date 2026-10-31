@@ -11,10 +11,8 @@ import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Spinner } from '@/components/ui/spinner';
 import { cn } from '@/lib/utils';
 import { fmtMoney, kyivToday } from '@/lib/format';
-import { InventoryTab } from '../inventory/InventoryTab';
 import { downloadBlob } from '@/lib/download';
 import dynamic from 'next/dynamic';
-import { SettlementsTabContent } from '../settlements/SettlementsTabContent';
 import { ReportBuilder } from './ReportBuilder';
 import { RevenueReport } from './RevenueReport';
 import { PnlReport } from './PnlReport';
@@ -32,6 +30,16 @@ import { buildCsv, type ReportData } from './report-csv';
 import { CSV_BOM } from '@/lib/report-export';
 import { StatCard } from './StatCard';
 
+// Вкладки «Залишки» і «Розрахунки (деталізація)» — self-contained сторінки інших розділів: у first load
+// звітів вони не потрібні (бюджет сторінки 560 KB, 2026-10-31 звіти доросли до 563 KB).
+const InventoryTab = dynamic(() => import('../inventory/InventoryTab').then(m => m.InventoryTab), {
+  ssr: false,
+  loading: () => <div className="h-96 bg-surface-hover animate-pulse rounded-xl" />,
+});
+const SettlementsTabContent = dynamic(
+  () => import('../settlements/SettlementsTabContent').then(m => m.SettlementsTabContent),
+  { ssr: false, loading: () => <div className="h-96 bg-surface-hover animate-pulse rounded-xl" /> },
+);
 const RevenueCharts = dynamic(() => import('./ReportsCharts').then(m => m.RevenueCharts), {
   ssr: false,
   loading: () => <div className="h-96 bg-surface-hover animate-pulse rounded-xl" />,

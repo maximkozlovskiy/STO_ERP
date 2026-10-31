@@ -46,7 +46,14 @@ vi.mock('../ReportBuilder', () => ({ ReportBuilder: () => <div data-testid="buil
 vi.mock('../../settlements/SettlementsTabContent', () => ({
   SettlementsTabContent: () => <div data-testid="settlements-detail" />,
 }));
-vi.mock('next/dynamic', () => ({ default: () => () => null }));
+// next/dynamic — справжній: вкладки «Залишки» й «Розрахунки» ліниві й резолвляться в стуби вище;
+// графіки (recharts) — стуби, щоб не тягнути їх у jsdom.
+vi.mock('../ReportsCharts', () => ({
+  RevenueCharts: () => null,
+  SettlementsChart: () => null,
+  ProfitabilityChart: () => null,
+  LoadChart: () => null,
+}));
 // Картка товару «Звіту по складу» — окремий хук із QueryClient; тут лише ролі й вкладки.
 vi.mock('../ReportGoodCard', () => ({
   useReportGoodCard: () => ({ open: vi.fn(), element: null }),
@@ -111,21 +118,21 @@ describe('Звіти — вкладка «Залишки» і ролі', () => {
 
   it.each(['STOREKEEPER', 'RECEPTIONIST'])(
     '%s бачить лише одну вкладку — «Залишки», і одразу її вміст',
-    r => {
+    async r => {
       role = r;
       render(<ReportsPage />);
       expect(tabButtons()).toEqual(['Залишки']);
-      expect(screen.getByTestId('inventory-tab')).toBeInTheDocument();
+      expect(await screen.findByTestId('inventory-tab')).toBeInTheDocument();
     },
   );
 
   it.each(['STOREKEEPER', 'RECEPTIONIST'])(
     '%s з прямим посиланням на фінансовий звіт (?tab=revenue) однаково бачить «Залишки», а запит звіту не йде',
-    r => {
+    async r => {
       role = r;
       currentSearch = 'tab=revenue';
       render(<ReportsPage />);
-      expect(screen.getByTestId('inventory-tab')).toBeInTheDocument();
+      expect(await screen.findByTestId('inventory-tab')).toBeInTheDocument();
       // 'settlements-detail' — вимкнений запит (enabled:false у useReport): так сторінка «глушить»
       // фіксований звіт для self-contained вкладок.
       expect(useReportMock).toHaveBeenCalled();
@@ -133,10 +140,10 @@ describe('Звіти — вкладка «Залишки» і ролі', () => {
     },
   );
 
-  it('фінансова роль: ?tab=inventory показує залишки без фільтра дат і без запиту звіту', () => {
+  it('фінансова роль: ?tab=inventory показує залишки без фільтра дат і без запиту звіту', async () => {
     currentSearch = 'tab=inventory';
     render(<ReportsPage />);
-    expect(screen.getByTestId('inventory-tab')).toBeInTheDocument();
+    expect(await screen.findByTestId('inventory-tab')).toBeInTheDocument();
     for (const call of useReportMock.mock.calls) expect(call[0]).toBe('settlements-detail');
     expect(screen.queryByText('Експорт CSV')).not.toBeInTheDocument();
   });
