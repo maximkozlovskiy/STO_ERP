@@ -460,6 +460,19 @@ describe('Modal', () => {
     expect(getPanel().style.maxWidth).toBe('95vw');
   });
 
+  // Картка документа на телефоні: «100vw − 216px» (ширина бічного меню, якого там немає) давало
+  // 174px при 390px. Нижня межа 768px — вужчий екран обмежує `w-full` у контейнері з відступами.
+  it('size="content": без бічного меню, але не вужче 768px (телефон — уся ширина)', () => {
+    render(
+      <Modal open onClose={vi.fn()} title="Документ" size="content">
+        Вміст
+      </Modal>,
+    );
+    const maxWidth = getPanel().style.maxWidth;
+    expect(maxWidth).toContain('100vw - 216px');
+    expect(maxWidth).toMatch(/^max\(.*768px\)$/);
+  });
+
   // ─── Animation integration з useAnimatedPresence (data-state/data-animate) ──
 
   describe('exit animation through useAnimatedPresence', () => {

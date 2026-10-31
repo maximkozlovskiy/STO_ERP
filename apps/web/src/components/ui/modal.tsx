@@ -89,7 +89,10 @@ const sizeWidths: Record<ModalSize, string> = {
   wide: '768px',
   xl: '896px',
   full: '95vw',
-  content: 'calc(100vw - 216px)',
+  // Ширина без бічного меню (216px). На телефоні меню сховане, і «100vw − 216px» давало картку
+  // документа завширшки 174px при 390px — нижня межа 768px; вужчий екран обмежує `w-full` у
+  // контейнері з відступами.
+  content: 'max(calc(100vw - 216px), 768px)',
 };
 
 const TRANSITION = 'cubic-bezier(0.4,0,0.2,1)';
