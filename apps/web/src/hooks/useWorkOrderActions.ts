@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   WO_SHAREABLE_STATUSES,
@@ -93,6 +93,12 @@ export function useWorkOrderActions({
   // Відповідь `/find` уже є (рахунок знайдено чи ні): до неї «Виставити рахунок» не показується —
   // інакше кнопка блимала б на наряді, що вже має рахунок.
   const [invoiceChecked, setInvoiceChecked] = useState(false);
+  // Покоління запиту `/find` і те, під час якого кнопка «Виставити рахунок» створила рахунок:
+  // перехід «Виконано» → «Виставлено» перезапускає `/find` паралельно з POST, і його пізня
+  // відповідь «рахунку немає» (прочитана до коміту POST) затирала б щойно створений рахунок —
+  // «Друк рахунку» зникав, а «Виставити рахунок» з'являвся знову.
+  const findSeqRef = useRef(0);
+  const createdInSeqRef = useRef(-1);
 
   const canShare = isEditMode && WO_SHAREABLE_STATUSES.includes(currentStatus);
   // BR-WO-013: наряд-замовлення друкується від «Виконано»; до того — кошторис (canShare).
@@ -114,6 +120,7 @@ export function useWorkOrderActions({
   // Повторно — при зміні статусу (рахунок міг з'явитись/скасуватись в іншому місці).
   useEffect(() => {
     setInvoiceChecked(false);
+    const seq = ++findSeqRef.current;
     if (!workOrderId || !canPrintOrder || !mayPrintInvoice) {
       setInvoiceForPrint(null);
       return;
@@ -122,14 +129,15 @@ export function useWorkOrderActions({
     apiFetch<{ id: string; number: string } | null>(`/invoices/from-work-order/${workOrderId}/find`)
       .then(inv => {
         if (cancelled) return;
-        setInvoiceForPrint(inv ? { id: inv.id, number: inv.number } : null);
+        if (inv) setInvoiceForPrint({ id: inv.id, number: inv.number });
+        else if (createdInSeqRef.current !== seq) setInvoiceForPrint(null);
         setInvoiceChecked(true);
       })
       .catch(() => {
         // Невідомо, чи є рахунок: кнопку показуємо — повторне створення сервер відхилить
         // («вже існує»), і картка запропонує відкрити чи оновити наявний.
         if (cancelled) return;
-        setInvoiceForPrint(null);
+        if (createdInSeqRef.current !== seq) setInvoiceForPrint(null);
         setInvoiceChecked(true);
       });
     return () => {
@@ -373,6 +381,7 @@ export function useWorkOrderActions({
       // tab не показує щойно створений рахунок без manual tab-switch.
       setLinkedDocsRefreshKey(k => k + 1);
       // «Друк рахунку» з'являється одразу, без повторного запиту рахунку наряду.
+      createdInSeqRef.current = findSeqRef.current;
       if (mayPrintInvoice) setInvoiceForPrint({ id: invoice.id, number: invoice.number });
       if (features.toastEnabled) {
         toast.success(t('invoice.createdToast', { number: invoice.number }), 6000, {

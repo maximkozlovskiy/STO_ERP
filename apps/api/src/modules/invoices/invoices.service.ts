@@ -265,8 +265,8 @@ export class InvoicesService {
     ]);
     if (!wo)
       throw new NotFoundException(translateError('err.invoice.workOrderNotFound', getLocale()));
-    // BR-INV-020: ширше за INVOICEABLE_STATUSES (гейт актів і кнопок) — повністю сплачений наряд
-    // стає «Оплачено» ще до рахунку, а рахунок для нього створити можна (акт, «Рахунок»).
+    // BR-INV-020: ширше за INVOICEABLE_STATUSES (гейт «Оновити з наряду») — повністю сплачений
+    // наряд стає «Оплачено» ще до рахунку, а рахунок для нього створити можна (акт, «Рахунок»).
     if (!WO_INVOICE_CREATABLE_STATUSES.includes(wo.status)) {
       throw new BadRequestException(
         translateError('err.invoice.onlyCompletedInvoiceable', getLocale()),
@@ -1096,12 +1096,6 @@ export class InvoicesService {
     await this.recalcTotals(orgId, invoiceId);
   }
 
-  /**
-   * BR-INV-002: читає рядки наряду В ТРАНЗАКЦІЇ (закриває TOCTOU з конкурентним addLine/removePart),
-   * пише рядки рахунку і його суми. Сума рахунку = `wo.totalAmount` — те, що вже нараховано боргом.
-   * Спільне для createFromWorkOrder і refreshFromWorkOrder: раніше рядки вмів будувати лише refresh,
-   * і щойно створений рахунок лишався порожнім, доки його не «оновлять з наряду».
-   */
   /** Ставка за замовчуванням і довідник податків (зокрема вимкнені) для рядків з наряду. */
   private async workOrderVatContext(orgId: string): Promise<{
     settingsVat: { vatMode: VatMode; vatRate: number };
@@ -1114,6 +1108,12 @@ export class InvoicesService {
     return { settingsVat, taxRates: rates.map(r => Number(r.rate)) };
   }
 
+  /**
+   * BR-INV-002: читає рядки наряду В ТРАНЗАКЦІЇ (закриває TOCTOU з конкурентним addLine/removePart),
+   * пише рядки рахунку і його суми. Сума рахунку = `wo.totalAmount` — те, що вже нараховано боргом.
+   * Спільне для createFromWorkOrder і refreshFromWorkOrder: раніше рядки вмів будувати лише refresh,
+   * і щойно створений рахунок лишався порожнім, доки його не «оновлять з наряду».
+   */
   private async writeLinesFromWorkOrder(
     tx: Prisma.TransactionClient,
     orgId: string,

@@ -40,7 +40,8 @@ export const LINE_ACTUAL_EDITABLE_STATUSES: readonly WorkOrderStatus[] = Object.
   'IN_PROGRESS',
   'ON_HOLD',
 ]);
-// A5: invoice/completion-act gate — єдине джерело WO_INVOICEABLE_STATUSES у @sto/shared.
+// A5: гейт «Оновити рахунок з наряду» (refreshFromWorkOrder) — єдине джерело WO_INVOICEABLE_STATUSES
+// у @sto/shared. Акт і створення рахунку — ширше: WO_COMPLETION_ACT_STATUSES / WO_INVOICE_CREATABLE_STATUSES.
 export const INVOICEABLE_STATUSES: readonly WorkOrderStatus[] =
   asWoStatuses(WO_INVOICEABLE_STATUSES);
 // BR-WO-021, BR-PL-011: наряд, під який закуповують товар і тримають резерв (не завершений і не
