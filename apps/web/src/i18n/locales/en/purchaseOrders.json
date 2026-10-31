@@ -4,7 +4,8 @@
     "orders": "Purchase orders",
     "returns": "Supplier returns",
     "schedule": "Payment schedule",
-    "procurement": "Procurement"
+    "procurement": "Procurement",
+    "payments": "Supplier payments"
   },
   "columns": {
     "number": "Number",

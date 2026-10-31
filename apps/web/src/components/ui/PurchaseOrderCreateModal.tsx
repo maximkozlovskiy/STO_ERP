@@ -12,7 +12,9 @@ import {
   DEFAULT_GOOD_UNIT,
 } from '@sto/shared';
 import { Plus, Trash2, Pencil, Check, X, Zap, PackageCheck, Wallet, Upload } from 'lucide-react';
-import { apiFetch } from '@/lib/api-client';
+import { apiFetch, apiPost } from '@/lib/api-client';
+import { newIdempotencyKey } from '@/lib/idempotency-key';
+import { PURCHASE_DOCUMENT_ROLES } from '@/lib/purchase-roles';
 import { useAuth } from '@/lib/auth';
 import { toast } from '@/lib/toast';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
@@ -24,7 +26,7 @@ import { getCached, setCache } from '@/lib/ref-cache';
 import { displayCounterpartyName, lineAmount, sumLineAmounts } from '@/lib/utils';
 import { fmtMoney, kyivToday } from '@/lib/format';
 import { pickScannedGood } from '@/lib/barcode';
-import { PO_STATUS_TRANSITIONS, PO_STATUS_ACTION_LABELS } from '@sto/shared';
+import { PO_STATUS_TRANSITIONS, PO_STATUS_ACTION_LABELS, PO_PAYABLE_STATUSES } from '@sto/shared';
 import { poStatusLabel } from '@/i18n/enumLabel';
 import i18n from '@/i18n/config';
 import { Modal } from '@/components/ui/modal';
@@ -217,6 +219,8 @@ export function PurchaseOrderCreateModal({
   const closeExcelWizard = useCallback(() => setExcelWizardOpen(false), []);
   const [receiveQtys, setReceiveQtys] = useState<Record<string, string>>({});
   const [receiving, setReceiving] = useState(false);
+  // Ключ прийому (BR-PO-014): новий на кожне відкриття прийому й після успішного прийому.
+  const receiveKeyRef = useRef('');
   const [applyingPricing, setApplyingPricing] = useState(false);
   const [rulePricerOpen, setRulePricerOpen] = useState(false);
   const [pricingRules, setPricingRules] = useState<PricingRule[]>([]);
@@ -606,7 +610,10 @@ export function PurchaseOrderCreateModal({
   // «чернетки», а не цей документ. Жодних дій — інакше «Підтвердити» провело б документ, якого
   // користувач не бачить (Bug #844). Разом із «видалено» це дає картку лише на перегляд.
   const notLoaded = isEditMode && loadedDocId !== purchaseOrderId;
-  const viewOnly = isDeleted || notLoaded;
+  // BR-PO-015: бухгалтер відкриває картку лише на перегляд — без змін, переходів, прийому й передачі
+  // в API (сервер відмовив би 403); «Оплатити» лишається (оплата — його робота, BR-SUPPAY-015).
+  const roleViewOnly = isEditMode && !PURCHASE_DOCUMENT_ROLES.includes(employee?.role ?? '');
+  const viewOnly = isDeleted || notLoaded || roleViewOnly;
   const allowedTransitions = useMemo<readonly string[]>(
     () =>
       // Видалений документ переходів не має: сервер відповість 404 на будь-яку зміну.
@@ -959,10 +966,16 @@ export function PurchaseOrderCreateModal({
     setReceiving(true);
     setError('');
     try {
-      await apiFetch(`/purchase-orders/${purchaseOrderId}/receive`, {
-        method: 'POST',
-        body: JSON.stringify({ lines: receivedLines }),
-      });
+      // BR-PO-014: ключ — на відкриття прийому; повтор того самого прийому (подвійний клік,
+      // обрив відповіді) віддає збережену відповідь, а не приймає товар удруге.
+      await apiPost(
+        `/purchase-orders/${purchaseOrderId}/receive`,
+        { lines: receivedLines },
+        {
+          'Idempotency-Key': receiveKeyRef.current,
+        },
+      );
+      receiveKeyRef.current = newIdempotencyKey();
       setReceiveMode(false);
       setReceiveQtys({});
       // Перечитати замовлення ЦІЛКОМ (рядки й статус): лише статус лишав у рядках `receivedQty`
@@ -1149,18 +1162,23 @@ export function PurchaseOrderCreateModal({
               />
             </div>
             <div className="flex gap-2 items-center flex-wrap">
-              {isEditMode && currentStatus !== 'CANCELLED' && !viewOnly && canPaySupplier && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => void openPayment()}
-                  disabled={saving || transitioning}
-                  title={t('card.payTitle')}
-                >
-                  <Wallet size={15} className="mr-1" />
-                  {t('card.pay')}
-                </Button>
-              )}
+              {/* BR-SUPPAY-015: оплату приймає лише замовлення «Замовлено» / «Частково» / «Отримано». */}
+              {isEditMode &&
+                PO_PAYABLE_STATUSES.includes(currentStatus) &&
+                !isDeleted &&
+                !notLoaded &&
+                canPaySupplier && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void openPayment()}
+                    disabled={saving || transitioning}
+                    title={t('card.payTitle')}
+                  >
+                    <Wallet size={15} className="mr-1" />
+                    {t('card.pay')}
+                  </Button>
+                )}
               {/* Незнайдений документ (notLoaded) друкувати й зберігати нічого (TECH-DEBT §9 п.4);
                   видалений — друкується, як і досі. */}
               {isEditMode ? (
@@ -1396,7 +1414,10 @@ export function PurchaseOrderCreateModal({
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => setReceiveMode(true)}
+                    onClick={() => {
+                      receiveKeyRef.current = newIdempotencyKey();
+                      setReceiveMode(true);
+                    }}
                     disabled={saving || transitioning}
                   >
                     <PackageCheck size={13} className="mr-1" />

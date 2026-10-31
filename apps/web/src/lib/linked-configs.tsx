@@ -50,10 +50,11 @@ function fmt(n: string | number): string {
 }
 
 /**
- * Сума оплати клієнта — у валюті оплати (Bug #1018): доларова оплата на доларовий рахунок не
- * «20,00 ₴», а «20,00 USD». Без коду (базова валюта) — «₴».
+ * Сума документа — у його валюті (Bug #1018): доларова оплата чи рахунок не «20,00 ₴», а
+ * «20,00 USD». Без коду (базова валюта, старий рядок) — «₴». Оплати клієнта, рахунки, оплати
+ * постачальнику.
  */
-function fmtPaymentAmount(row: Pick<LinkedPaymentRow, 'amount' | 'currencyCode'>): string {
+function fmtPaymentAmount(row: { amount: string | number; currencyCode?: string | null }): string {
   return `${fmt(row.amount)} ${fmtBankCurrencySuffix(row.currencyCode)}`;
 }
 
@@ -111,6 +112,8 @@ interface LinkedSupplierPaymentRow {
   id: string;
   number: string;
   amount: string | number;
+  /** Валюта оплати (валюта її джерела коштів); null — базова. */
+  currencyCode?: string | null;
   method: string;
   status: string;
   documentDate: string | null;
@@ -218,7 +221,7 @@ function invoiceSection(
       primary: `Рахунок ${row.number}`,
       secondary:
         secondaryField === 'amount'
-          ? `${fmt(row.amount)} ₴`
+          ? fmtPaymentAmount(row)
           : row.documentDate
             ? fmtDate(row.documentDate)
             : undefined,
@@ -227,7 +230,7 @@ function invoiceSection(
         title: `Рахунок ${row.number}`,
         rows: [
           { label: 'Статус', value: invoiceStatusLabel(row.status) },
-          { label: 'Сума', value: `${fmt(row.amount)} ₴` },
+          { label: 'Сума', value: fmtPaymentAmount(row) },
           ...(row.documentDate ? [{ label: 'Дата', value: fmtDate(row.documentDate) }] : []),
         ],
       },
@@ -291,7 +294,9 @@ function paymentReversalFields(
             id: row.id,
             amountText,
             dateText,
-            methodLabel: METHOD_LABELS[row.method] ?? row.method,
+            // Назва способу — з довідника НДІ (картка бере її сама); старі коди CASH/CARD/… — підписом.
+            methodLabel: METHOD_LABELS[row.method] ?? null,
+            methodCode: row.method,
           }}
         />
       ),
@@ -479,7 +484,7 @@ function supplierPaymentSection({ withDate = true }: { withDate?: boolean } = {}
     icon: Wallet,
     mapRow: (row: LinkedSupplierPaymentRow) => ({
       id: row.id,
-      primary: `${row.number} — ${fmt(row.amount)} ₴`,
+      primary: `${row.number} — ${fmtPaymentAmount(row)}`,
       secondary: row.documentDate ? fmtDate(row.documentDate) : undefined,
       // Колір — зі спільної мапи статусів: «Сторновано» (REVERSED) має бути помітним, а не
       // сірим, як інші рядки.
@@ -491,7 +496,7 @@ function supplierPaymentSection({ withDate = true }: { withDate?: boolean } = {}
         title: `Оплата ${row.number}`,
         rows: [
           { label: 'Статус', value: supplierPaymentStatusLabel(row.status) },
-          { label: 'Сума', value: `${fmt(row.amount)} ₴` },
+          { label: 'Сума', value: fmtPaymentAmount(row) },
           { label: 'Метод', value: METHOD_LABELS[row.method] ?? row.method },
           ...(withDate && row.documentDate
             ? [{ label: 'Дата', value: fmtDate(row.documentDate) }]

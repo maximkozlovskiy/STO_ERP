@@ -64,12 +64,22 @@ vi.mock('@/components/ui/SupplierReturnCreateModal', () => ({
   SupplierReturnCreateModal: () => null,
 }));
 vi.mock('@/components/ui/PurchaseOrderCreateModal', () => ({
-  PurchaseOrderCreateModal: () => null,
+  PurchaseOrderCreateModal: ({
+    open,
+    purchaseOrderId,
+  }: {
+    open: boolean;
+    purchaseOrderId?: string;
+  }) => (open ? <div data-testid="po-card">{purchaseOrderId}</div> : null),
 }));
 vi.mock('@/components/ui/date-picker-input', () => ({ DatePickerInput: () => null }));
 // Сам графік має власний тест (SupplierPaymentScheduleTab.test.tsx) — тут важить, чи його показано.
 vi.mock('../SupplierPaymentScheduleTab', () => ({
   SupplierPaymentScheduleTab: () => <div data-testid="schedule-tab" />,
+}));
+// Перелік оплат має власний тест (SupplierPaymentsTab.test.tsx).
+vi.mock('../SupplierPaymentsTab', () => ({
+  SupplierPaymentsTab: () => <div data-testid="payments-tab" />,
 }));
 
 import PurchaseOrdersPage from '../page';
@@ -84,9 +94,12 @@ function renderPage() {
 }
 
 const tabNames = () =>
-  ['Замовлення постачальникам', 'Повернення постачальнику', 'Графік оплат'].filter(
-    name => screen.queryByText(name) !== null,
-  );
+  [
+    'Замовлення постачальникам',
+    'Повернення постачальнику',
+    'Графік оплат',
+    'Оплати постачальникам',
+  ].filter(name => screen.queryByText(name) !== null);
 
 describe('«Купівля» — вкладка «Графік оплат»', () => {
   beforeEach(() => {
@@ -97,13 +110,14 @@ describe('«Купівля» — вкладка «Графік оплат»', ()
     usePurchaseOrdersMock.mockClear();
   });
 
-  it.each(['OWNER', 'ADMIN'])('%s: три вкладки, графік — третя', r => {
+  it.each(['OWNER', 'ADMIN'])('%s: вкладки документів, графік і перелік оплат', r => {
     role = r;
     renderPage();
     expect(tabNames()).toEqual([
       'Замовлення постачальникам',
       'Повернення постачальнику',
       'Графік оплат',
+      'Оплати постачальникам',
     ]);
     expect(screen.queryByTestId('schedule-tab')).not.toBeInTheDocument();
   });
@@ -140,14 +154,36 @@ describe('«Купівля» — вкладка «Графік оплат»', ()
     );
   });
 
-  it('бухгалтер: лише графік, сторінка замовлень із її запитами не монтується', () => {
+  it('бухгалтер: графік і перелік оплат, сторінка замовлень із її запитами не монтується', async () => {
     role = 'ACCOUNTANT';
     renderPage();
-    expect(screen.getByTestId('schedule-tab')).toBeInTheDocument();
-    expect(tabNames()).toEqual(['Графік оплат']);
+    expect(await screen.findByTestId('schedule-tab')).toBeInTheDocument();
+    expect(tabNames()).toEqual(['Графік оплат', 'Оплати постачальникам']);
     expect(usePurchaseOrdersMock).not.toHaveBeenCalled();
     // Guard сторінки для бухгалтера — його власний, а не «власник / адміністратор / комірник».
     expect(requireAuthMock).toHaveBeenCalledWith(['ACCOUNTANT']);
     expect(requireAuthMock).not.toHaveBeenCalledWith(['OWNER', 'ADMIN', 'STOREKEEPER']);
+  });
+
+  // BR-SUPPAY-014: бухгалтер відкриває перелік оплат (чернетки) — свою роботу.
+  // guards: BR-SUPPAY-014
+  it('бухгалтер: ?tab=payments показує перелік оплат', async () => {
+    role = 'ACCOUNTANT';
+    search = 'tab=payments';
+    renderPage();
+    expect(await screen.findByTestId('payments-tab')).toBeInTheDocument();
+    expect(screen.queryByTestId('schedule-tab')).not.toBeInTheDocument();
+  });
+
+  // BR-PO-015: посилання на замовлення з каси чи переліку оплат (`?open=<id>`) бухгалтеру
+  // відкриває картку замовлення на перегляд, а не губиться.
+  // guards: BR-PO-015
+  it('бухгалтер: ?open=<id> відкриває картку замовлення', async () => {
+    role = 'ACCOUNTANT';
+    search = 'open=66666666-6666-4666-8666-666666666666';
+    renderPage();
+    expect(await screen.findByTestId('po-card')).toHaveTextContent(
+      '66666666-6666-4666-8666-666666666666',
+    );
   });
 });

@@ -27,15 +27,13 @@ import { EntityPickerField } from '@/components/ui/entity-picker-field';
 import { SearchPickerModal } from '@/components/ui/search-picker-modal';
 import { useQueryClient } from '@tanstack/react-query';
 import { invalidatePurchaseSideEffects } from '@/lib/cache-invalidation';
-import {
-  useCreateSupplierPayment,
-  useConfirmSupplierPayment,
-  useCancelSupplierPayment,
-  type PaymentSourceType,
-} from '@/hooks/api/useSupplierPayments';
+import { newIdempotencyKey } from '@/lib/idempotency-key';
+import { usePaySupplier } from '@/hooks/api/useSupplierPayments';
 
 /**
- * Оплата постачальнику: створення з негайним проведенням.
+ * Оплата постачальнику: створення й проведення ОДНІЄЮ дією (BR-SUPPAY-013, `POST
+ * /supplier-payments/pay`) — відмова не лишає ні чернетки, ні витраченого номера. Ключ
+ * ідемпотентності — один на відкриття вікна: повтор після обриву відповіді віддає ту саму оплату.
  *
  * `void` перед `handleSave()` / `handleModalClose()` у JSX: `handleSave` (RHF handleSubmit
  * над `onValid`) має try/catch, що пише текст відмови у `error` (баннер у модалці) і в
@@ -136,6 +134,10 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, prefill }: 
   // на першому вході → другий вхід одразу повертається (WEB-H3 double-submit).
   const savingRef = useRef(false);
   const [error, setError] = useState('');
+  // Один ключ на відкриття вікна (BR-SUPPAY-013): повторна спроба після обриву відповіді віддає
+  // ту саму оплату, а не проводить другу. Відмова сервера знімає резервацію ключа — після виправлення
+  // форми той самий ключ проходить.
+  const idempotencyKeyRef = useRef('');
 
   const [banks, setBanks] = useState<BankAccount[]>([]);
   const [cashRegisters, setCashRegisters] = useState<CashRegister[]>([]);
@@ -143,14 +145,6 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, prefill }: 
   const [supplierPickerOpen, setSupplierPickerOpen] = useState(false);
   const [poPickerOpen, setPoPickerOpen] = useState(false);
   const mountedRef = useRef(true);
-  // Retry-safety: якщо create вже успішно створив оплату, але mutateAsync кинув
-  // помилку ПІСЛЯ commit-у (обрив на відповіді), повторний клік «Створити» не
-  // має створити ДРУГУ оплату. Зберігаємо id першого успіху та завершуємо форму.
-  const createdIdRef = useRef<string | null>(null);
-  // Оплата, створена попередньою спробою, доля якої невідома: відповідь на проведення не
-  // дійшла, а стан документа з'ясувати не вдалось. Наступна спроба спершу з'ясовує ЇЇ долю —
-  // інакше повторний клік створив би й провів другу оплату (гроші з каси двічі).
-  const pendingIdRef = useRef<string | null>(null);
   // Auto-select single source має спрацювати РАЗ на джерело (коли завантажився
   // список), а не після кожного рендера — інакше повторно вибирає щойно очищене
   // користувачем поле «— Оберіть —» і його неможливо лишити порожнім.
@@ -163,14 +157,9 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, prefill }: 
     };
   }, []);
 
-  // Bug #594: створення через хук (а не raw apiFetch) щоб onSuccess у хуку
-  // інвалідував supplierPaymentsKeys.all — інакше нова оплата не з'являється
-  // у списку до staleTime=30s (usePaginatedList кешує на 30 секунд).
-  const createMut = useCreateSupplierPayment();
-  // Сторінки оплат постачальнику немає — документ, створений звідси, проводиться одразу
-  // (create → confirm); якщо проведення не вдалось — скасовуємо, щоб не лишати чернетку.
-  const confirmMut = useConfirmSupplierPayment();
-  const cancelMut = useCancelSupplierPayment();
+  // Bug #594: через хук (а не raw apiFetch) — onSuccess інвалідує перелік оплат, баланс
+  // постачальника й «сплачено» замовлення.
+  const payMut = usePaySupplier();
   const queryClient = useQueryClient();
 
   // ── Reference data ─────────────────────────────────────────────────────────
@@ -240,8 +229,7 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, prefill }: 
       dirty.resetDirty();
       setError('');
       autoSelectedRef.current = { cash: false, bank: false };
-      createdIdRef.current = null;
-      pendingIdRef.current = null;
+      idempotencyKeyRef.current = newIdempotencyKey();
       savingRef.current = false;
       // reset() ставить чисту базу → rhfDirty=false; далі накладаємо prefill.
       reset(emptyDefaults());
@@ -267,30 +255,6 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, prefill }: 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rhfDirty]);
 
-  /**
-   * Чим закінчилась оплата: проведена; скасована (зокрема щойно — чернетку скасовуємо тут);
-   * невідомо (немає зв'язку або чернетку не вдалося скасувати).
-   */
-  const settlePayment = useCallback(
-    async (id: string): Promise<'confirmed' | 'cancelled' | 'unknown'> => {
-      let status: string | undefined;
-      try {
-        status = (await apiFetch<{ status?: string }>(`/supplier-payments/${id}`)).status;
-      } catch {
-        return 'unknown';
-      }
-      if (status === 'CONFIRMED') return 'confirmed';
-      if (status === 'CANCELLED') return 'cancelled';
-      try {
-        await cancelMut.mutateAsync(id);
-        return 'cancelled';
-      } catch {
-        return 'unknown';
-      }
-    },
-    [cancelMut],
-  );
-
   const onValid = useCallback(
     async (values: SupplierPaymentFormValues) => {
       // WEB-H3: синхронний guard проти concurrent double-submit (див. savingRef).
@@ -310,42 +274,7 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, prefill }: 
         documentDate: values.documentDate,
       };
       try {
-        if (!createdIdRef.current) {
-          // Попередня спроба лишила оплату з невідомою долею → спершу з'ясувати її.
-          let confirmedId: string | null = null;
-          if (pendingIdRef.current) {
-            const fate = await settlePayment(pendingIdRef.current);
-            if (fate === 'unknown') throw new Error(t('errors.paymentStateUnknown'));
-            if (fate === 'confirmed') confirmedId = pendingIdRef.current;
-            pendingIdRef.current = null;
-          }
-          if (!confirmedId) {
-            // Bug #594: через хук — щоб onSuccess інвалідував supplierPaymentsKeys.all.
-            const created = await createMut.mutateAsync(payload);
-            pendingIdRef.current = created.id;
-            try {
-              await confirmMut.mutateAsync(created.id);
-            } catch (confirmError) {
-              // Відмова проведення і «відповідь не дійшла» виглядають однаково, а сервер міг
-              // оплату провести. Тому спершу стан документа: проведено — це успіх; ні —
-              // скасовуємо чернетку (порядок CashDeskService.payToSupplier) і показуємо відмову.
-              const fate = await settlePayment(created.id);
-              if (fate === 'cancelled') {
-                pendingIdRef.current = null;
-                throw confirmError;
-              }
-              if (fate === 'unknown') {
-                const reason = confirmError instanceof Error ? confirmError.message : '';
-                throw new Error(`${reason} ${t('errors.paymentStateUnknown')}`.trim());
-              }
-            }
-            pendingIdRef.current = null;
-            confirmedId = created.id;
-          }
-          createdIdRef.current = confirmedId;
-        }
-        // createdIdRef уже був заданий → оплату проведено на попередній спробі (далі впав
-        // onSaved): дубль не створюємо, лише завершуємо форму.
+        await payMut.mutateAsync({ data: payload, idempotencyKey: idempotencyKeyRef.current });
         if (features.toastEnabled) toast.success(t('toast.paymentCreated'));
         dirty.resetDirty();
         invalidatePurchaseSideEffects(queryClient);
@@ -360,17 +289,7 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, prefill }: 
         setSaving(false);
       }
     },
-    [
-      createMut,
-      confirmMut,
-      settlePayment,
-      queryClient,
-      features.toastEnabled,
-      onSaved,
-      onClose,
-      dirty,
-      t,
-    ],
+    [payMut, queryClient, features.toastEnabled, onSaved, onClose, dirty, t],
   );
 
   const handleSave = handleSubmit(onValid);
@@ -627,7 +546,8 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, prefill }: 
         title={t('create.pickOrder')}
         fetchItems={q =>
           apiFetch<{ items: PurchaseOrderRef[] }>(
-            `/purchase-orders?q=${encodeURIComponent(q)}&supplierId=${supplierId}&limit=30`,
+            // BR-SUPPAY-015: підстава оплати — лише «Замовлено» / «Частково» / «Отримано».
+            `/purchase-orders?q=${encodeURIComponent(q)}&supplierId=${supplierId}&payable=true&limit=30`,
           ).then(d => d.items.map(po => ({ id: po.id, primary: po.number })))
         }
       />

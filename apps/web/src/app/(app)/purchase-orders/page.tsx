@@ -23,7 +23,8 @@ import {
 } from 'lucide-react';
 import { useAuth, useRequireAuth } from '@/lib/auth';
 import { PURCHASE_DOCUMENT_ROLES } from './purchase-roles';
-import { apiFetch } from '@/lib/api-client';
+import { apiFetch, apiPost } from '@/lib/api-client';
+import { newIdempotencyKey } from '@/lib/idempotency-key';
 import { useSelectedRowRefresh } from '@/hooks/useSelectedRowRefresh';
 import { TabDivider } from '@/components/ui/tab-divider';
 import { LinkedDocumentsPanel } from '@/components/ui/LinkedDocumentsPanel';
@@ -104,6 +105,11 @@ const PurchaseOrderCreateModal = dynamic(
 const ProcurementTab = dynamic(() => import('./ProcurementTab').then(m => m.ProcurementTab), {
   ssr: false,
 });
+// «Оплати постачальникам» (чернетки й перелік, BR-SUPPAY-014) — теж окремим чанком.
+const SupplierPaymentsTab = dynamic(
+  () => import('./SupplierPaymentsTab').then(m => m.SupplierPaymentsTab),
+  { ssr: false },
+);
 const SupplierPaymentScheduleTab = dynamic(
   () => import('./SupplierPaymentScheduleTab').then(m => m.SupplierPaymentScheduleTab),
   { ssr: false },
@@ -230,7 +236,7 @@ interface SrFilters extends Record<string, unknown> {
   dateTo: string;
 }
 
-type PurchaseTab = 'orders' | 'returns' | 'procurement' | 'schedule';
+type PurchaseTab = 'orders' | 'returns' | 'procurement' | 'schedule' | 'payments';
 
 // «Графік оплат» читає GET /supplier-payments/schedule — ролі цього endpoint-а (без комірника).
 const SCHEDULE_ROLES: readonly string[] = ['OWNER', 'ADMIN', 'ACCOUNTANT'];
@@ -272,7 +278,9 @@ function PurchaseOrdersPageClient() {
         ? 'procurement'
         : requestedTab === 'schedule' && canSeeSchedule
           ? 'schedule'
-          : 'orders';
+          : requestedTab === 'payments' && canSeeSchedule
+            ? 'payments'
+            : 'orders';
   const setActiveTab = useCallback(
     (tab: PurchaseTab) => {
       const params = new URLSearchParams(searchParams.toString());
@@ -852,7 +860,11 @@ function PurchaseOrdersPageClient() {
     [confirm, runSentOrder, queryClient, features.toastEnabled, t],
   );
 
+  // Ключ прийому (BR-PO-014): один на відкриття вікна прийому — повтор того самого прийому
+  // віддає збережену відповідь; новий прийом — нове відкриття.
+  const receiveKeyRef = useRef('');
   const openReceiveWithLines = useCallback((po: PurchaseOrder) => {
+    receiveKeyRef.current = newIdempotencyKey();
     setReceiveLines(po.lines.map(l => ({ lineId: l.id, receivedQty: '' })));
     setShowReceive(po);
   }, []);
@@ -886,10 +898,11 @@ function PurchaseOrdersPageClient() {
     setSaving(true);
     setError('');
     try {
-      await apiFetch<PurchaseOrder>(`/purchase-orders/${showReceive.id}/receive`, {
-        method: 'POST',
-        body: JSON.stringify({ lines: receivedLines }),
-      });
+      await apiPost<PurchaseOrder>(
+        `/purchase-orders/${showReceive.id}/receive`,
+        { lines: receivedLines },
+        { 'Idempotency-Key': receiveKeyRef.current },
+      );
       setShowReceive(null);
       dirty.resetDirty();
       invalidatePoReceiptCaches();
@@ -920,7 +933,12 @@ function PurchaseOrdersPageClient() {
             { key: 'orders', label: t('tabs.orders') },
             { key: 'returns', label: t('tabs.returns') },
             { key: 'procurement', label: t('tabs.procurement') },
-            ...(canSeeSchedule ? [{ key: 'schedule', label: t('tabs.schedule') } as const] : []),
+            ...(canSeeSchedule
+              ? ([
+                  { key: 'schedule', label: t('tabs.schedule') },
+                  { key: 'payments', label: t('tabs.payments') },
+                ] as const)
+              : []),
           ] as const
         ).map(tab => (
           <Fragment key={tab.key}>
@@ -945,6 +963,12 @@ function PurchaseOrdersPageClient() {
       {activeTab === 'schedule' && (
         <div className="flex flex-col flex-1 min-h-0 pt-4">
           <SupplierPaymentScheduleTab />
+        </div>
+      )}
+
+      {activeTab === 'payments' && (
+        <div className="flex flex-col flex-1 min-h-0 pt-4">
+          <SupplierPaymentsTab onOpenOrder={openPoCard} />
         </div>
       )}
 
@@ -1754,13 +1778,24 @@ function PurchaseOrdersPageClient() {
 }
 
 /**
- * Бухгалтер у «Купівлі» бачить лише «Графік оплат»: списки й картки замовлень йому закриті
- * (ролі сторінки — власник, адміністратор, комірник), а графік оплат — його робочий інструмент.
+ * Бухгалтер у «Купівлі» бачить «Графік оплат» і «Оплати постачальникам»: списки замовлень і
+ * повернень йому закриті (ролі сторінки — власник, адміністратор, комірник), а картку замовлення він
+ * відкриває лише на перегляд — з графіка, переліку оплат чи посилання `?open=<id>` (BR-PO-015).
  * Окрема легка оболонка — щоб не монтувати сторінку замовлень із її запитами.
  */
 function PurchaseSchedulePage() {
   useRequireAuth(['ACCOUNTANT']);
   const { t } = useTranslation('purchaseOrders');
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const tab: 'schedule' | 'payments' =
+    searchParams.get('tab') === 'payments' ? 'payments' : 'schedule';
+  const poCard = useUrlCard();
+  const setTab = (next: 'schedule' | 'payments') => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set('tab', next);
+    router.replace(`?${params.toString()}`, { scroll: false });
+  };
   return (
     <div className="page-fill p-4 md:p-6">
       <div className="page-header">
@@ -1769,11 +1804,34 @@ function PurchaseSchedulePage() {
         </div>
       </div>
       <div className="shrink-0 flex gap-0 border-b border-border -mx-6 px-6 overflow-x-auto">
-        <span className={cn(TAB_BUTTON, 'border-primary text-primary')}>{t('tabs.schedule')}</span>
+        {(['schedule', 'payments'] as const).map(key => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setTab(key)}
+            className={cn(
+              TAB_BUTTON,
+              tab === key
+                ? 'border-primary text-primary'
+                : 'border-transparent text-muted-foreground hover:text-foreground',
+            )}
+          >
+            {t(`tabs.${key}`)}
+          </button>
+        ))}
       </div>
       <div className="flex flex-col flex-1 min-h-0 pt-4">
-        <SupplierPaymentScheduleTab />
+        {tab === 'schedule' ? (
+          <SupplierPaymentScheduleTab />
+        ) : (
+          <SupplierPaymentsTab onOpenOrder={poCard.open} />
+        )}
       </div>
+      <PurchaseOrderCreateModal
+        open={!!poCard.id}
+        purchaseOrderId={poCard.id ?? undefined}
+        onClose={poCard.close}
+      />
     </div>
   );
 }

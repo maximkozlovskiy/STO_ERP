@@ -7,6 +7,13 @@ import type { ReactNode } from 'react';
 const apiFetchMock = vi.fn();
 vi.mock('@/lib/api-client', () => ({
   apiFetch: (...args: unknown[]) => apiFetchMock(...args),
+  // apiPost — тонка обгортка над apiFetch (як справжня): заголовки й тіло видно в apiFetchMock.
+  apiPost: (path: string, body?: unknown, headers?: Record<string, string>) =>
+    apiFetchMock(path, {
+      method: 'POST',
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      ...(headers ? { headers } : {}),
+    }),
 }));
 
 // usePaginatedList використовує useAuth для enabled-gate.
@@ -17,12 +24,13 @@ vi.mock('@/lib/auth', () => ({
 
 import {
   supplierPaymentsKeys,
-  useCreateSupplierPayment,
+  usePaySupplier,
   useConfirmSupplierPayment,
   useCancelSupplierPayment,
   useSupplierPaymentDocuments,
 } from './useSupplierPayments';
 import { counterpartiesKeys } from './useCounterparties';
+import { purchaseOrdersKeys } from './usePurchaseOrders';
 
 function createWrapper() {
   const client = new QueryClient({
@@ -50,50 +58,58 @@ describe('useSupplierPayments', () => {
     });
   });
 
-  describe('useCreateSupplierPayment', () => {
-    it('POST /supplier-payments з body та інвалідує supplierPaymentsKeys.all після успіху', async () => {
+  // BR-SUPPAY-013: оплата однією дією з ключем — без нього маршрут відповідає 400 (Bug #1020).
+  describe('usePaySupplier', () => {
+    // guards: BR-SUPPAY-013
+    it('POST /supplier-payments/pay з тілом і Idempotency-Key; інвалідує оплати, контрагентів, замовлення', async () => {
       const { client, wrapper } = createWrapper();
       const spy = vi.spyOn(client, 'invalidateQueries');
-      apiFetchMock.mockResolvedValueOnce({
-        id: 'sp1',
-        number: 'ОПП-1',
-        status: 'DRAFT',
-      });
+      apiFetchMock.mockResolvedValueOnce({ id: 'sp1', number: 'ОПП-1', status: 'CONFIRMED' });
 
-      const { result } = renderHook(() => useCreateSupplierPayment(), { wrapper });
+      const { result } = renderHook(() => usePaySupplier(), { wrapper });
       await act(async () => {
         await result.current.mutateAsync({
-          supplierId: 's1',
-          sourceType: 'CASH_REGISTER',
-          cashRegisterId: 'cr1',
-          amount: 100,
-          method: 'cash',
+          data: {
+            supplierId: 's1',
+            sourceType: 'CASH_REGISTER',
+            cashRegisterId: 'cr1',
+            amount: 100,
+            method: 'cash',
+          },
+          idempotencyKey: 'key-1',
         });
       });
 
       expect(apiFetchMock).toHaveBeenCalledWith(
-        '/supplier-payments',
-        expect.objectContaining({ method: 'POST' }),
+        '/supplier-payments/pay',
+        expect.objectContaining({
+          method: 'POST',
+          headers: { 'Idempotency-Key': 'key-1' },
+          body: expect.stringContaining('"supplierId":"s1"'),
+        }),
       );
       const calls = spy.mock.calls.map(c => JSON.stringify(c[0]?.queryKey ?? c[0]));
       expect(calls).toContain(JSON.stringify(supplierPaymentsKeys.all));
+      expect(calls).toContain(JSON.stringify(counterpartiesKeys.all));
+      expect(calls).toContain(JSON.stringify(purchaseOrdersKeys.all));
     });
   });
 
   describe('useConfirmSupplierPayment (Bug #590 regression)', () => {
-    it('POST /supplier-payments/:id/confirm інвалідує supplierPayments.all + detail(id) + counterparties.all', async () => {
+    // guards: BR-SUPPAY-014
+    it('POST /supplier-payments/:id/confirm з Idempotency-Key інвалідує supplierPayments.all + detail(id) + counterparties.all', async () => {
       const { client, wrapper } = createWrapper();
       const spy = vi.spyOn(client, 'invalidateQueries');
       apiFetchMock.mockResolvedValueOnce({ id: 'sp1', status: 'CONFIRMED' });
 
       const { result } = renderHook(() => useConfirmSupplierPayment(), { wrapper });
       await act(async () => {
-        await result.current.mutateAsync('sp1');
+        await result.current.mutateAsync({ id: 'sp1', idempotencyKey: 'key-2' });
       });
 
       expect(apiFetchMock).toHaveBeenCalledWith(
         '/supplier-payments/sp1/confirm',
-        expect.objectContaining({ method: 'POST' }),
+        expect.objectContaining({ method: 'POST', headers: { 'Idempotency-Key': 'key-2' } }),
       );
       const calls = spy.mock.calls.map(c => JSON.stringify(c[0]?.queryKey ?? c[0]));
       expect(calls).toContain(JSON.stringify(supplierPaymentsKeys.all));

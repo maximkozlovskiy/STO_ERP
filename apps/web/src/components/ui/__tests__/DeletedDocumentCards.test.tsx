@@ -201,6 +201,13 @@ describe('PurchaseOrderCreateModal — документ, позначений н
     expect(button(/Друк/)).toBeInTheDocument();
   });
 
+  // «Оплатити» на чернетці немає й так (BR-SUPPAY-015) — позначку видалення перевіряємо на замовленні,
+  // яке оплату приймає.
+  it('з deletedAt на «Замовлено» — «Оплатити» теж немає', async () => {
+    await open(DELETED_AT, 'ORDERED');
+    expect(screen.queryByRole('button', { name: /Оплатити/ })).toBeNull();
+  });
+
   // Картку відкрили для A, закрили й відкрили для видаленого B; відповідь A прийшла пізніше.
   // Без токена запиту вона заповнювала форму рядками A і знімала позначку «видалено» з B.
   it('пізня відповідь попереднього замовлення не потрапляє в картку наступного', async () => {
@@ -258,9 +265,14 @@ describe('PurchaseOrderCreateModal — документ, позначений н
     await open(null);
 
     expect(banner()).not.toBeInTheDocument();
-    for (const name of ['Зберегти зміни', 'Скасувати', /Оплатити/, 'тест-імпорт-xlsx']) {
+    for (const name of ['Зберегти зміни', 'Скасувати', 'тест-імпорт-xlsx']) {
       expect(button(name)).toBeInTheDocument();
     }
+  });
+
+  it('без deletedAt на «Замовлено» — «Оплатити» на місці', async () => {
+    await open(null, 'ORDERED');
+    expect(button(/Оплатити/)).toBeInTheDocument();
   });
 });
 

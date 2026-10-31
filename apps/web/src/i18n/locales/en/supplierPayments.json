@@ -69,9 +69,6 @@
   "toast": {
     "paymentCreated": "Payment created"
   },
-  "errors": {
-    "paymentStateUnknown": "Could not find out whether the payment was posted. Check the connection and press “Pay” again — a second payment will not be created."
-  },
   "create": {
     "title": "Supplier payment",
     "saveError": "Save failed",
@@ -90,5 +87,44 @@
     "notesPlaceholder": "Additional information…",
     "pickSupplier": "Select supplier",
     "pickOrder": "Select purchase order"
+  },
+  "list": {
+    "title": "Supplier payments",
+    "statusLabel": "Status",
+    "all": "All",
+    "drafts": "Drafts",
+    "empty": "No payments with this status",
+    "emptyDrafts": "No drafts — all payments are posted or cancelled",
+    "loadError": "Could not load payments",
+    "columns": {
+      "number": "Number",
+      "date": "Date",
+      "supplier": "Supplier",
+      "source": "Source",
+      "order": "Order",
+      "amount": "Amount",
+      "status": "Status",
+      "actions": "Actions"
+    },
+    "confirm": "Post",
+    "confirmAria": "Post payment {{number}}",
+    "cancel": "Cancel",
+    "cancelAria": "Cancel draft {{number}}",
+    "openOrder": "Open order {{number}}",
+    "confirmDialog": {
+      "title": "Post payment {{number}}?",
+      "message": "{{amount}} to supplier \"{{supplier}}\" will be paid from \"{{source}}\". A posted payment can only be reversed in the cash desk."
+    },
+    "cancelDialog": {
+      "title": "Cancel draft {{number}}?",
+      "message": "The draft becomes Cancelled; no money moved, no postings.",
+      "confirmLabel": "Cancel draft",
+      "keep": "Keep"
+    },
+    "toast": {
+      "confirmed": "Payment {{number}} posted",
+      "cancelled": "Draft {{number}} cancelled"
+    },
+    "help": "Old drafts (before 2026-10-30 a payment was created and posted in two steps) live here. Post checks the order status, the shift and the cash balance just like a new payment."
   }
 }

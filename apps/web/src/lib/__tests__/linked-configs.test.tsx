@@ -116,6 +116,24 @@ describe('linked-configs — behaviour parity of parametrized builders', () => {
       expect(mapped.secondary).not.toBe('15.01.2026');
     });
 
+    // «₴» без валюти: рахунок у доларах підписувався гривнею — і в рядку контрагента, і в прев'ю.
+    // guards: BR-SUPPAY-016
+    it.each([
+      ['USD', 'USD'],
+      [null, '₴'],
+    ] as const)('рахунок у валюті %s → сума з «%s» у рядку й прев’ю', (code, suffix) => {
+      const row = { ...INV_ROW, amount: 20, currencyCode: code };
+      for (const factory of [counterpartyLinkedConfig, workOrderLinkedConfig]) {
+        const mapped = section(factory(makeNav()), 'invoices').mapRow(row as never);
+        const sum = mapped.preview.rows.find(r => r.label === 'Сума')?.value;
+        expect(String(sum).replace(/\s/g, ' ')).toBe(`20,00 ${suffix}`);
+      }
+      const secondary = section(counterpartyLinkedConfig(makeNav()), 'invoices').mapRow(
+        row as never,
+      ).secondary;
+      expect(secondary).toMatch(new RegExp(`${suffix}$`));
+    });
+
     it('navigate веде до toInvoice', () => {
       const nav = makeNav();
       const mapped = section(workOrderLinkedConfig(nav), 'invoices').mapRow(INV_ROW as never);
@@ -233,6 +251,22 @@ describe('linked-configs — behaviour parity of parametrized builders', () => {
         expect.arrayContaining(['Статус', 'Сума', 'Метод']),
       );
       for (const spy of Object.values(nav)) expect(spy).not.toHaveBeenCalled();
+    });
+
+    // Оплата постачальнику з доларового рахунку підписувалась «₴».
+    // guards: BR-SUPPAY-016
+    it.each([
+      ['замовлення постачальнику', purchaseOrderLinkedConfig],
+      ['картка контрагента', counterpartyLinkedConfig],
+    ] as const)('%s: сума оплати у валюті оплати (USD), без коду — «₴»', (_name, factory) => {
+      const usd = section(factory(makeNav()), 'supplierPayments').mapRow({
+        ...row,
+        currencyCode: 'USD',
+      });
+      expect(usd.primary).toMatch(/1\s?500,00\sUSD$/);
+      expect(usd.preview.rows.find(r => r.label === 'Сума')?.value).toMatch(/USD$/);
+      const base = section(factory(makeNav()), 'supplierPayments').mapRow(row);
+      expect(base.primary).toMatch(/₴$/);
     });
 
     it('оплата клієнта в рахунку — теж рядок без переходу', () => {

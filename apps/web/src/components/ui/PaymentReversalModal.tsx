@@ -13,6 +13,7 @@ import { toast } from '@/lib/toast';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
 import { useReversePayment } from '@/hooks/api/useBankStatements';
+import { usePaymentMethodName } from '@/hooks/api/usePaymentMethods';
 import { newIdempotencyKey } from '@/lib/idempotency-key';
 import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { Modal } from '@/components/ui/modal';
@@ -25,7 +26,10 @@ export interface PaymentReversalTarget {
   amountText: string;
   dateText: string;
   partyName?: string | null;
+  /** Готовий підпис способу; без нього — назва з довідника за `methodCode`, інакше сам код. */
   methodLabel?: string | null;
+  /** Код способу оплати (`Payment.method`) — картка бере його назву з довідника, не показує код. */
+  methodCode?: string | null;
   /**
    * Оплата з рознесення виписки: true — рядок виписки стане «Нерознесений»; undefined — невідомо
    * (рядок «Пов'язаних документів»), картка каже «якщо».
@@ -63,6 +67,10 @@ export function PaymentReversalModal({ open, onClose, payment, onReversed }: Pro
   const dirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
   const reversePayment = useReversePayment();
   const reasonId = useId();
+  const methodName = usePaymentMethodName(
+    open && !payment?.methodLabel ? payment?.methodCode : null,
+  );
+  const methodText = payment?.methodLabel ?? methodName ?? payment?.methodCode ?? null;
 
   const {
     register,
@@ -209,10 +217,10 @@ export function PaymentReversalModal({ open, onClose, payment, onReversed }: Pro
                 <dd className="tabular-nums">{p.dateText}</dd>
                 <dt className="text-muted-foreground">{t('paymentReversal.fieldAmount')}</dt>
                 <dd className="font-semibold tabular-nums">{p.amountText}</dd>
-                {p.methodLabel && (
+                {methodText && (
                   <>
                     <dt className="text-muted-foreground">{t('paymentReversal.fieldMethod')}</dt>
-                    <dd>{p.methodLabel}</dd>
+                    <dd>{methodText}</dd>
                   </>
                 )}
                 {p.partyName && (

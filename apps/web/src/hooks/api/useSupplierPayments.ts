@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import type { ApiSchema } from '@sto/shared';
-import { apiFetch } from '@/lib/api-client';
+import { apiFetch, apiPost } from '@/lib/api-client';
+import { usePaginatedList } from './usePaginatedList';
 import { useAuth } from '@/lib/auth';
 import { counterpartiesKeys } from './useCounterparties';
 import { purchaseOrdersKeys } from './usePurchaseOrders';
@@ -97,41 +98,65 @@ export function useSupplierPaymentDocuments(params: SupplierPaymentDocumentsPara
   });
 }
 
-export function useCreateSupplierPayment() {
+/**
+ * Після проведення оплати (однією дією чи «Провести» чернетки) змінюються: перелік і графік оплат,
+ * баланс постачальника (Bug #590 — CRM, дос'є) і «сплачено» / залишок замовлення (список PO).
+ */
+function invalidateAfterPayment(qc: ReturnType<typeof useQueryClient>, id?: string) {
+  void qc.invalidateQueries({ queryKey: supplierPaymentsKeys.all });
+  if (id) void qc.invalidateQueries({ queryKey: supplierPaymentsKeys.detail(id) });
+  void qc.invalidateQueries({ queryKey: counterpartiesKeys.all });
+  void qc.invalidateQueries({ queryKey: purchaseOrdersKeys.all });
+}
+
+/**
+ * Оплатити постачальнику: створити й провести ОДНІЄЮ дією (BR-SUPPAY-013). `idempotencyKey` — один
+ * на відкриття вікна оплати: повтор після обриву відповіді віддає ту саму оплату, а не проводить
+ * другу. Відмова (каса в мінус, зміна закрита, замовлення не того статусу) не лишає документа.
+ */
+export function usePaySupplier() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: CreateSupplierPaymentInput) =>
-      apiFetch<SupplierPayment>('/supplier-payments', {
-        method: 'POST',
-        body: JSON.stringify(data),
+    mutationFn: ({
+      data,
+      idempotencyKey,
+    }: {
+      data: CreateSupplierPaymentInput;
+      idempotencyKey: string;
+    }) =>
+      apiPost<SupplierPayment>('/supplier-payments/pay', data, {
+        'Idempotency-Key': idempotencyKey,
       }),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: supplierPaymentsKeys.all });
-      // Створення оплати (навіть DRAFT) впливає на залишок боргу по PO
-      // (outstanding у списку PurchaseOrders) — інвалідуємо, інакше PO-список
-      // показує застарілий outstanding до staleTime.
-      void qc.invalidateQueries({ queryKey: purchaseOrdersKeys.all });
-    },
+    onSuccess: res => invalidateAfterPayment(qc, res.id),
   });
 }
 
+/**
+ * «Провести» чернетку (BR-SUPPAY-014). Маршрут вимагає `Idempotency-Key` — один на дію рядка: повтор
+ * після обриву віддає збережену відповідь, а не 400 «вже проведено».
+ */
 export function useConfirmSupplierPayment() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) =>
-      apiFetch<SupplierPayment>(`/supplier-payments/${id}/confirm`, { method: 'POST' }),
-    onSuccess: (_, id) => {
-      void qc.invalidateQueries({ queryKey: supplierPaymentsKeys.all });
-      void qc.invalidateQueries({ queryKey: supplierPaymentsKeys.detail(id) });
-      // Bug #590: confirm() пише settlement PAYMENT → зменшує баланс постачальника
-      // у settlementAccount.balance. CRM/counterparties list, PurchaseOrder деталь
-      // та баланси у dossier показують застарілий баланс до staleTime=30s без
-      // цього invalidate. Дзеркалить useCreatePayment (Bug #245).
-      void qc.invalidateQueries({ queryKey: counterpartiesKeys.all });
-      // confirm() зменшує залишок боргу по PO (outstanding у списку) — без цього
-      // PO-список показує застарілий outstanding до staleTime.
-      void qc.invalidateQueries({ queryKey: purchaseOrdersKeys.all });
-    },
+    mutationFn: ({ id, idempotencyKey }: { id: string; idempotencyKey: string }) =>
+      apiPost<SupplierPayment>(`/supplier-payments/${id}/confirm`, undefined, {
+        'Idempotency-Key': idempotencyKey,
+      }),
+    onSuccess: (_, { id }) => invalidateAfterPayment(qc, id),
+  });
+}
+
+/** Фільтри переліку оплат постачальнику (вкладка «Оплати постачальникам»). */
+export interface SupplierPaymentsListFilters extends Record<string, unknown> {
+  status: string;
+  page: number;
+  limit: number;
+}
+
+/** Перелік оплат постачальнику з фільтром статусу (BR-SUPPAY-014: «Чернетки» — старі невидимі чернетки). */
+export function useSupplierPaymentsList(filters: SupplierPaymentsListFilters) {
+  return usePaginatedList<SupplierPayment>('/supplier-payments', filters, {
+    queryKey: supplierPaymentsKeys.all[0],
   });
 }
 

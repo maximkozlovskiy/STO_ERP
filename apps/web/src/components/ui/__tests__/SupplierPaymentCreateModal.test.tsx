@@ -11,13 +11,14 @@
 // Fix: модалка читає { items } з Array.isArray guard і пише { items } (той самий
 // контракт що таби + API-відповідь). Ці тести фіксують обидві сторони.
 
-import { screen, waitFor, fireEvent, act } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
+import { QueryClientProvider } from '@tanstack/react-query';
 import { vi, it, expect, describe, beforeEach, afterEach } from 'vitest';
 
 import { SupplierPaymentCreateModal } from '../SupplierPaymentCreateModal';
 // Bug #593: модалка використовує React Query хуки → потрібен QueryClientProvider.
 // Спільний helper (simplify/reuse) замість локальної копії.
-import { renderWithQueryClient } from '../../../__tests__/query-utils';
+import { makeTestQueryClient, renderWithQueryClient } from '../../../__tests__/query-utils';
 
 // Схема тепер валідує supplierId/cashRegisterId через zod .uuid() (спільна web↔api) —
 // фікстури мусять бути валідні UUID, інакше handleSubmit блокує submit і POST не летить.
@@ -27,6 +28,13 @@ const CASH_UUID = '33333333-3333-4333-8333-333333333333';
 const apiFetchMock = vi.fn();
 vi.mock('@/lib/api-client', () => ({
   apiFetch: (...args: unknown[]) => apiFetchMock(...args),
+  // apiPost — тонка обгортка над apiFetch (як справжня): шлях, метод і заголовки видно в моку.
+  apiPost: (path: string, body?: unknown, headers?: Record<string, string>) =>
+    apiFetchMock(path, {
+      method: 'POST',
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      ...(headers ? { headers } : {}),
+    }),
 }));
 
 vi.mock('@/hooks/useUiFeatures', () => ({
@@ -107,7 +115,52 @@ describe('SupplierPaymentCreateModal — cache-shape regression (family Bug #592
 // WEB-H3: подвійний submit після успішного create (обрив на відповіді) не має
 // створити ДРУГУ оплату. Guard: createdIdRef зберігає id першого успіху →
 // повторний клік «Оплатити» пропускає POST /supplier-payments.
-describe('SupplierPaymentCreateModal — idempotency (WEB-H3)', () => {
+// BR-SUPPAY-013 (рішення власника 2026-10-30, TECH-DEBT (б) №34): «Оплатити» — ОДНА дія
+// `POST /supplier-payments/pay` з ключем ідемпотентності на відкриття вікна. До того web слав
+// create → confirm (без ключа — 400 з 2026-10-25) → cancel і лишав скасовану чернетку (Bug #1020).
+describe('SupplierPaymentCreateModal — оплата однією дією (BR-SUPPAY-013)', () => {
+  type Call = [string, { method?: string; headers?: Record<string, string> } | undefined];
+  const payCalls = () =>
+    (apiFetchMock.mock.calls as Call[]).filter(
+      c => c[0] === '/supplier-payments/pay' && c[1]?.method === 'POST',
+    );
+  const methodPaths = () =>
+    (apiFetchMock.mock.calls as Call[]).map(c => `${c[1]?.method ?? 'GET'} ${c[0]}`);
+
+  function mockApi(pay: () => Promise<unknown> = () => Promise.resolve({ id: 'sp1' })) {
+    apiFetchMock.mockImplementation((path: string, opts?: { method?: string }) => {
+      if (path === '/cash-registers')
+        return Promise.resolve({ items: [{ id: CASH_UUID, name: 'Каса №1' }], total: 1 });
+      if (path === '/bank-accounts') return Promise.resolve({ items: [], total: 0 });
+      if (path === '/payment-methods')
+        return Promise.resolve([{ code: 'cash', name: 'Готівка', isActive: true }]);
+      if (path === '/supplier-payments/pay' && opts?.method === 'POST') return pay();
+      return Promise.resolve({ items: [], total: 0 });
+    });
+  }
+
+  async function renderReady(
+    onSaved: () => void = () => {},
+    onClose: () => void = () => {},
+    open = true,
+  ) {
+    const client = makeTestQueryClient();
+    const view = render(
+      <QueryClientProvider client={client}>
+        <SupplierPaymentCreateModal
+          open={open}
+          onClose={onClose}
+          onSaved={onSaved}
+          prefill={{ supplierId: SUP_UUID, supplierName: 'Постачальник', amount: 100 }}
+        />
+      </QueryClientProvider>,
+    );
+    await waitFor(() => expect(screen.getByText('Каса №1')).toBeInTheDocument(), { timeout: 2000 });
+    const btn = screen.getByRole('button', { name: 'Оплатити' }) as HTMLButtonElement;
+    await waitFor(() => expect(btn.disabled).toBe(false), { timeout: 2000 });
+    return { btn, view, client };
+  }
+
   beforeEach(() => {
     apiFetchMock.mockReset();
     window.sessionStorage.clear();
@@ -116,288 +169,135 @@ describe('SupplierPaymentCreateModal — idempotency (WEB-H3)', () => {
     window.sessionStorage.clear();
   });
 
-  it('retry після успішного create + провалу onSaved не створює дубль оплати', async () => {
-    apiFetchMock.mockImplementation((path: string, opts?: { method?: string }) => {
-      if (path === '/cash-registers')
-        return Promise.resolve({ items: [{ id: CASH_UUID, name: 'Каса №1' }], total: 1 });
-      if (path === '/bank-accounts') return Promise.resolve({ items: [], total: 0 });
-      if (path === '/payment-methods')
-        return Promise.resolve([{ code: 'CASH', name: 'Готівка', isActive: true }]);
-      if (path === '/supplier-payments' && opts?.method === 'POST')
-        return Promise.resolve({ id: 'sp1', number: 'SP-1' });
-      return Promise.resolve({ items: [], total: 0 });
-    });
+  // guards: BR-SUPPAY-013
+  it('успіх: один POST /pay з Idempotency-Key; ні /supplier-payments, ні confirm, ні cancel; картка закрита', async () => {
+    mockApi();
+    const onSaved = vi.fn();
+    const onClose = vi.fn();
+    const { btn } = await renderReady(onSaved, onClose);
 
-    // onSaved кидає на першому виклику (імітує обрив ПІСЛЯ commit-у), потім успішний.
+    fireEvent.click(btn);
+    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1), { timeout: 2000 });
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(payCalls()).toHaveLength(1);
+    expect(payCalls()[0][1]?.headers?.['Idempotency-Key']).toMatch(/^[0-9a-f-]{36}$/);
+    const paths = methodPaths();
+    expect(paths).not.toContain('POST /supplier-payments');
+    expect(paths.some(p => p.endsWith('/confirm') || p.endsWith('/cancel'))).toBe(false);
+  });
+
+  // guards: BR-SUPPAY-013
+  it('відмова сервера: текст у картці, картка відкрита, нічого не скасовують', async () => {
+    mockApi(() => Promise.reject(new Error('Недостатньо готівки в касі: доступно 10,00')));
+    const onSaved = vi.fn();
+    const onClose = vi.fn();
+    const { btn } = await renderReady(onSaved, onClose);
+
+    fireEvent.click(btn);
+
+    expect(
+      await screen.findByText(/Недостатньо готівки в касі/, {}, { timeout: 2000 }),
+    ).toBeInTheDocument();
+    expect(onSaved).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(methodPaths().some(p => p.endsWith('/cancel'))).toBe(false);
+  });
+
+  // Обрив відповіді ПІСЛЯ проведення (тут — onSaved кидає): повтор іде з ТИМ САМИМ ключем, тож
+  // сервер віддає збережену оплату, а не проводить другу.
+  // guards: BR-SUPPAY-013
+  it('повтор у тому ж відкритті — той самий ключ', async () => {
+    mockApi();
     let savedCalls = 0;
     const onSaved = vi.fn(() => {
       savedCalls += 1;
-      if (savedCalls === 1) throw new Error('обрив після коміту');
+      if (savedCalls === 1) throw new Error('обрив після проведення');
     });
+    const { btn } = await renderReady(onSaved);
 
-    renderWithQueryClient(
-      <SupplierPaymentCreateModal
-        open
-        onClose={() => {}}
-        onSaved={onSaved}
-        prefill={{ supplierId: SUP_UUID, supplierName: 'Постачальник', amount: 100 }}
-      />,
-    );
-
-    // Дочекатись автовибору каси (єдина) + методу оплати.
-    // timeout:2000 — під повним паралельним suite async-flush голодує (усталений
-    // патерн: CreateWorkOrderModal/DocumentCreateModals тести), дефолтні 1000ms
-    // дають false-negative лише під навантаженням.
-    await waitFor(() => expect(screen.getByText('Каса №1')).toBeInTheDocument(), { timeout: 2000 });
-
-    const createBtn = screen.getByRole('button', { name: 'Оплатити' }) as HTMLButtonElement;
-    // Кнопка активна лише коли supplierId заповнено (prefill) — дочекатись.
-    await waitFor(() => expect(createBtn.disabled).toBe(false), { timeout: 2000 });
-
-    // 1-й клік: POST створює оплату, onSaved кидає → помилка, createdIdRef=sp1.
-    fireEvent.click(createBtn);
+    fireEvent.click(btn);
     await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1), { timeout: 2000 });
-
-    const postCallsAfterFirst = apiFetchMock.mock.calls.filter(
-      c =>
-        c[0] === '/supplier-payments' &&
-        (c[1] as { method?: string } | undefined)?.method === 'POST',
-    ).length;
-    expect(postCallsAfterFirst).toBe(1);
-
-    // 2-й клік (retry): create пропускається (createdIdRef), onSaved успішний.
-    fireEvent.click(createBtn);
+    fireEvent.click(btn);
     await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(2), { timeout: 2000 });
 
-    const postCallsAfterRetry = apiFetchMock.mock.calls.filter(
-      c =>
-        c[0] === '/supplier-payments' &&
-        (c[1] as { method?: string } | undefined)?.method === 'POST',
-    ).length;
-    // Друга оплата НЕ створена — POST усе ще один.
-    expect(postCallsAfterRetry).toBe(1);
+    const keys = payCalls().map(c => c[1]?.headers?.['Idempotency-Key']);
+    expect(keys).toHaveLength(2);
+    expect(keys[1]).toBe(keys[0]);
   });
 
-  // WEB-H3 double-submit: два click-и, доставлені в ОДНОМУ tick (дуже швидкий
-  // double-click / синтетичні події / Enter-repeat), не мають створити дві оплати.
-  // `disabled={saving}` спирається на re-render React МІЖ подіями — а тут обидва
-  // click-и входять у handleSave до застосування disabled. Гейт — синхронний
-  // savingRef.current (fireEvent flush-ить між кліками → потрібен нативний dispatch).
-  it('два нативні click-и в одному tick створюють РІВНО 1 оплату', async () => {
-    let resolvePost: () => void = () => {};
-    apiFetchMock.mockImplementation((path: string, opts?: { method?: string }) => {
-      if (path === '/cash-registers')
-        return Promise.resolve({ items: [{ id: CASH_UUID, name: 'Каса №1' }], total: 1 });
-      if (path === '/bank-accounts') return Promise.resolve({ items: [], total: 0 });
-      if (path === '/payment-methods')
-        return Promise.resolve([{ code: 'CASH', name: 'Готівка', isActive: true }]);
-      if (path === '/supplier-payments' && opts?.method === 'POST')
-        return new Promise(res => {
-          resolvePost = () => res({ id: 'sp1', number: 'SP-1' });
-        });
-      return Promise.resolve({ items: [], total: 0 });
-    });
-
-    renderWithQueryClient(
-      <SupplierPaymentCreateModal
-        open
-        onClose={() => {}}
-        onSaved={() => {}}
-        prefill={{ supplierId: SUP_UUID, supplierName: 'Постачальник', amount: 100 }}
-      />,
-    );
-
-    await waitFor(() => expect(screen.getByText('Каса №1')).toBeInTheDocument(), { timeout: 2000 });
-    const btn = screen.getByRole('button', { name: 'Оплатити' }) as HTMLButtonElement;
-    await waitFor(() => expect(btn.disabled).toBe(false), { timeout: 2000 });
-
-    // Два нативні click-и в ОДНОМУ синхронному блоці — React не встигає flush-нути
-    // disabled між ними (fireEvent це замаскував би своїм sync-flush).
-    await act(async () => {
-      btn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-      btn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-    });
-    await act(async () => {
-      resolvePost();
-    });
-
-    const posts = apiFetchMock.mock.calls.filter(
-      c =>
-        c[0] === '/supplier-payments' &&
-        (c[1] as { method?: string } | undefined)?.method === 'POST',
-    ).length;
-    expect(posts).toBe(1);
-  });
-});
-
-// Сторінки оплат постачальнику немає: «Оплатити» у замовленні створює документ і одразу
-// проводить його (create → confirm). Не вдалось провести — cancel і текст помилки в картці.
-describe('SupplierPaymentCreateModal — create → confirm (оплата з замовлення)', () => {
-  const calls = () =>
-    apiFetchMock.mock.calls.map(
-      c => `${(c[1] as { method?: string } | undefined)?.method ?? 'GET'} ${c[0]}`,
-    );
-
-  function mockApi(confirmFails: boolean) {
-    apiFetchMock.mockImplementation((path: string, opts?: { method?: string }) => {
-      if (path === '/cash-registers')
-        return Promise.resolve({ items: [{ id: CASH_UUID, name: 'Каса №1' }], total: 1 });
-      if (path === '/bank-accounts') return Promise.resolve({ items: [], total: 0 });
-      if (path === '/payment-methods')
-        return Promise.resolve([{ code: 'CASH', name: 'Готівка', isActive: true }]);
-      if (path === '/supplier-payments' && opts?.method === 'POST')
-        return Promise.resolve({ id: 'sp1', number: 'SP-1' });
-      if (path === '/supplier-payments/sp1/confirm')
-        return confirmFails
-          ? Promise.reject(new Error('Недостатньо коштів у касі'))
-          : Promise.resolve({ id: 'sp1', status: 'CONFIRMED' });
-      if (path === '/supplier-payments/sp1/cancel')
-        return Promise.resolve({ id: 'sp1', status: 'CANCELLED' });
-      return Promise.resolve({ items: [], total: 0 });
-    });
-  }
-
-  async function renderReady(onSaved: () => void, onClose: () => void) {
-    renderWithQueryClient(
-      <SupplierPaymentCreateModal
-        open
-        onClose={onClose}
-        onSaved={onSaved}
-        prefill={{ supplierId: SUP_UUID, supplierName: 'Постачальник', amount: 100 }}
-      />,
-    );
-    await waitFor(() => expect(screen.getByText('Каса №1')).toBeInTheDocument(), { timeout: 2000 });
-    const btn = screen.getByRole('button', { name: 'Оплатити' }) as HTMLButtonElement;
-    await waitFor(() => expect(btn.disabled).toBe(false), { timeout: 2000 });
-    return btn;
-  }
-
-  beforeEach(() => {
-    apiFetchMock.mockReset();
-    window.sessionStorage.clear();
-  });
-
-  it('успіх: POST → confirm, картка закривається, cancel не викликається', async () => {
-    mockApi(false);
-    const onSaved = vi.fn();
-    const onClose = vi.fn();
-    const btn = await renderReady(onSaved, onClose);
+  // guards: BR-SUPPAY-013
+  it('нове відкриття вікна — новий ключ', async () => {
+    mockApi();
+    const { btn, view, client } = await renderReady();
     fireEvent.click(btn);
-    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1), { timeout: 2000 });
-    expect(onClose).toHaveBeenCalledTimes(1);
-    expect(calls()).toContain('POST /supplier-payments');
-    expect(calls()).toContain('POST /supplier-payments/sp1/confirm');
-    expect(calls()).not.toContain('POST /supplier-payments/sp1/cancel');
-  });
+    await waitFor(() => expect(payCalls()).toHaveLength(1), { timeout: 2000 });
 
-  it('confirm впав: cancel викликано, картка не закрилась, текст помилки видно', async () => {
-    mockApi(true);
-    const onSaved = vi.fn();
-    const onClose = vi.fn();
-    const btn = await renderReady(onSaved, onClose);
-    fireEvent.click(btn);
-    await waitFor(() => expect(screen.getByText('Недостатньо коштів у касі')).toBeInTheDocument(), {
+    const reopen = (open: boolean) =>
+      view.rerender(
+        <QueryClientProvider client={client}>
+          <SupplierPaymentCreateModal
+            open={open}
+            onClose={() => {}}
+            onSaved={() => {}}
+            prefill={{ supplierId: SUP_UUID, supplierName: 'Постачальник', amount: 100 }}
+          />
+        </QueryClientProvider>,
+      );
+    reopen(false);
+    reopen(true);
+    const again = await screen.findByRole('button', { name: 'Оплатити' });
+    await waitFor(() => expect((again as HTMLButtonElement).disabled).toBe(false), {
       timeout: 2000,
     });
-    expect(calls()).toContain('POST /supplier-payments/sp1/cancel');
-    expect(onSaved).not.toHaveBeenCalled();
-    expect(onClose).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.getByText('Каса №1')).toBeInTheDocument());
+    fireEvent.click(again);
+    await waitFor(() => expect(payCalls()).toHaveLength(2), { timeout: 2000 });
+
+    const keys = payCalls().map(c => c[1]?.headers?.['Idempotency-Key']);
+    expect(keys[1]).not.toBe(keys[0]);
   });
 
-  // Відповідь на проведення не дійшла, а сервер оплату провів. Раніше картка намагалась її
-  // скасувати (сервер відмовляє — проведену не скасувати), мовчки ковтала відмову і показувала
-  // помилку: повторний клік створював і проводив ДРУГУ оплату.
-  describe('відповідь на проведення не дійшла', () => {
-    const posts = () => calls().filter(c => c === 'POST /supplier-payments').length;
+  // WEB-H3 double-submit: два click-и, доставлені в ОДНОМУ tick, не мають дати двох запитів.
+  // Гейт — синхронний savingRef.current (fireEvent flush-ить між кліками → нативний dispatch).
+  // guards: BR-SUPPAY-013
+  it('два нативні click-и в одному tick — РІВНО один POST /pay', async () => {
+    let resolvePay: () => void = () => {};
+    mockApi(
+      () =>
+        new Promise(res => {
+          resolvePay = () => res({ id: 'sp1' });
+        }),
+    );
+    const { btn } = await renderReady();
 
-    /** confirm завжди «падає»; стан документа й скасування задає кейс (черга відповідей). */
-    function mockLostConfirm(
-      statuses: Array<'CONFIRMED' | 'DRAFT' | 'offline'>,
-      cancelWorks: boolean[],
-    ) {
-      let created = 0;
-      apiFetchMock.mockImplementation((path: string, opts?: { method?: string }) => {
-        if (path === '/cash-registers')
-          return Promise.resolve({ items: [{ id: CASH_UUID, name: 'Каса №1' }], total: 1 });
-        if (path === '/bank-accounts') return Promise.resolve({ items: [], total: 0 });
-        if (path === '/payment-methods')
-          return Promise.resolve([{ code: 'CASH', name: 'Готівка', isActive: true }]);
-        if (path === '/supplier-payments' && opts?.method === 'POST') {
-          created += 1;
-          return Promise.resolve({ id: `sp${created}`, number: `SP-${created}` });
-        }
-        if (/^\/supplier-payments\/sp\d\/confirm$/.test(path))
-          return path === '/supplier-payments/sp1/confirm'
-            ? Promise.reject(new Error('Failed to fetch'))
-            : Promise.resolve({ status: 'CONFIRMED' });
-        if (/^\/supplier-payments\/sp\d\/cancel$/.test(path))
-          return cancelWorks.shift()
-            ? Promise.resolve({ status: 'CANCELLED' })
-            : Promise.reject(new Error('Failed to fetch'));
-        if (path === '/supplier-payments/sp1') {
-          const next = statuses.shift();
-          return next === 'offline' || next === undefined
-            ? Promise.reject(new Error('Failed to fetch'))
-            : Promise.resolve({ id: 'sp1', status: next });
-        }
-        return Promise.resolve({ items: [], total: 0 });
-      });
-    }
-
-    it('сервер оплату провів → це успіх: картка закрита, скасування й другої оплати немає', async () => {
-      mockLostConfirm(['CONFIRMED'], []);
-      const onSaved = vi.fn();
-      const onClose = vi.fn();
-      const btn = await renderReady(onSaved, onClose);
-      fireEvent.click(btn);
-      await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1), { timeout: 2000 });
-      expect(onClose).toHaveBeenCalledTimes(1);
-      expect(posts()).toBe(1);
-      expect(calls()).not.toContain('POST /supplier-payments/sp1/cancel');
-    });
-
-    it('стан невідомий → повторний клік спершу зʼясовує долю ТІЄЇ оплати, другої не створює', async () => {
-      mockLostConfirm(['offline', 'CONFIRMED'], []);
-      const onSaved = vi.fn();
-      const btn = await renderReady(onSaved, vi.fn());
-      fireEvent.click(btn);
-      await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/Failed to fetch/), {
-        timeout: 2000,
-      });
-      expect(onSaved).not.toHaveBeenCalled();
-
-      fireEvent.click(btn);
-      await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1), { timeout: 2000 });
-      expect(posts()).toBe(1);
-    });
-
-    it('чернетку не вдалося скасувати → нова оплата лише після того, як стару скасовано', async () => {
-      mockLostConfirm(['DRAFT', 'DRAFT'], [false, true]);
-      const onSaved = vi.fn();
-      const btn = await renderReady(onSaved, vi.fn());
-      fireEvent.click(btn);
-      await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument(), { timeout: 2000 });
-      expect(posts()).toBe(1);
-
-      fireEvent.click(btn);
-      await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1), { timeout: 2000 });
-      expect(posts()).toBe(2);
-      expect(calls().filter(c => c === 'POST /supplier-payments/sp1/cancel')).toHaveLength(2);
-      expect(calls()).toContain('POST /supplier-payments/sp2/confirm');
-    });
-  });
-
-  it('подвійний клік в одному tick: один документ і одне проведення', async () => {
-    mockApi(false);
-    const btn = await renderReady(vi.fn(), vi.fn());
     await act(async () => {
       btn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
       btn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
-    await waitFor(() => expect(calls()).toContain('POST /supplier-payments/sp1/confirm'), {
-      timeout: 2000,
+    await act(async () => {
+      resolvePay();
     });
-    expect(calls().filter(c => c === 'POST /supplier-payments')).toHaveLength(1);
-    expect(calls().filter(c => c === 'POST /supplier-payments/sp1/confirm')).toHaveLength(1);
+
+    expect(payCalls()).toHaveLength(1);
+  });
+
+  // Підстава оплати — лише «Замовлено» / «Частково» / «Отримано»: пікер просить `payable=true`.
+  // guards: BR-SUPPAY-015
+  it('пікер замовлення просить лише замовлення, що приймають оплату', async () => {
+    mockApi();
+    await renderReady();
+    const pickers = screen.getAllByRole('button', { name: 'Обрати' });
+    fireEvent.click(pickers[pickers.length - 1]);
+
+    await waitFor(
+      () =>
+        expect(
+          (apiFetchMock.mock.calls as Call[]).some(
+            c => c[0].startsWith('/purchase-orders?') && c[0].includes('payable=true'),
+          ),
+        ).toBe(true),
+      { timeout: 2000 },
+    );
   });
 });

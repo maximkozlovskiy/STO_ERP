@@ -26,6 +26,8 @@ vi.mock('@/lib/api-client', () => ({
 }));
 const toastMock = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
 vi.mock('@/lib/toast', () => ({ toast: toastMock }));
+// Назва способу — з довідника (`usePaymentMethodName`); запит іде лише для автентифікованого.
+vi.mock('@/lib/auth', () => ({ useAuth: () => ({ employee: { id: 'e1', role: 'OWNER' } }) }));
 
 import { PaymentReversalModal, type PaymentReversalTarget } from '../PaymentReversalModal';
 import { makeTestQueryClient } from '@/__tests__/query-utils';
@@ -96,6 +98,28 @@ describe('PaymentReversalModal (BR-PAY-024)', () => {
       expect(within(summary).getByText('1 000,00 ₴')).toBeInTheDocument();
       expect(within(summary).getByText('Переказ')).toBeInTheDocument();
       expect(within(summary).getByText('Коваль Олег')).toBeInTheDocument();
+    });
+
+    // Рядок оплати несе лише код способу (`bank_transfer`): картка показує назву з довідника НДІ,
+    // а не код; немає такого способу — сам код.
+    // guards: BR-PAY-024
+    it.each([
+      ['bank_transfer', 'Банківський переказ'],
+      ['deleted_method', 'deleted_method'],
+    ])('спосіб %s — підпис «%s» (назва з довідника, інакше код)', async (code, shown) => {
+      apiFetchMock.mockImplementation((path: string) =>
+        Promise.resolve(
+          path === '/payment-methods'
+            ? [{ code: 'bank_transfer', name: 'Банківський переказ' }]
+            : {},
+        ),
+      );
+      renderModal(target({ methodLabel: null, methodCode: code }));
+      const summary = screen.getByRole('region', { name: 'Що сторнується' });
+      expect(await within(summary).findByText(shown)).toBeInTheDocument();
+      expect(
+        within(summary).queryByText(code === 'bank_transfer' ? code : 'Банківський переказ'),
+      ).toBeNull();
     });
 
     // guards: BR-PAY-024

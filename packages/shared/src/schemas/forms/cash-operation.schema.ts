@@ -63,7 +63,7 @@ export const CASH_REASON_LABELS: Record<'uk' | 'en', Record<CashReasonValue, str
     SALE_PAYMENT: 'Оплата контрагента',
     SUPPLIER_REFUND_IN: 'Повернення від постачальника',
     ADVANCE_RETURN: 'Повернення підзвіту',
-    BANK_WITHDRAWAL: 'Отримання з банку',
+    BANK_WITHDRAWAL: 'Зняття з банку',
     OWNER_IN: 'Внесок власника',
     COLLECTION: 'Інкасація',
     MANUAL_IN: 'Внесення',

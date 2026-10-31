@@ -17,6 +17,13 @@ import { renderWithQueryClient } from '../../../__tests__/query-utils';
 const apiFetchMock = vi.fn();
 vi.mock('@/lib/api-client', () => ({
   apiFetch: (...args: unknown[]) => apiFetchMock(...args),
+  // apiPost — як справжня обгортка над apiFetch: тіло JSON-ом, заголовки (Idempotency-Key) видно.
+  apiPost: (path: string, body?: unknown, headers?: Record<string, string>) =>
+    apiFetchMock(path, {
+      method: 'POST',
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      ...(headers ? { headers } : {}),
+    }),
 }));
 
 vi.mock('next/navigation', () => ({
@@ -94,5 +101,37 @@ describe('PurchaseOrderCreateModal — рядки після прийому (Bug
     await user.click(screen.getByRole('button', { name: 'Оприбуткувати' }));
     await user.click(screen.getByRole('button', { name: 'Оприбуткувати все' }));
     await waitFor(() => expect(receiveInput()).toHaveValue(5));
+  });
+
+  // BR-PO-014 (рішення власника 2026-10-30, №5): прийом іде з ключем — повтор того самого прийому
+  // віддає збережену відповідь; справжній другий прийом (нове «Оприбуткувати») — новий ключ.
+  // guards: BR-PO-014
+  it('кожен прийом — з Idempotency-Key; другий захід — новий ключ', async () => {
+    const user = userEvent.setup();
+    renderWithQueryClient(
+      <PurchaseOrderCreateModal open purchaseOrderId="po-1" onClose={vi.fn()} onSaved={vi.fn()} />,
+    );
+    await waitFor(() => expect(screen.getAllByText('Фільтр').length).toBeGreaterThan(0));
+    const row = () => screen.getAllByText('Фільтр')[0]!.closest('tr') as HTMLElement;
+    const receiveOnce = async (qty: string) => {
+      await user.click(screen.getByRole('button', { name: 'Оприбуткувати' }));
+      await user.type(within(row()).getByPlaceholderText(/^макс\./), qty);
+      await user.click(screen.getByRole('button', { name: 'Підтвердити прийом' }));
+    };
+
+    await receiveOnce('1');
+    await waitFor(() => expect(received).toBe(1));
+    await receiveOnce('2');
+    await waitFor(() => expect(received).toBe(3));
+
+    const keys = (
+      apiFetchMock.mock.calls as Array<[string, { headers?: Record<string, string> } | undefined]>
+    )
+      .filter(c => c[0] === '/purchase-orders/po-1/receive')
+      .map(c => c[1]?.headers?.['Idempotency-Key']);
+    expect(keys).toHaveLength(2);
+    expect(keys[0]).toMatch(/^[0-9a-f-]{36}$/);
+    expect(keys[1]).toMatch(/^[0-9a-f-]{36}$/);
+    expect(keys[1]).not.toBe(keys[0]);
   });
 });

@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useTranslation } from 'react-i18next';
 import { useRequireAuth, useAuth } from '@/lib/auth';
 import { cn } from '@/lib/utils';
+import { PURCHASE_ORDER_VIEW_ROLES } from '@/lib/purchase-roles';
 import { TabDivider } from '@/components/ui/tab-divider';
 
 const CashOperationsTab = dynamic(() => import('./CashOperationsTab'), { ssr: false });
@@ -83,7 +84,8 @@ function CashPageShell() {
         <CashOperationsTab
           canOperate={['OWNER', 'ADMIN', 'ACCOUNTANT'].includes(role)}
           receptionist={role === 'RECEPTIONIST'}
-          canOpenPurchaseOrders={['OWNER', 'ADMIN'].includes(role)}
+          // Бухгалтер відкриває картку замовлення-підстави на перегляд (BR-PO-015).
+          canOpenPurchaseOrders={PURCHASE_ORDER_VIEW_ROLES.includes(role)}
         />
       )}
       {tab === 'registers' && <CashRegistersTab canManage={['OWNER', 'ADMIN'].includes(role)} />}
