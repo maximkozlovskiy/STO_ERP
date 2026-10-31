@@ -637,3 +637,15 @@ shared). Кожен винесений хелпер зсував межі СТА
 **Grep:** `grep -rnE "Locked = .*code === " apps/web/src --include="*.tsx"` → умова має містити
 збережене значення ознаки. **Фікс:** `code === CASH_METHOD_CODE && editPayment.isCash` + тест
 `PaymentsTab.destination` (PATCH несе `isCash: true`). **Severity:** SUGGESTION
+
+### 2026-10-31 — дія перезапускає власний ефект-запит, і той затирає її результат — §8.2
+
+**Сигнал:** `useWorkOrderActions.handleInvoice`: «Виконано» → POST transition → `setCurrentStatus`
+перезапускає ефект `GET …/find` (залежність `currentStatus`), а далі POST рахунку пише
+`setInvoiceForPrint(invoice)`. `/find`, прочитаний до коміту POST, пізніше відповідає «немає» →
+`setInvoiceForPrint(null)`: «Друк рахунку» зникає, «Виставити рахунок» з'являється знову.
+**Grep:** `grep -rn "setCurrentStatus(" apps/web/src/hooks --include="*.ts"` → у тому самому хуку
+ефект із `currentStatus` у залежностях пише той самий стан, що й дія. **Фікс:** лічильник покоління
+`findSeqRef` у ефекті, дія запам'ятовує покоління (`createdInSeqRef`), ефект не скидає стан у `null`
+для свого покоління; тест `useWorkOrderActions.invoice-find.test.ts` (відкладені проміси, мутацією
+червоніє). **Severity:** IMPORTANT
