@@ -17,6 +17,7 @@ import { sumLineTotals, calcLineVat } from '../../common/utils/vat';
 import {
   buildInvoiceLinesFromWorkOrder,
   WorkOrderTotalsMismatchError,
+  workOrderVatRateLabel,
   type InvoiceLineDraft,
 } from './work-order-invoice-lines';
 import type { VatMode } from '@prisma/client';
@@ -1189,13 +1190,21 @@ export class InvoicesService {
     } catch (err) {
       if (err instanceof WorkOrderTotalsMismatchError) {
         this.logger.warn(`Наряд ${workOrderId}: ${err.message}`);
+        if (err.reason === 'vatRate') {
+          // Bug #1030: завершений наряд не перерахувати (FSM), тож помилка називає його ставку — її
+          // досить додати в довідник (вимкнені ставки теж беруться, BR-INV-002).
+          throw new BadRequestException(
+            translateError('err.invoice.workOrderVatRateUnknown', getLocale(), {
+              rate: workOrderVatRateLabel(
+                moneyFromDecimal(wo.totalNet),
+                moneyFromDecimal(wo.totalAmount),
+                getLocale(),
+              ),
+            }),
+          );
+        }
         throw new BadRequestException(
-          translateError(
-            err.reason === 'vatRate'
-              ? 'err.invoice.workOrderVatRateUnknown'
-              : 'err.invoice.workOrderTotalsMismatch',
-            getLocale(),
-          ),
+          translateError('err.invoice.workOrderTotalsMismatch', getLocale()),
         );
       }
       throw err;

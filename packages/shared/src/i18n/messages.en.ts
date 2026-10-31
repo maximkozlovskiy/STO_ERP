@@ -410,7 +410,7 @@ export const en: Record<string, string> = {
   'err.invoice.workOrderTotalsMismatch':
     'Work order total does not match its lines — the invoice was not generated. Check the work order labour and parts',
   'err.invoice.workOrderVatRateUnknown':
-    'The work order VAT does not match any rate in the tax rates list — the invoice was not generated. Recalculate the work order at the current rate',
+    'The work order VAT (≈{{rate}} %) does not match any rate in the tax rates list — the invoice was not generated. Add the {{rate}} % rate in Reference data → VAT rates (it may be inactive) and retry',
   'err.invoice.activeExists': 'An active invoice already exists for this work order',
   'err.invoice.counterpartyNotFound': 'Counterparty not found',
   'err.invoice.onlyDraftEditable': 'Only a draft can be edited',

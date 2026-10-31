@@ -192,6 +192,21 @@ function exactRates(
   return [...new Set(ordered)].filter(r => calcVatOnBase(base, r, vatMode) === vat);
 }
 
+/**
+ * Ставка, за якою порахований ПДВ наряду, — для помилки «ставки немає в довіднику» (Bug #1030):
+ * частка ПДВ від суми без ПДВ, до сотих, без зайвих нулів («13», «7,5» для uk). Наближена: на малій
+ * базі копійка округлення зсуває її, тому в тексті — «≈».
+ */
+export function workOrderVatRateLabel(
+  totalNet: number,
+  totalAmount: number,
+  locale: 'uk' | 'en',
+): string {
+  const rate = totalNet > 0 ? money(((totalAmount - totalNet) / totalNet) * 100) : 0;
+  const text = String(Number(rate.toFixed(2)));
+  return locale === 'uk' ? text.replace('.', ',') : text;
+}
+
 export function buildInvoiceLinesFromWorkOrder(
   wo: WorkOrderForInvoice,
   settingsVat: { vatMode: VatMode; vatRate: number },

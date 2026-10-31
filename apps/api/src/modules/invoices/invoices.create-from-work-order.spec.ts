@@ -374,6 +374,10 @@ describe('InvoicesService — create-from-work-order', () => {
 
       expect(err).toBeInstanceOf(BadRequestException);
       expect((err as Error).message).toMatch(/ставці з довідника податків/);
+      // Bug #1030: завершений наряд не перерахувати — помилка називає його ставку і що зробити.
+      expect((err as Error).message).toContain('≈20,01 %');
+      expect((err as Error).message).toContain('НДІ → Ставки ПДВ');
+      expect((err as Error).message).not.toMatch(/Перерахуйте наряд/);
       expect(settingsMock.getTaxRates).toHaveBeenCalledWith(ORG);
       expect(order).toContain('tx-rollback');
       expect(tx.invoiceLine.createMany).not.toHaveBeenCalled();
