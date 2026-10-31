@@ -17,7 +17,7 @@ import { useDirtyForm } from '@/hooks/useDirtyForm';
 import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { getCached, setCache } from '@/lib/ref-cache';
 import { displayCounterpartyName } from '@/lib/utils';
-import { kyivToday } from '@/lib/format';
+import { fmtBankCurrencySuffix, kyivToday } from '@/lib/format';
 import { Modal } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -52,14 +52,31 @@ interface Supplier {
 interface BankAccount {
   id: string;
   name: string;
+  currencyCode?: string;
 }
 
 interface CashRegister {
   id: string;
   name: string;
+  currencyCode?: string;
 }
 
-type PaymentMethod = Pick<ApiSchema<'PaymentMethodResponseDto'>, 'code' | 'name' | 'isActive'>;
+type PaymentMethod = Pick<
+  ApiSchema<'PaymentMethodResponseDto'>,
+  'code' | 'name' | 'isActive' | 'isCash'
+>;
+
+/**
+ * Спосіб оплати, що відповідає джерелу коштів: каса — готівковий (`isCash`), рахунок — безготівковий,
+ * переважно «Банківський переказ». Без цього оплата з банківського рахунку йшла «Готівкою» — першим
+ * способом довідника.
+ */
+function methodForSource(methods: PaymentMethod[], source: string): string | undefined {
+  const cash = source === 'CASH_REGISTER';
+  const matching = methods.filter(m => m.isCash === cash);
+  return ((cash ? undefined : matching.find(m => m.code === 'bank')) ?? matching[0] ?? methods[0])
+    ?.code;
+}
 
 interface PurchaseOrderRef {
   id: string;
@@ -124,6 +141,8 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, prefill }: 
 
   const sourceType = watch('sourceType');
   const supplierId = watch('supplierId');
+  const cashRegisterId = watch('cashRegisterId');
+  const bankAccountId = watch('bankAccountId');
 
   const [saving, setSaving] = useState(false);
   // Синхронний re-entrancy guard: `disabled={saving}` спирається на re-render React
@@ -142,6 +161,11 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, prefill }: 
   const [banks, setBanks] = useState<BankAccount[]>([]);
   const [cashRegisters, setCashRegisters] = useState<CashRegister[]>([]);
   const [methods, setMethods] = useState<PaymentMethod[]>([]);
+  // Валюта суми — валюта обраного джерела (оплата йде у валюті каси чи рахунку, BR-SUPPAY-011).
+  const sourceCurrency =
+    sourceType === 'CASH_REGISTER'
+      ? cashRegisters.find(c => c.id === cashRegisterId)?.currencyCode
+      : banks.find(b => b.id === bankAccountId)?.currencyCode;
   const [supplierPickerOpen, setSupplierPickerOpen] = useState(false);
   const [poPickerOpen, setPoPickerOpen] = useState(false);
   const mountedRef = useRef(true);
@@ -213,12 +237,15 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, prefill }: 
     }
   }, [sourceType, cashRegisters, banks, setValue]);
 
+  // Спосіб іде за джерелом: обраний вручну лишається, доки він того самого роду (готівка / ні).
   useEffect(() => {
-    if (methods.length > 0 && !watch('method')) {
-      setValue('method', methods[0].code, { shouldDirty: false });
-    }
+    if (methods.length === 0) return;
+    const current = methods.find(m => m.code === watch('method'));
+    if (current && current.isCash === (sourceType === 'CASH_REGISTER')) return;
+    const next = methodForSource(methods, sourceType);
+    if (next) setValue('method', next, { shouldDirty: false });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [methods]);
+  }, [methods, sourceType]);
 
   // Reset on open/close — чиста база + скидання refs + (для create) prefill.
   // ВАЖЛИВО: reset() і prefill в ОДНОМУ ефекті, у порядку reset→prefill — інакше
@@ -231,19 +258,17 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, prefill }: 
       autoSelectedRef.current = { cash: false, bank: false };
       idempotencyKeyRef.current = newIdempotencyKey();
       savingRef.current = false;
-      // reset() ставить чисту базу → rhfDirty=false; далі накладаємо prefill.
-      reset(emptyDefaults());
-      setSupplierName('');
-      setPurchaseOrderNumber('');
-      // Передзаповнення при створенні з іншого документа (напр. PurchaseOrder).
-      if (prefill) {
-        if (prefill.supplierId) setValue('supplierId', prefill.supplierId);
-        if (prefill.supplierName) setSupplierName(prefill.supplierName);
-        if (prefill.purchaseOrderId) setValue('purchaseOrderId', prefill.purchaseOrderId);
-        if (prefill.purchaseOrderNumber) setPurchaseOrderNumber(prefill.purchaseOrderNumber);
-        if (prefill.amount != null && prefill.amount > 0)
-          setValue('amount', String(prefill.amount));
-      }
+      // Передзаповнення (напр. з картки замовлення) — частина ЧИСТОЇ бази reset(), а не setValue
+      // поверх неї: інакше після першої оплати повторне вікно без жодної правки на Escape питало
+      // «Є незбережені зміни» (RHF порівнював передзаповнене з порожньою базою).
+      reset({
+        ...emptyDefaults(),
+        ...(prefill?.supplierId && { supplierId: prefill.supplierId }),
+        ...(prefill?.purchaseOrderId && { purchaseOrderId: prefill.purchaseOrderId }),
+        ...(prefill?.amount != null && prefill.amount > 0 && { amount: String(prefill.amount) }),
+      });
+      setSupplierName(prefill?.supplierName ?? '');
+      setPurchaseOrderNumber(prefill?.purchaseOrderNumber ?? '');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
@@ -442,7 +467,7 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, prefill }: 
           {/* Сума | Метод оплати */}
           <div className="grid grid-cols-2 gap-4">
             <Input
-              label={t('create.amount')}
+              label={`${t('create.amount')}, ${fmtBankCurrencySuffix(sourceCurrency)}`}
               type="text"
               inputMode="decimal"
               {...register('amount')}

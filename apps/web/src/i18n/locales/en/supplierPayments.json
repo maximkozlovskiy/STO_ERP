@@ -78,7 +78,7 @@
     "sourceCash": "Cash register",
     "sourceBank": "Bank account",
     "choose": "— Select —",
-    "amount": "Amount, ₴",
+    "amount": "Amount",
     "method": "Payment method",
     "order": "Order (optional)",
     "orderPlaceholder": "Link an order…",

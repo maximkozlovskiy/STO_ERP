@@ -193,7 +193,8 @@ cd apps/api && npx vitest run src/modules/supplier-payments/<файл>.spec.ts
 
 **Web-тести етапу Г2 (2026-10-31):** `components/ui/__tests__/SupplierPaymentCreateModal.test.tsx` — одна
 дія `POST /pay`, ключ на відкриття вікна (повтор — той самий, нове відкриття — новий), відмова без
-скасування, пікер `payable=true` (BR-SUPPAY-013, 015); `hooks/api/useSupplierPayments.test.tsx` — ключ у
+скасування, пікер `payable=true` (BR-SUPPAY-013, 015), спосіб і валюта суми за джерелом коштів (BR-SUPPAY-011),
+повторне вікно з передзаповненням не «змінене» (Bug #1027); `hooks/api/useSupplierPayments.test.tsx` — ключ у
 `pay` і `confirm`; `app/(app)/purchase-orders/__tests__/SupplierPaymentsTab.test.tsx` — «Чернетки»,
 «Провести» з ключем, «Скасувати», відмова над таблицею (BR-SUPPAY-014);
 `components/ui/__tests__/PurchaseOrderCreateModal.pay-role.test.tsx` — «Оплатити» лише на статусах оплати

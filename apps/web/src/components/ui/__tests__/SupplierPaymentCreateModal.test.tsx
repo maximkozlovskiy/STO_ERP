@@ -37,8 +37,10 @@ vi.mock('@/lib/api-client', () => ({
     }),
 }));
 
+// Сторож незбережених змін вимкнений, окрім кейсу, що перевіряє саме його.
+const uiFeatures = vi.hoisted(() => ({ toastEnabled: false, unsavedGuardEnabled: false }));
 vi.mock('@/hooks/useUiFeatures', () => ({
-  useUiFeatures: () => ({ toastEnabled: false }),
+  useUiFeatures: () => uiFeatures,
 }));
 
 describe('SupplierPaymentCreateModal — cache-shape regression (family Bug #592)', () => {
@@ -299,5 +301,134 @@ describe('SupplierPaymentCreateModal — оплата однією дією (BR-
         ).toBe(true),
       { timeout: 2000 },
     );
+  });
+});
+
+// Оплата з банківського рахунку йшла «Готівкою» (перший спосіб довідника), а сума завжди
+// підписувалась «₴», хоч оплата — у валюті джерела (BR-SUPPAY-011).
+describe('SupplierPaymentCreateModal — спосіб і валюта за джерелом коштів', () => {
+  const BANK_UUID = '44444444-4444-4444-8444-444444444444';
+
+  beforeEach(() => {
+    apiFetchMock.mockReset();
+    window.sessionStorage.clear();
+    apiFetchMock.mockImplementation((path: string) => {
+      if (path === '/cash-registers')
+        return Promise.resolve({
+          items: [{ id: CASH_UUID, name: 'Каса №1', currencyCode: 'UAH' }],
+          total: 1,
+        });
+      if (path === '/bank-accounts')
+        return Promise.resolve({
+          items: [{ id: BANK_UUID, name: 'Рахунок USD', currencyCode: 'USD' }],
+          total: 1,
+        });
+      if (path === '/payment-methods')
+        return Promise.resolve([
+          { code: 'cash', name: 'Готівка', isActive: true, isCash: true },
+          { code: 'card_terminal', name: 'Картка', isActive: true, isCash: false },
+          { code: 'bank', name: 'Банківський переказ', isActive: true, isCash: false },
+        ]);
+      return Promise.resolve({ items: [], total: 0 });
+    });
+  });
+  afterEach(() => {
+    window.sessionStorage.clear();
+  });
+
+  const methodSelect = () => screen.getByRole('combobox', { name: /^Метод/ }) as HTMLSelectElement;
+
+  // guards: BR-SUPPAY-011
+  it('каса → «Готівка» і «Сума, ₴»; рахунок у USD → «Банківський переказ» і «Сума, USD»', async () => {
+    renderWithQueryClient(
+      <SupplierPaymentCreateModal open onClose={() => {}} onSaved={() => {}} />,
+    );
+    await waitFor(() => expect(methodSelect().value).toBe('cash'), { timeout: 2000 });
+    await waitFor(() => expect(screen.getByLabelText(/^Сума, ₴/)).toBeInTheDocument());
+
+    fireEvent.change(screen.getByRole('combobox', { name: /^Джерело/ }), {
+      target: { value: 'BANK_ACCOUNT' },
+    });
+
+    await waitFor(() => expect(methodSelect().value).toBe('bank'));
+    await waitFor(() => expect(screen.getByLabelText(/^Сума, USD/)).toBeInTheDocument());
+  });
+
+  // guards: BR-SUPPAY-011
+  it('безготівковий спосіб, обраний вручну, лишається при зміні рахунку того ж роду', async () => {
+    renderWithQueryClient(
+      <SupplierPaymentCreateModal open onClose={() => {}} onSaved={() => {}} />,
+    );
+    await waitFor(() => expect(methodSelect().value).toBe('cash'), { timeout: 2000 });
+    fireEvent.change(screen.getByRole('combobox', { name: /^Джерело/ }), {
+      target: { value: 'BANK_ACCOUNT' },
+    });
+    await waitFor(() => expect(methodSelect().value).toBe('bank'));
+
+    fireEvent.change(methodSelect(), { target: { value: 'card_terminal' } });
+    fireEvent.change(screen.getByRole('combobox', { name: /^Банківський рахунок/ }), {
+      target: { value: BANK_UUID },
+    });
+
+    await waitFor(() => expect(methodSelect().value).toBe('card_terminal'));
+  });
+});
+
+// Повторне «Оплатити» з картки замовлення без жодної правки на Escape питало «Є незбережені
+// зміни»: передзаповнення клалось setValue поверх порожньої бази reset(), і RHF вважав форму
+// зміненою після першого ж blur.
+describe('SupplierPaymentCreateModal — передзаповнення не робить форму зміненою', () => {
+  beforeEach(() => {
+    apiFetchMock.mockReset();
+    window.sessionStorage.clear();
+    uiFeatures.unsavedGuardEnabled = true;
+    apiFetchMock.mockImplementation((path: string) => {
+      if (path === '/cash-registers')
+        return Promise.resolve({ items: [{ id: CASH_UUID, name: 'Каса №1' }], total: 1 });
+      if (path === '/payment-methods')
+        return Promise.resolve([{ code: 'cash', name: 'Готівка', isActive: true, isCash: true }]);
+      return Promise.resolve({ items: [], total: 0 });
+    });
+  });
+  afterEach(() => {
+    uiFeatures.unsavedGuardEnabled = false;
+    window.sessionStorage.clear();
+  });
+
+  // guards: BR-SUPPAY-013
+  it('вікно з передзаповненням закривається без питання про незбережені зміни', async () => {
+    const onClose = vi.fn();
+    const client = makeTestQueryClient();
+    const modal = (open: boolean, amount: number) => (
+      <QueryClientProvider client={client}>
+        <SupplierPaymentCreateModal
+          open={open}
+          onClose={onClose}
+          onSaved={() => {}}
+          prefill={{ supplierId: SUP_UUID, supplierName: 'Постачальник', amount }}
+        />
+      </QueryClientProvider>
+    );
+    // Перше відкриття → закрито після оплати → знову «Оплатити» з новим залишком.
+    // У першому вікні людина правила суму (форма стала зміненою), далі — успіх і закриття.
+    const view = render(modal(true, 150));
+    const first = await screen.findByLabelText(/^Сума/, {}, { timeout: 2000 });
+    fireEvent.change(first, { target: { value: '120' } });
+    fireEvent.blur(first);
+    view.rerender(modal(false, 150));
+    view.rerender(modal(true, 100));
+    const amount = await screen.findByLabelText(/^Сума/, {}, { timeout: 2000 });
+    await waitFor(() => expect((amount as HTMLInputElement).value).toBe('100'));
+    act(() => {
+      fireEvent.focus(amount);
+      fireEvent.blur(amount);
+    });
+
+    // Кнопка «Закрити» внизу картки (у шапці — іконка з тією самою назвою).
+    const closeButtons = screen.getAllByRole('button', { name: 'Закрити' });
+    fireEvent.click(closeButtons[closeButtons.length - 1]);
+
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText('Є незбережені зміни')).toBeNull();
   });
 });
