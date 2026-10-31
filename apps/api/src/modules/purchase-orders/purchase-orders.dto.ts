@@ -1,5 +1,4 @@
 import {
-  Matches,
   IsUUID,
   IsString,
   IsOptional,
@@ -18,11 +17,11 @@ import {
   IsBooleanString,
   MaxLength,
 } from 'class-validator';
-import { CALENDAR_DATE_RE } from '../../common/utils/kyiv-date';
 import { Type, Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { PurchaseOrderStatus, DeliveryStatus } from '@prisma/client';
 import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
+import { CalendarDateParam } from '../../common/dto/list-query.decorators';
 
 export class TransitionPurchaseOrderDto {
   @ApiProperty({ enum: PurchaseOrderStatus })
@@ -287,18 +286,10 @@ export class PurchaseOrderQueryDto {
   @IsBooleanString()
   payable?: string;
 
-  @ApiPropertyOptional({ description: 'Дата документа від (YYYY-MM-DD)' })
-  @IsOptional()
-  @Transform(emptyToUndefined)
-  @Matches(CALENDAR_DATE_RE)
-  @IsDateString({ strict: true })
+  @CalendarDateParam('Дата документа від (YYYY-MM-DD)')
   dateFrom?: string;
 
-  @ApiPropertyOptional({ description: 'Дата документа до (YYYY-MM-DD)' })
-  @IsOptional()
-  @Transform(emptyToUndefined)
-  @Matches(CALENDAR_DATE_RE)
-  @IsDateString({ strict: true })
+  @CalendarDateParam('Дата документа до (YYYY-MM-DD)')
   dateTo?: string;
 
   @ApiPropertyOptional({

@@ -13,6 +13,8 @@ import {
 import { Plus, Trash2, Upload } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
+import { useCloseOnOutsideClick } from '@/hooks/useCloseOnOutsideClick';
+import { useSyncedFlag } from '@/hooks/useSyncedFlag';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
 import { useEscapeLayer } from '@/hooks/useEscapeLayer';
@@ -36,7 +38,11 @@ import {
 import { stockDocStatusLabel, stockDocTypeLabel } from '@/i18n/enumLabel';
 import i18n from '@/i18n/config';
 import { Modal } from '@/components/ui/modal';
-import { DocLinesHeader, DocLinesEmptyRow } from '@/components/ui/doc-lines-header';
+import {
+  DocLinesHeader,
+  DocLinesEmptyRow,
+  DocNewLineNumberCell,
+} from '@/components/ui/doc-lines-header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -236,8 +242,6 @@ export function StockDocumentCreateModal({
   const [goodSearchOpen, setGoodSearchOpen] = useState(false);
   const [headerCollapsed, setHeaderCollapsed] = useState(false);
   const [statusMenuOpen, setStatusMenuOpen] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [transitioning, setTransitioning] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saveAsOpen, setSaveAsOpen] = useState(false);
   const [error, setError] = useState('');
@@ -254,8 +258,8 @@ export function StockDocumentCreateModal({
   const viewOnly = isDeleted || notLoaded;
   const { confirm, dialogProps: confirmDialogProps } = useConfirm();
 
-  const savingRef = useRef(false);
-  const transitioningRef = useRef(false);
+  const [saving, savingRef, setSavingBoth] = useSyncedFlag();
+  const [transitioning, transitioningRef, setTransitioningBoth] = useSyncedFlag();
   const statusMenuRef = useRef<HTMLDivElement>(null);
   // Bug #639: авто-вибір єдиного branch/warehouse — програмна зміна (не дія
   // користувача). Через setValue({shouldDirty:false}) значення не вмикає dirty-guard.
@@ -264,26 +268,7 @@ export function StockDocumentCreateModal({
     warehouse: false,
   });
 
-  const setSavingBoth = (v: boolean) => {
-    savingRef.current = v;
-    setSaving(v);
-  };
-  const setTransitioningBoth = (v: boolean) => {
-    transitioningRef.current = v;
-    setTransitioning(v);
-  };
-
-  // Close status menu on outside click
-  useEffect(() => {
-    if (!statusMenuOpen) return;
-    const handler = (e: MouseEvent) => {
-      if (statusMenuRef.current && !statusMenuRef.current.contains(e.target as Node)) {
-        setStatusMenuOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [statusMenuOpen]);
+  useCloseOnOutsideClick(statusMenuRef, statusMenuOpen, setStatusMenuOpen);
 
   // Load reference data
   useEffect(() => {
@@ -1061,27 +1046,19 @@ export function StockDocumentCreateModal({
                       <td className="px-2 py-1.5 text-right text-[11px] text-muted-foreground">
                         {newLine.unit}
                       </td>
-                      <td className="px-2 py-1.5">
-                        <input
-                          type="number"
-                          min="0.001"
-                          step="1"
-                          value={newLine.quantity}
-                          onChange={e => setNewLine(l => ({ ...l, quantity: e.target.value }))}
-                          className="w-full rounded border border-input bg-background px-2 py-1 text-[12px] text-right tabular-nums focus:outline-none focus:ring-1 focus:ring-ring"
-                        />
-                      </td>
-                      <td className="px-2 py-1.5">
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={newLine.price}
-                          onChange={e => setNewLine(l => ({ ...l, price: e.target.value }))}
-                          placeholder="0.00"
-                          className="w-full rounded border border-input bg-background px-2 py-1 text-[12px] text-right tabular-nums focus:outline-none focus:ring-1 focus:ring-ring"
-                        />
-                      </td>
+                      <DocNewLineNumberCell
+                        min="0.001"
+                        step="1"
+                        value={newLine.quantity}
+                        onChange={v => setNewLine(l => ({ ...l, quantity: v }))}
+                      />
+                      <DocNewLineNumberCell
+                        min="0"
+                        step="0.01"
+                        value={newLine.price}
+                        onChange={v => setNewLine(l => ({ ...l, price: v }))}
+                        placeholder="0.00"
+                      />
                       <td className="px-2 py-1.5 text-right tabular-nums text-muted-foreground text-[11px]">
                         {fmtMoney(
                           lineAmount(

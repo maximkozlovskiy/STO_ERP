@@ -12,6 +12,7 @@ import {
   BankTransactionMatchType,
   BankTransactionSource,
   CounterpartyType,
+  SettlementTransactionType,
 } from '@prisma/client';
 import { kyivTodayYmd, TRANSACTION_TIMEOUT_MS, translateError } from '@sto/shared';
 import { getLocale } from '../../common/tenant/tenant-context';
@@ -153,6 +154,23 @@ const UNMATCHED_STATE = {
   matchedBy: null,
 } satisfies Prisma.BankTransactionUpdateManyMutationInput &
   Prisma.BankTransactionUncheckedUpdateManyInput;
+
+/**
+ * Вихідні види, чиє скасування сторнує проведення в розрахунках контрагента: початковий тип
+ * проведення → тип сторно (`unmatch` дзеркалить суму й курс початкового).
+ */
+const SETTLEMENT_REVERSAL: Partial<
+  Record<
+    BankTransactionMatchType,
+    { original: SettlementTransactionType; cancel: SettlementTransactionType }
+  >
+> = {
+  CLIENT_REFUND: { original: 'REFUND_OUT', cancel: 'REFUND_OUT_CANCEL' },
+  SUPPLIER_REFUND_IN: {
+    original: 'SUPPLIER_PAYMENT_RETURN',
+    cancel: 'SUPPLIER_PAYMENT_RETURN_CANCEL',
+  },
+};
 
 /** BR-BANK-041: що зробити з рядком, внесеним разом із рознесенням (усе вже перевірено). */
 type AllocationPlan =
@@ -1628,18 +1646,20 @@ export class BankReconciliationService {
           throw notMatched();
         }
 
-        if (matchedType === 'CLIENT_REFUND') {
+        const mirrored = SETTLEMENT_REVERSAL[matchedType];
+        if (mirrored) {
           if (!row.counterpartyId) throw notMatched();
           // Сторно дзеркалить ПОЧАТКОВЕ проведення: його суму, валюту, курс і суму в базовій
-          // валюті. Перераховувати за курсом на `operationDate` не можна — курс на цю дату могли
-          // додати чи виправити вже після рознесення, і в балансі клієнта лишилась би різниця.
-          // Останнє REFUND_OUT цього рядка — саме те, що скасовуємо: кожне попереднє вже має сторно.
+          // валюті (CLIENT_REFUND; BR-BANK-046 — SUPPLIER_REFUND_IN). Перераховувати за курсом на
+          // `operationDate` не можна — курс на цю дату могли додати чи виправити вже після
+          // рознесення, і в балансі контрагента лишилась би різниця. Останнє початкове проведення
+          // цього рядка — саме те, що скасовуємо: кожне попереднє вже має сторно.
           const original = await tx.settlementTransaction.findFirst({
             where: {
               orgId,
               documentType: 'BankTransaction',
               documentId: txId,
-              type: 'REFUND_OUT',
+              type: mirrored.original,
             },
             orderBy: { createdAt: 'desc' },
             select: { amount: true, currencyId: true, amountBase: true, rateUsed: true },
@@ -1651,43 +1671,7 @@ export class BankReconciliationService {
             orgId,
             {
               counterpartyId: row.counterpartyId,
-              type: 'REFUND_OUT_CANCEL',
-              amount: Number(original.amount),
-              currencyId: original.currencyId ?? undefined,
-              conversion: {
-                rateUsed: Number(original.rateUsed),
-                amountBase: Number(original.amountBase),
-              },
-              documentType: 'BankTransaction',
-              documentId: txId,
-              notes: reason,
-              createdBy: userId,
-            },
-            tx,
-          );
-        }
-
-        if (matchedType === 'SUPPLIER_REFUND_IN') {
-          if (!row.counterpartyId) throw notMatched();
-          // BR-BANK-046: сторно дзеркалить початкову проводку повернення — її суму й курс.
-          const original = await tx.settlementTransaction.findFirst({
-            where: {
-              orgId,
-              documentType: 'BankTransaction',
-              documentId: txId,
-              type: 'SUPPLIER_PAYMENT_RETURN',
-            },
-            orderBy: { createdAt: 'desc' },
-            select: { amount: true, currencyId: true, amountBase: true, rateUsed: true },
-          });
-          if (!original || original.amountBase == null || original.rateUsed == null) {
-            throw notMatched();
-          }
-          await this.settlements.createTransaction(
-            orgId,
-            {
-              counterpartyId: row.counterpartyId,
-              type: 'SUPPLIER_PAYMENT_RETURN_CANCEL',
+              type: mirrored.cancel,
               amount: Number(original.amount),
               currencyId: original.currencyId ?? undefined,
               conversion: {

@@ -55,3 +55,35 @@ export function DocLinesHeader({ title, onAdd, children }: DocLinesHeaderProps) 
     </div>
   );
 }
+
+/**
+ * Числова клітинка рядка, що вводиться (кількість, ціна) у табличній частині документа — одна
+ * розмітка для рахунку й складського документа (CI-гейт нових клонів).
+ */
+export function DocNewLineNumberCell({
+  value,
+  onChange,
+  min,
+  step,
+  placeholder,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  min: string;
+  step: string;
+  placeholder?: string;
+}) {
+  return (
+    <td className="px-2 py-1.5">
+      <input
+        type="number"
+        min={min}
+        step={step}
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="w-full rounded border border-input bg-background px-2 py-1 text-[12px] text-right tabular-nums focus:outline-none focus:ring-1 focus:ring-ring"
+      />
+    </td>
+  );
+}

@@ -50,6 +50,25 @@ export interface LinkedPaymentSource extends PaymentCashDeskFields {
 }
 
 /**
+ * `select` оплати для секції «Оплати» «Пов'язаних документів» наряду й рахунку — рівно те, що читає
+ * `toLinkedPaymentRows`. Сторновані оплати теж (з `reversedAt`, BR-CASH-024): їх не ховають.
+ */
+export const LINKED_PAYMENT_SELECT = {
+  id: true,
+  amount: true,
+  method: true,
+  createdAt: true,
+  notes: true,
+  fiscalStatus: true,
+  reversedAt: true,
+  sourceType: true,
+  cashRegisterId: true,
+  onlinePaymentIntentId: true,
+  // Сума оплати — у її валюті (Bug #1018): без коду web підписував усе «₴».
+  currency: { select: { code: true } },
+} satisfies Prisma.PaymentSelect;
+
+/**
  * Рядки секції «Оплати» «Пов'язаних документів» (BR-PAY-024): сума — число (§13) з кодом валюти
  * оплати (`currencyCode`, null — базова; Bug #1018), ознаки «онлайн-оплата QR» (`isOnline`) і «лежить
  * у касі» (`inCashDesk`, `paymentsInCashDesk`). Службові поля — id онлайн-наміру й каси — клієнту не йдуть.

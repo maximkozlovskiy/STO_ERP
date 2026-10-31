@@ -18,6 +18,8 @@ import {
   DocumentHeaderToggle,
 } from '@/components/ui/document-card-body';
 import { toast } from '@/lib/toast';
+import { useCloseOnOutsideClick } from '@/hooks/useCloseOnOutsideClick';
+import { useSyncedFlag } from '@/hooks/useSyncedFlag';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
 import { useEscapeLayer } from '@/hooks/useEscapeLayer';
@@ -48,7 +50,11 @@ import {
   FormCurrencySelect,
   FormDateInput,
 } from '@/components/ui/document-card-header';
-import { DocLinesHeader, DocLinesEmptyRow } from '@/components/ui/doc-lines-header';
+import {
+  DocLinesHeader,
+  DocLinesEmptyRow,
+  DocNewLineNumberCell,
+} from '@/components/ui/doc-lines-header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -211,8 +217,6 @@ export function InvoiceCreateModal({
   const [showLineInput, setShowLineInput] = useState(false);
   const [headerCollapsed, setHeaderCollapsed] = useState(false);
   const [statusMenuOpen, setStatusMenuOpen] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [transitioning, setTransitioning] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saveAsOpen, setSaveAsOpen] = useState(false);
   const [error, setError] = useState('');
@@ -230,8 +234,8 @@ export function InvoiceCreateModal({
   const { employee } = useAuth();
   const mayPay = PAYMENT_CREATE_ROLES.includes(employee?.role ?? '');
 
-  const savingRef = useRef(false);
-  const transitioningRef = useRef(false);
+  const [saving, savingRef, setSavingBoth] = useSyncedFlag();
+  const [transitioning, transitioningRef, setTransitioningBoth] = useSyncedFlag();
   const statusMenuRef = useRef<HTMLDivElement>(null);
   // snapshot id-шників рядків станом на load — щоб у handleSave виявити
   // рядки які користувач видалив локально (з UI). Без цього DELETE на бекенд не
@@ -252,26 +256,7 @@ export function InvoiceCreateModal({
   // ретраї пропускаємо його. _key стабільний per-line (nextKey() при load/append/flush).
   const postedLineKeysRef = useRef<Set<string>>(new Set());
 
-  const setSavingBoth = (v: boolean) => {
-    savingRef.current = v;
-    setSaving(v);
-  };
-  const setTransitioningBoth = (v: boolean) => {
-    transitioningRef.current = v;
-    setTransitioning(v);
-  };
-
-  // Close status menu on outside click
-  useEffect(() => {
-    if (!statusMenuOpen) return;
-    const handler = (e: MouseEvent) => {
-      if (statusMenuRef.current && !statusMenuRef.current.contains(e.target as Node)) {
-        setStatusMenuOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [statusMenuOpen]);
+  useCloseOnOutsideClick(statusMenuRef, statusMenuOpen, setStatusMenuOpen);
 
   // Reset on open
   useEffect(() => {
@@ -1118,27 +1103,19 @@ export function InvoiceCreateModal({
                           className="w-full rounded border border-input bg-background px-2 py-1 text-[12px] focus:outline-none focus:ring-1 focus:ring-ring"
                         />
                       </td>
-                      <td className="px-2 py-1.5">
-                        <input
-                          type="number"
-                          min="0.001"
-                          step="1"
-                          value={newLine.quantity}
-                          onChange={e => setNewLine(l => ({ ...l, quantity: e.target.value }))}
-                          className="w-full rounded border border-input bg-background px-2 py-1 text-[12px] text-right tabular-nums focus:outline-none focus:ring-1 focus:ring-ring"
-                        />
-                      </td>
-                      <td className="px-2 py-1.5">
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={newLine.unitPrice}
-                          onChange={e => setNewLine(l => ({ ...l, unitPrice: e.target.value }))}
-                          placeholder="0.00"
-                          className="w-full rounded border border-input bg-background px-2 py-1 text-[12px] text-right tabular-nums focus:outline-none focus:ring-1 focus:ring-ring"
-                        />
-                      </td>
+                      <DocNewLineNumberCell
+                        min="0.001"
+                        step="1"
+                        value={newLine.quantity}
+                        onChange={v => setNewLine(l => ({ ...l, quantity: v }))}
+                      />
+                      <DocNewLineNumberCell
+                        min="0"
+                        step="0.01"
+                        value={newLine.unitPrice}
+                        onChange={v => setNewLine(l => ({ ...l, unitPrice: v }))}
+                        placeholder="0.00"
+                      />
                       <td className="px-2 py-1.5 text-right">
                         <div className="flex items-center justify-end gap-1">
                           <span className="tabular-nums text-muted-foreground">

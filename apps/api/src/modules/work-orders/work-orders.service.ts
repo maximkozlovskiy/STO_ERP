@@ -95,7 +95,7 @@ import {
   mapWorkOrderLineToDto,
   mapWorkOrderPartToDto,
 } from './work-order-dto.mapper';
-import { toLinkedPaymentRows } from '../payments/payment-cash-desk';
+import { LINKED_PAYMENT_SELECT, toLinkedPaymentRows } from '../payments/payment-cash-desk';
 import { recordDocumentEvent } from '../automation/record-document-event';
 import { containsInsensitive } from '../../common/utils/like-pattern';
 
@@ -2700,20 +2700,7 @@ export class WorkOrdersService {
       // Сторновані оплати показуємо з позначкою `reversedAt` (BR-CASH-024), не ховаємо.
       this.prisma.payment.findMany({
         where: { workOrderId, orgId },
-        select: {
-          id: true,
-          amount: true,
-          method: true,
-          createdAt: true,
-          notes: true,
-          fiscalStatus: true,
-          reversedAt: true,
-          sourceType: true,
-          cashRegisterId: true,
-          onlinePaymentIntentId: true,
-          // Сума оплати — у її валюті (Bug #1018): без коду web підписував усе «₴».
-          currency: { select: { code: true } },
-        },
+        select: LINKED_PAYMENT_SELECT,
         orderBy: { createdAt: 'desc' },
         take: TAKE,
       }),

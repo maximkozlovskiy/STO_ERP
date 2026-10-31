@@ -30,6 +30,8 @@ import { apiFetch } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth';
 import { DeletedDocumentBanner } from '@/components/ui/DeletedDocumentBanner';
 import { toast } from '@/lib/toast';
+import { useCloseOnOutsideClick } from '@/hooks/useCloseOnOutsideClick';
+import { useSyncedFlag } from '@/hooks/useSyncedFlag';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
 import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
@@ -586,24 +588,13 @@ export function CreateWorkOrderModal({
     branchesById,
   } = useReferenceData(currentEmployee?.role);
   const [cpPickerOpen, setCpPickerOpen] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [transitioning, setTransitioning] = useState(false);
-  // Refs ensure handleModalClose sees sync state, not stale closure.
-  const savingRef = useRef(false);
-  const transitioningRef = useRef(false);
+  const [saving, savingRef, setSavingBoth] = useSyncedFlag();
+  const [transitioning, transitioningRef, setTransitioningBoth] = useSyncedFlag();
   // Dirty-детекція — RHF isDirty (bridge-ефект нижче → dirty.markDirty/resetDirty).
   // Value-based базлайн (baselineCapturedRef/rebaselineRef/editLoaded/formSnapshot) прибрано:
   // reset() ставить нову «чисту» базу (rhfDirty=false), а програмні зміни (авто-вибір філії
   // Bug #639, currency defaultToBase Bug #747) йдуть через setValue({shouldDirty:false}) — не
   // вмикають dirty без крихкого baseline-rebaseline протоколу.
-  const setSavingBoth = (v: boolean) => {
-    savingRef.current = v;
-    setSaving(v);
-  };
-  const setTransitioningBoth = (v: boolean) => {
-    transitioningRef.current = v;
-    setTransitioning(v);
-  };
   const [error, setError] = useState('');
   // Документ позначено на видалення → картка лише на перегляд. Прапорець прив'язано до id
   // завантаженого документа, тож інший наряд у тій самій модалці його не успадковує.
@@ -666,16 +657,7 @@ export function CreateWorkOrderModal({
   const deletedPartIds = useRef<string[]>([]);
   const statusMenuRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (!statusMenuOpen) return;
-    const handler = (e: MouseEvent) => {
-      if (statusMenuRef.current && !statusMenuRef.current.contains(e.target as Node)) {
-        setStatusMenuOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [statusMenuOpen]);
+  useCloseOnOutsideClick(statusMenuRef, statusMenuOpen, setStatusMenuOpen);
 
   // A3-modal: invoiceConflict ESC-ефект перенесено у useWorkOrderActions.
 

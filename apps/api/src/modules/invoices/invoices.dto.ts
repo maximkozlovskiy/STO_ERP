@@ -1,5 +1,4 @@
 import {
-  Matches,
   IsUUID,
   IsOptional,
   IsIn,
@@ -18,12 +17,13 @@ import {
 // понад них 400 з назвою поля, а не 500 `numeric field overflow`. На маршрутах із ZodValidationPipe
 // працює та сама стеля спільної схеми; тут — для Swagger і маршрутів на class-validator.
 import { MONEY_AMOUNT_MAX, QTY_MAX } from '@sto/shared';
-import { CALENDAR_DATE_RE } from '../../common/utils/kyiv-date';
 import { Transform, Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { InvoiceStatus, PaymentSourceType, WorkOrderStatus } from '@prisma/client';
+import { InvoiceStatus, WorkOrderStatus } from '@prisma/client';
 import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
 import { csvArray } from '../../common/transforms/csv-array';
+import { CalendarDateParam } from '../../common/dto/list-query.decorators';
+import { LinkedPaymentRowDto } from '../../common/dto/linked-payment-row.dto';
 
 export class CreateInvoiceDto {
   @ApiProperty()
@@ -251,18 +251,10 @@ export class InvoiceQueryDto {
   @IsBooleanString()
   showDeleted?: string;
 
-  @ApiPropertyOptional({ description: 'Дата документа від (YYYY-MM-DD)' })
-  @IsOptional()
-  @Transform(emptyToUndefined)
-  @Matches(CALENDAR_DATE_RE)
-  @IsDateString({ strict: true })
+  @CalendarDateParam('Дата документа від (YYYY-MM-DD)')
   dateFrom?: string;
 
-  @ApiPropertyOptional({ description: 'Дата документа до (YYYY-MM-DD)' })
-  @IsOptional()
-  @Transform(emptyToUndefined)
-  @Matches(CALENDAR_DATE_RE)
-  @IsDateString({ strict: true })
+  @CalendarDateParam('Дата документа до (YYYY-MM-DD)')
   dateTo?: string;
 
   @ApiPropertyOptional({
@@ -321,30 +313,8 @@ export class InvoiceLinkedWorkOrderRowDto {
   @ApiProperty({ enum: WorkOrderStatus }) status!: WorkOrderStatus;
 }
 
-export class InvoiceLinkedPaymentRowDto {
-  @ApiProperty() id!: string;
-  // Decimal → number нормалізується у сервісі (`Number(p.amount)`).
-  @ApiProperty() amount!: number;
-  // Payment.method — рядок, НЕ enum: методи конфігуруються у БД (CLAUDE.md §10).
-  @ApiProperty({ description: 'Код способу оплати (PaymentMethodConfig.code)' })
-  method!: string;
-  @ApiProperty({ type: String, format: 'date-time' }) createdAt!: string;
-  @ApiProperty({ type: String, nullable: true }) notes!: string | null;
-  // Стан фіскального чека (QUEUED|DONE|FAILED|SKIPPED); null — фіскалізація не застосовна.
-  @ApiPropertyOptional({ type: String, nullable: true }) fiscalStatus?: string | null;
-  // Сторно з каси (BR-CASH-024): оплата лишається в переліку з позначкою, у «сплачено» не входить.
-  @ApiPropertyOptional({ type: String, format: 'date-time', nullable: true })
-  reversedAt?: string | null;
-  // BR-PAY-024: куди лягли гроші — касову оплату сторнують у касі, решту — з «Пов'язаних документів».
-  @ApiPropertyOptional({ enum: PaymentSourceType, nullable: true })
-  sourceType?: PaymentSourceType | null;
-  // Онлайн-оплата QR (є `onlinePaymentIntentId`): сторно тут недоступне (BR-PAY-024).
-  @ApiProperty() isOnline!: boolean;
-  // Гроші лежать у касі (і стара оплата без `sourceType`, але з рядком каси): сторно — лише в касі
-  // (BR-PAY-024, `paymentsInCashDesk` — та сама перевірка, що відмовляє `POST /payments/:id/reverse`).
-  @ApiProperty() inCashDesk!: boolean; // Валюта оплати (Bug #1018); null — базова валюта (оплата без `currencyId`).
-  @ApiProperty({ type: String, nullable: true }) currencyCode!: string | null;
-}
+// Та сама форма, що в панелі наряду; окреме ім'я лишає схему OpenAPI `InvoiceLinkedPaymentRowDto`.
+export class InvoiceLinkedPaymentRowDto extends LinkedPaymentRowDto {}
 
 export class InvoiceLinkedCounterpartyRowDto {
   @ApiProperty() id!: string;

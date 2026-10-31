@@ -9,7 +9,7 @@ import {
 } from '@sto/shared';
 
 import { getLocale } from '../../common/tenant/tenant-context';
-import { toLinkedPaymentRows } from '../payments/payment-cash-desk';
+import { LINKED_PAYMENT_SELECT, toLinkedPaymentRows } from '../payments/payment-cash-desk';
 import { kyivToday, addDaysKyiv, dateOnlyRangeFilter } from '../../common/utils/kyiv-date';
 import { safeCoeff } from '../../common/utils/math';
 import { assertMoneyFits, money, moneyFromDecimal } from '../../common/utils/money';
@@ -1718,20 +1718,7 @@ export class InvoicesService {
       // Сторновані оплати показуємо з позначкою `reversedAt` (BR-CASH-024), не ховаємо.
       this.prisma.payment.findMany({
         where: { invoiceId, orgId },
-        select: {
-          id: true,
-          amount: true,
-          method: true,
-          createdAt: true,
-          notes: true,
-          fiscalStatus: true,
-          reversedAt: true,
-          sourceType: true,
-          cashRegisterId: true,
-          onlinePaymentIntentId: true,
-          // Сума оплати — у її валюті (Bug #1018): без коду web підписував усе «₴».
-          currency: { select: { code: true } },
-        },
+        select: LINKED_PAYMENT_SELECT,
         orderBy: { createdAt: 'desc' },
         take: TAKE,
       }),

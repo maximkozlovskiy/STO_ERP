@@ -17,6 +17,8 @@ import { newIdempotencyKey } from '@/lib/idempotency-key';
 import { PURCHASE_DOCUMENT_ROLES } from '@/lib/purchase-roles';
 import { useAuth } from '@/lib/auth';
 import { toast } from '@/lib/toast';
+import { useCloseOnOutsideClick } from '@/hooks/useCloseOnOutsideClick';
+import { useSyncedFlag } from '@/hooks/useSyncedFlag';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
 import { useEscapeLayer } from '@/hooks/useEscapeLayer';
@@ -209,8 +211,6 @@ export function PurchaseOrderCreateModal({
   const [statusMenuOpen, setStatusMenuOpen] = useState(false);
   const [vatMode, setVatMode] = useState<'NONE' | 'EXCLUSIVE' | 'INCLUSIVE'>('NONE');
   const [vatRate, setVatRate] = useState(0);
-  const [saving, setSaving] = useState(false);
-  const [transitioning, setTransitioning] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saveAsOpen, setSaveAsOpen] = useState(false);
   const [receiveMode, setReceiveMode] = useState(false);
@@ -252,34 +252,15 @@ export function PurchaseOrderCreateModal({
   }>({ brands: [], units: [], goodCatTree: [] });
   const [units, setUnits] = useState<{ id: string; name: string; shortName: string }[]>([]);
 
-  const savingRef = useRef(false);
-  const transitioningRef = useRef(false);
+  const [saving, savingRef, setSavingBoth] = useSyncedFlag();
+  const [transitioning, transitioningRef, setTransitioningBoth] = useSyncedFlag();
   const { run: runSentOrder, dialogProps: sentOrderDialogProps } = useSentOrderForce();
   const statusMenuRef = useRef<HTMLDivElement>(null);
   // Bug #639: async авто-вибір єдиного складу — програмна зміна (не дія користувача).
   // Через setValue({shouldDirty:false}) значення не вмикає dirty-guard.
   const autoSelectedRef = useRef(false);
 
-  const setSavingBoth = (v: boolean) => {
-    savingRef.current = v;
-    setSaving(v);
-  };
-  const setTransitioningBoth = (v: boolean) => {
-    transitioningRef.current = v;
-    setTransitioning(v);
-  };
-
-  // Close status menu on outside click
-  useEffect(() => {
-    if (!statusMenuOpen) return;
-    const handler = (e: MouseEvent) => {
-      if (statusMenuRef.current && !statusMenuRef.current.contains(e.target as Node)) {
-        setStatusMenuOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [statusMenuOpen]);
+  useCloseOnOutsideClick(statusMenuRef, statusMenuOpen, setStatusMenuOpen);
 
   // Load warehouses + org VAT settings + units of measure
   useEffect(() => {
@@ -672,7 +653,7 @@ export function PurchaseOrderCreateModal({
         setTransitioningBoth(false);
       }
     },
-    [purchaseOrderId, viewOnly, onSaved, runSentOrder, t],
+    [purchaseOrderId, viewOnly, onSaved, runSentOrder, setTransitioningBoth, t],
   );
 
   // ── Lines ─────────────────────────────────────────────────────────────────

@@ -4,6 +4,7 @@ import {
   ArrayMaxSize,
   IsArray,
   IsBoolean,
+  IsDateString,
   IsIn,
   IsNumber,
   IsOptional,
@@ -14,6 +15,8 @@ import {
 import { Transform, Type } from 'class-transformer';
 import { UUID_REGEX } from '@sto/shared';
 import { csvArray } from '../transforms/csv-array';
+import { emptyToUndefined } from '../transforms/empty-to-undefined';
+import { CALENDAR_DATE_RE } from '../utils/kyiv-date';
 
 /**
  * Поля пагінації й напряму сортування query-DTO списків одним декоратором кожне. Нові списки
@@ -70,4 +73,14 @@ export const IdsParam = (description: string, maxMessage: string, max = 200) =>
     IsArray(),
     ArrayMaxSize(max, { message: maxMessage }),
     Matches(UUID_REGEX, { each: true }),
+  );
+
+/** Межа періоду списку (`dateFrom` / `dateTo`): календарна дата `YYYY-MM-DD`, порожньо — без меж. */
+export const CalendarDateParam = (description: string) =>
+  applyDecorators(
+    ApiPropertyOptional({ description }),
+    IsOptional(),
+    Transform(emptyToUndefined),
+    Matches(CALENDAR_DATE_RE),
+    IsDateString({ strict: true }),
   );
