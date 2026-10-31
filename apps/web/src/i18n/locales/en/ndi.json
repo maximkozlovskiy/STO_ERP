@@ -110,7 +110,9 @@
     "fieldName": "Name",
     "namePlaceholder": "VAT 20%",
     "fieldRate": "Rate, %",
-    "addButton": "Add rate"
+    "addButton": "Add rate",
+    "editAria": "Edit rate {{name}}",
+    "rateInUseHint": "This rate is already used in documents — its value cannot be changed. Add a new rate and deactivate this one"
   },
   "payments": {
     "loadError": "Failed to load payment methods",

@@ -231,7 +231,7 @@ export class SettingsController {
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST', 'MECHANIC', 'STOREKEEPER')
   @ApiOperation({ summary: 'Список ставок ПДВ' })
   getTaxRates(@OrgContext() orgId: string) {
-    return this.service.getTaxRates(orgId);
+    return this.service.getTaxRatesWithUsage(orgId);
   }
 
   @Post('tax-rates')

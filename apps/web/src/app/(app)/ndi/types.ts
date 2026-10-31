@@ -4,6 +4,11 @@ export interface TaxRateItem {
   rate: number;
   isDefault: boolean;
   isActive: boolean;
+  /**
+   * BR-INV-027: ставку вже застосовано в документах — її число не змінюється (лише назва й
+   * активність). Є лише у відповіді `GET /settings/tax-rates`, не в POST / PATCH.
+   */
+  inUse?: boolean;
 }
 
 export interface Currency {

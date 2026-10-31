@@ -821,12 +821,70 @@ export class SettingsService {
     };
   }
 
+  /**
+   * BR-INV-027: ставки довідника, уже застосовані в документах організації. Число ставки лежить у
+   * рядках рахунків і замовлень постачальнику (`vatRate`); у наряді ставки немає — її дає ПДВ
+   * нарахованого наряду (`totalVat` від `totalNet`, той самий дріб в обох режимах ПДВ, до копійки
+   * округлення). Чернетки нарядів не рахуються: їхні тотали перераховуються на завершенні (BR-WO-008).
+   */
+  private async usedTaxRates(orgId: string, rates: readonly number[]): Promise<Set<number>> {
+    if (rates.length === 0) return new Set();
+    const rows = await this.prisma.$queryRaw<{ rate: number }[]>`
+      SELECT t.rate::float8 AS rate
+      FROM unnest(${[...rates]}::numeric[]) AS t(rate)
+      WHERE EXISTS (
+          SELECT 1 FROM invoice_lines il JOIN invoices i ON i.id = il."invoiceId"
+          WHERE il."orgId" = ${orgId}::uuid AND i."orgId" = ${orgId}::uuid
+            AND i."deletedAt" IS NULL AND il."vatRate" = t.rate)
+        OR EXISTS (
+          SELECT 1 FROM purchase_order_lines pl JOIN purchase_orders po ON po.id = pl."purchaseOrderId"
+          WHERE pl."orgId" = ${orgId}::uuid AND po."orgId" = ${orgId}::uuid
+            AND pl."deletedAt" IS NULL AND po."deletedAt" IS NULL AND pl."vatRate" = t.rate)
+        OR EXISTS (
+          SELECT 1 FROM work_orders w
+          WHERE w."orgId" = ${orgId}::uuid AND w."deletedAt" IS NULL
+            AND w.status::text IN ('COMPLETED', 'INVOICED', 'PAID', 'ARCHIVED')
+            AND w."totalNet" > 0
+            AND abs(w."totalVat" - w."totalNet" * t.rate / 100) <= 0.01)
+    `;
+    return new Set(rows.map(r => Number(r.rate)));
+  }
+
+  /** `GET /settings/tax-rates`: список (з кешу) і чи ставку вже застосовано в документах (BR-INV-027). */
+  async getTaxRatesWithUsage(orgId: string): Promise<(TaxRateResponse & { inUse: boolean })[]> {
+    const rates = await this.getTaxRates(orgId);
+    // Окремо від кешу: документ зі ставкою з'являється без запису в довідник, тож кеш би застарів.
+    const used = await this.usedTaxRates(
+      orgId,
+      rates.map(r => r.rate),
+    );
+    return rates.map(r => ({ ...r, inUse: used.has(r.rate) }));
+  }
+
   async updateTaxRate(
     orgId: string,
     id: string,
     dto: { name?: string; rate?: number; isDefault?: boolean; isActive?: boolean },
     userId?: string,
   ) {
+    // BR-INV-027 (рішення власника 2026-10-31): число ставки, вже застосованої в документах, не
+    // змінюється — наряди, пораховані за старою ставкою, лишились би без рахунку (BR-INV-002).
+    if (dto.rate !== undefined) {
+      const existing = await this.prisma.taxRate.findFirst({
+        where: { id, orgId },
+        select: { rate: true },
+      });
+      if (!existing)
+        throw new NotFoundException(translateError('err.settings.taxRateNotFound', getLocale()));
+      const current = Number(existing.rate);
+      if (current !== dto.rate && (await this.usedTaxRates(orgId, [current])).size > 0) {
+        const locale = getLocale();
+        const rate = locale === 'uk' ? String(current).replace('.', ',') : String(current);
+        throw new BadRequestException(
+          translateError('err.settings.taxRateInUse', locale, { rate }),
+        );
+      }
+    }
     // When setting isDefault=true: atomically unset previous defaults in orgId scope (excluding current id).
     if (dto.isDefault === true) {
       await this.prisma.$transaction(

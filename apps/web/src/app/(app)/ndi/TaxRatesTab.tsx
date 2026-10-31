@@ -61,7 +61,7 @@ export default function TaxRatesTab() {
         method: 'PATCH',
         body: JSON.stringify({ isActive: !tr.isActive }),
       });
-      setTaxRates(prev => prev.map(r => (r.id === updated.id ? updated : r)));
+      setTaxRates(prev => prev.map(r => (r.id === updated.id ? { ...r, ...updated } : r)));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : t('common.error'));
     }
@@ -94,9 +94,13 @@ export default function TaxRatesTab() {
     try {
       const updated = await apiFetch<TaxRateItem>(`/settings/tax-rates/${editTaxRate.id}`, {
         method: 'PATCH',
-        body: JSON.stringify({ name: editTaxForm.name, rate }),
+        // BR-INV-027: число застосованої ставки не змінюється — шлемо лише назву.
+        body: JSON.stringify(
+          editTaxRate.inUse ? { name: editTaxForm.name } : { name: editTaxForm.name, rate },
+        ),
       });
-      setTaxRates(prev => prev.map(r => (r.id === updated.id ? updated : r)));
+      // `inUse` приходить лише зі списку — PATCH його не несе, тож зберігаємо наявне.
+      setTaxRates(prev => prev.map(r => (r.id === updated.id ? { ...r, ...updated } : r)));
       setEditTaxRate(null);
       setError('');
     } catch (e: unknown) {
@@ -120,28 +124,39 @@ export default function TaxRatesTab() {
         {taxRates.map(tr => (
           <div key={tr.id} className="px-4 py-3">
             {editTaxRate?.id === tr.id ? (
-              <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  value={editTaxForm.name}
-                  onChange={e => setEditTaxForm(f => ({ ...f, name: e.target.value }))}
-                  className="flex-1 px-2 py-1 border border-border rounded-lg text-sm bg-surface text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-                />
-                <input
-                  type="number"
-                  min="0"
-                  max="100"
-                  value={editTaxForm.rate}
-                  onChange={e => setEditTaxForm(f => ({ ...f, rate: e.target.value }))}
-                  className="w-20 px-2 py-1 border border-border rounded-lg text-sm bg-surface text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-                />
-                <span className="text-muted-foreground text-sm">%</span>
-                <Button size="sm" onClick={() => void saveEditTaxRate()} loading={savingTax}>
-                  {t('taxRates.save')}
-                </Button>
-                <Button size="sm" variant="outline" onClick={() => setEditTaxRate(null)}>
-                  {t('taxRates.cancel')}
-                </Button>
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    aria-label={t('taxRates.fieldName')}
+                    value={editTaxForm.name}
+                    onChange={e => setEditTaxForm(f => ({ ...f, name: e.target.value }))}
+                    className="flex-1 px-2 py-1 border border-border rounded-lg text-sm bg-surface text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                  />
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    aria-label={t('taxRates.fieldRate')}
+                    value={editTaxForm.rate}
+                    onChange={e => setEditTaxForm(f => ({ ...f, rate: e.target.value }))}
+                    disabled={tr.inUse}
+                    aria-describedby={tr.inUse ? `tax-rate-in-use-${tr.id}` : undefined}
+                    className="w-20 px-2 py-1 border border-border rounded-lg text-sm bg-surface text-foreground focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-60 disabled:cursor-not-allowed"
+                  />
+                  <span className="text-muted-foreground text-sm">%</span>
+                  <Button size="sm" onClick={() => void saveEditTaxRate()} loading={savingTax}>
+                    {t('taxRates.save')}
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => setEditTaxRate(null)}>
+                    {t('taxRates.cancel')}
+                  </Button>
+                </div>
+                {tr.inUse && (
+                  <p id={`tax-rate-in-use-${tr.id}`} className="text-xs text-muted-foreground">
+                    {t('taxRates.rateInUseHint')}
+                  </p>
+                )}
               </div>
             ) : (
               <div className="flex items-center justify-between">
@@ -169,6 +184,7 @@ export default function TaxRatesTab() {
                   </button>
                   <button
                     onClick={() => openEditTaxRate(tr)}
+                    aria-label={t('taxRates.editAria', { name: tr.name })}
                     className="p-1 text-muted-foreground hover:text-foreground"
                   >
                     <Pencil className="h-3.5 w-3.5" />

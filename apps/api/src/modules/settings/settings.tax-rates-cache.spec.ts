@@ -77,6 +77,8 @@ const taxRate = {
 const prisma = {
   taxRate,
   $transaction: vi.fn((fn: (tx: unknown) => Promise<unknown>) => fn({ taxRate })),
+  // BR-INV-027: ставки не застосовано в документах — число змінювати можна.
+  $queryRaw: vi.fn(() => Promise.resolve([])),
 };
 
 const redis = {

@@ -1150,6 +1150,8 @@ export const en: Record<string, string> = {
   'err.settings.configNotFound': 'Configuration not found',
   'err.settings.taxRateNotFound': 'VAT rate not found',
   'err.settings.defaultTaxRateUndeletable': 'The default rate cannot be deleted',
+  'err.settings.taxRateInUse':
+    'The {{rate}} % rate is already used in documents — its value cannot be changed. Add a new rate and deactivate this one',
   'err.settings.organisationNotFound': 'Organisation not found',
 
   // ── Exception messages: settlements module ──

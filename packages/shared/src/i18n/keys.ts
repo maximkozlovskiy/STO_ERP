@@ -1128,6 +1128,7 @@ export const VALIDATION_KEYS = [
   'err.settings.configNotFound',
   'err.settings.taxRateNotFound',
   'err.settings.defaultTaxRateUndeletable',
+  'err.settings.taxRateInUse',
   'err.settings.organisationNotFound',
   // Exception-повідомлення: settlements-модуль
   'err.settlement.counterpartyNotFound',

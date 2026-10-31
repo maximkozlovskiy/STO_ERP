@@ -1131,6 +1131,8 @@ export const uk: Record<string, string> = {
   'err.settings.configNotFound': 'Конфігурацію не знайдено',
   'err.settings.taxRateNotFound': 'Ставку ПДВ не знайдено',
   'err.settings.defaultTaxRateUndeletable': 'Не можна видалити ставку за замовчуванням',
+  'err.settings.taxRateInUse':
+    'Ставку {{rate}} % уже застосовано в документах — її число не змінюється. Додайте нову ставку, а цю вимкніть',
   'err.settings.organisationNotFound': 'Організацію не знайдено',
 
   // ── Exception-повідомлення: settlements-модуль ──

@@ -32,6 +32,7 @@ describe('SettingsService — C1b audit TaxRate', () => {
       updateMany: ReturnType<typeof vi.fn>;
     };
     $transaction: ReturnType<typeof vi.fn>;
+    $queryRaw: ReturnType<typeof vi.fn>;
   };
 
   const ORG = 'org-1';
@@ -59,6 +60,8 @@ describe('SettingsService — C1b audit TaxRate', () => {
         updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       },
       $transaction: vi.fn(),
+      // BR-INV-027: ставку не застосовано в документах — число змінювати можна.
+      $queryRaw: vi.fn().mockResolvedValue([]),
     };
     const module = await Test.createTestingModule({
       providers: [
@@ -87,6 +90,7 @@ describe('SettingsService — C1b audit TaxRate', () => {
   });
 
   it('updateTaxRate (non-default) → record(orgId, TaxRate, id, UPDATE, userId)', async () => {
+    prisma.taxRate.findFirst.mockResolvedValueOnce({ rate: 20 });
     await service.updateTaxRate(ORG, 'tax-1', { rate: 7 }, USER);
     await Promise.resolve();
     expect(auditRecord).toHaveBeenCalledTimes(1);
