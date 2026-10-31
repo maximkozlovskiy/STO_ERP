@@ -283,6 +283,12 @@ export function makeDesk() {
     };
   };
 
+  /** Приймач рядка каси з опцій виклику сервісу оплат (`{ onCashRow }`), якщо його передали. */
+  const sinkOf = (opts: unknown): ((row: MemRow) => void) | undefined =>
+    typeof opts === 'object' && opts !== null && 'onCashRow' in opts
+      ? (opts as { onCashRow: (row: MemRow) => void }).onCashRow
+      : undefined;
+
   // Блокування рядків / каси (`pg_advisory_xact_lock`, `SELECT … FOR UPDATE`) — справжній
   // tx-клієнт уміє `$executeRaw`; на дані в пам'яті воно не впливає.
   const executeRaw = vi.fn((..._args: unknown[]) => Promise.resolve(1));
@@ -318,10 +324,10 @@ export function makeDesk() {
       return Promise.resolve(row);
     }),
     getBalance: vi.fn(() => Promise.resolve(100000)),
-    // Понад контракт: відповідь сторно — рядок журналу, перечитаний після коміту. Фікстура
-    // віддає закомічений рядок як є; правила сторно на відповідь не спираються.
-    getHistoryRow: vi.fn((_orgId: string, id: string, ..._rest: unknown[]) =>
-      Promise.resolve(cashRows.find(r => r.id === id) ?? null),
+    // Відповідь сторно — рядок журналу, прочитаний У транзакції сторно (четвертий аргумент —
+    // tx-клієнт): там рядок ще не закомічений, тож шукається й серед записаних цією транзакцією.
+    getHistoryRow: vi.fn((_orgId: string, _registerId: string, id: string, tx?: unknown) =>
+      Promise.resolve([...(bucketOf(tx)?.cash ?? []), ...cashRows].find(r => r.id === id) ?? null),
     ),
     // Аудит рядка сторно — після коміту (`deferAudit`): кличеться лише, коли рядок у журналі.
     recordCreated: vi.fn((_orgId: string, row: MemRow, _userId: string) => {
@@ -332,19 +338,20 @@ export function makeDesk() {
   };
 
   // Справжній PaymentsService.create сам пише єдиний рядок каси (documentType = 'Payment').
+  // Записаний рядок віддається приймачу `opts.onCashRow` (п'ятий аргумент) — після «коміту».
   const payments = {
-    create: vi.fn((orgId: string, dto: MemRow, ..._rest: unknown[]) => {
-      cashRows.push(
-        cashRow(orgId, {
-          cashRegisterId: dto.cashRegisterId,
-          direction: 'IN',
-          reason: 'SALE_PAYMENT',
-          amount: dto.amount,
-          counterpartyId: dto.counterpartyId,
-          documentType: 'Payment',
-          documentId: 'pay-1',
-        }),
-      );
+    create: vi.fn((orgId: string, dto: MemRow, ...rest: unknown[]) => {
+      const row = cashRow(orgId, {
+        cashRegisterId: dto.cashRegisterId,
+        direction: 'IN',
+        reason: 'SALE_PAYMENT',
+        amount: dto.amount,
+        counterpartyId: dto.counterpartyId,
+        documentType: 'Payment',
+        documentId: 'pay-1',
+      });
+      cashRows.push(row);
+      sinkOf(rest[2])?.(row);
       return Promise.resolve({ id: 'pay-1', orgId, ...dto });
     }),
     // Сторно оплати клієнта (BR-CASH-024): проводку PAYMENT_CANCEL, «сплачено», бонуси й чек
@@ -359,18 +366,18 @@ export function makeDesk() {
   // транзакцією (BR-SUPPAY-013): рядок каси (documentType = 'SupplierPayment') і проводка; create /
   // confirm / cancel — окремі кроки чернетки, яких каса більше не кличе.
   const supplierPayments = {
-    createAndConfirm: vi.fn((orgId: string, dto: MemRow, ..._rest: unknown[]) => {
-      cashRows.push(
-        cashRow(orgId, {
-          cashRegisterId: dto.cashRegisterId,
-          direction: 'OUT',
-          reason: 'SUPPLIER_PAYMENT',
-          amount: dto.amount,
-          counterpartyId: dto.supplierId,
-          documentType: 'SupplierPayment',
-          documentId: 'sp-1',
-        }),
-      );
+    createAndConfirm: vi.fn((orgId: string, dto: MemRow, ...rest: unknown[]) => {
+      const row = cashRow(orgId, {
+        cashRegisterId: dto.cashRegisterId,
+        direction: 'OUT',
+        reason: 'SUPPLIER_PAYMENT',
+        amount: dto.amount,
+        counterpartyId: dto.supplierId,
+        documentType: 'SupplierPayment',
+        documentId: 'sp-1',
+      });
+      cashRows.push(row);
+      sinkOf(rest[2])?.(row);
       return Promise.resolve({
         id: 'sp-1',
         orgId,

@@ -874,8 +874,12 @@ export class BankReconciliationService {
   // ─── Вихідні платежі: ручне внесення, рознесення, скасування ─────────────────────────────
 
   /** Рядок із підписами (join-и `BANK_TX_INCLUDE`) → response DTO. */
-  private async loadResponse(orgId: string, txId: string): Promise<BankTransactionResponseDto> {
-    const row = await this.prisma.bankTransaction.findFirstOrThrow({
+  private async loadResponse(
+    orgId: string,
+    txId: string,
+    db: Prisma.TransactionClient | PrismaService = this.prisma,
+  ): Promise<BankTransactionResponseDto> {
+    const row = await db.bankTransaction.findFirstOrThrow({
       where: { id: txId, orgId },
       include: BANK_TX_INCLUDE,
     });
@@ -1047,15 +1051,16 @@ export class BankReconciliationService {
   ): Promise<BankTransactionResponseDto> {
     if (allocation.kind === 'OUTGOING' && allocation.plan.kind !== 'NEW_SUPPLIER_PAYMENT') {
       const { type, plan } = allocation;
-      const txId = await this.prisma.$transaction(
+      // Відповідь — з цієї ж транзакції (маршрут під ключем ідемпотентності): читання після
+      // коміту, що впало, зняло б резервацію ключа, і повтор вніс і розніс би рядок удруге.
+      return this.prisma.$transaction(
         async tx => {
           const created = await tx.bankTransaction.create({ data, select: { id: true } });
           await this.applyOutgoingPlan(tx, orgId, created.id, data, type, plan, userId);
-          return created.id;
+          return this.loadResponse(orgId, created.id, tx);
         },
         { timeout: TRANSACTION_TIMEOUT_MS },
       );
-      return this.loadResponse(orgId, txId);
     }
 
     const created = await this.prisma.bankTransaction.create({

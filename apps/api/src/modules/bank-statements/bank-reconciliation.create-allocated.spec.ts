@@ -242,6 +242,24 @@ describe('createManual з allocation — вихідні види (BR-BANK-041)',
     expect(res).toMatchObject({ id: row.id, status: 'MATCHED', expenseCategoryName: 'Стаття 40' });
   });
 
+  // Маршрут під ключем ідемпотентності: читання після коміту, що впало, зняло б резервацію
+  // ключа, і повтор вніс і розніс би платіж удруге.
+  // guards: BR-BANK-041
+  it('відповідь читається в транзакції вставки й рознесення, а не після коміту', async () => {
+    const w = await world();
+
+    const res = await w.service.createManual(
+      ORG,
+      dto({ type: 'EXPENSE', expenseCategoryId: ID.expense, counterpartyId: ID.supplier }),
+      USER,
+    );
+
+    expect(w.calls('bankTransaction', 'findFirstOrThrow')).toHaveLength(1);
+    expect(w.tx.bankTransaction.findFirstOrThrow).toHaveBeenCalledTimes(1);
+    expect(w.prisma.bankTransaction.findFirstOrThrow).not.toHaveBeenCalled();
+    expect(res).toMatchObject({ id: only(w).id, status: 'MATCHED' });
+  });
+
   // guards: BR-BANK-041, BR-BANK-032
   it('PAYROLL → рядок MATCHED з періодом і працівником', async () => {
     const w = await world();

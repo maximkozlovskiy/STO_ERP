@@ -171,7 +171,7 @@ cd apps/api && npx vitest run src/modules/supplier-payments/<файл>.spec.ts
 | Аспект                                                                                  | Тест                                                 | Кейсів |
 | --------------------------------------------------------------------------------------- | ---------------------------------------------------- | ------ |
 | cancel remove                                                                           | `supplier-payments.cancel-remove.spec.ts`            | 5      |
-| confirm                                                                                 | `supplier-payments.confirm.spec.ts`                  | 8      |
+| confirm                                                                                 | `supplier-payments.confirm.spec.ts`                  | 9      |
 | HTTP-контракт (DTO, статуси, валідація)                                                 | `supplier-payments.contract.spec.ts`                 | 21     |
 | документ, позначений на видалення, — лише перегляд (BR-WO-012)                          | `supplier-payments.with-deleted.spec.ts`             | 8      |
 | create                                                                                  | `supplier-payments.create.spec.ts`                   | 10     |
@@ -180,7 +180,7 @@ cd apps/api && npx vitest run src/modules/supplier-payments/<файл>.spec.ts
 | schedule                                                                                | `supplier-payments.schedule.spec.ts`                 | 26     |
 | сортування (whitelist orderBy)                                                          | `supplier-payments.sort.spec.ts`                     | 9      |
 | create guards (невідомий рахунок, замовлення іншого постачальника)                      | `supplier-payments.create-guards.spec.ts`            | 2      |
-| оплата однією транзакцією, статус замовлення-підстави, `POST /pay` (BR-SUPPAY-013, 015) | `supplier-payments.pay.spec.ts`                      | 19     |
+| оплата однією транзакцією, статус замовлення-підстави, `POST /pay` (BR-SUPPAY-013, 015) | `supplier-payments.pay.spec.ts`                      | 20     |
 | номер відкочується з транзакцією — жива БД (BR-SUPPAY-013)                              | `supplier-payments.pay-rollback.integration.spec.ts` | 2      |
 
 Разом: **133** кейсів (цифри з `vitest --reporter=json`, не з grep).

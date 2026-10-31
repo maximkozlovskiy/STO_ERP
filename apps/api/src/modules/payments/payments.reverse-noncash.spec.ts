@@ -256,6 +256,30 @@ describe('PaymentsService.reverseNonCash — оплата на банківсь�
     expect(dto.reversedAt).toEqual(expect.any(String));
   });
 
+  // Маршрут під ключем ідемпотентності: читання після коміту, що впало, зняло б резервацію, і
+  // повтор отримав би 400 «уже сторновано» замість збереженої відповіді.
+  // guards: BR-PAY-024
+  it('відповідь читається В транзакції сторно: після коміту оплату не перечитують', async () => {
+    const h = makeHarness();
+    let committed = false;
+    const run = h.transaction.getMockImplementation();
+    if (!run) throw new Error('у фікстурі немає транзакції');
+    h.transaction.mockImplementationOnce(async (fn, opts) => {
+      const out = await run(fn, opts);
+      committed = true;
+      return out;
+    });
+    const read = h.tables.payment.findFirst.getMockImplementation();
+    if (!read) throw new Error('у фікстурі немає читання оплати');
+    h.tables.payment.findFirst.mockImplementation(args =>
+      committed ? Promise.reject(new Error('читання після коміту')) : read(args),
+    );
+
+    const dto = await h.reverseNonCash();
+
+    expect(dto).toMatchObject({ id: PAY, reversalReason: REASON });
+  });
+
   // guards: BR-PAY-024
   it('документ проводки сторно — сама оплата (Payment / id оплати), курс і сума оригіналу, у транзакції', async () => {
     const h = makeHarness();

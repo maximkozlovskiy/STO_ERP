@@ -547,11 +547,11 @@ cd apps/api && npx vitest run src/modules/payments/<файл>.spec.ts
 | upsert провайдера без `enabled` (лише activate)                                                     | `provider-upsert-dto.contract.spec.ts`                   | 12     |
 | шифрування at-rest, усі шляхи запису (BR-PAY-026)                                                   | `../../prisma/field-encryption.extension.spec.ts`        | 30     |
 | шифрування (сервіс)                                                                                 | `../../common/crypto/encryption.service.spec.ts`         | 11     |
-| готівка (ознака isCash) — через касу, безготівкова — з рахунком; спосіб із довідника (BR-PAY-027)   | `payments.cash-register-required.spec.ts`                | 28     |
+| готівка (ознака isCash) — через касу, безготівкова — з рахунком; спосіб із довідника (BR-PAY-027)   | `payments.cash-register-required.spec.ts`                | 29     |
 | куди надходять кошти; QR лише на рахунок, ознака «Готівка» `cash` (BR-PAY-031, 032)                 | `../payment-methods/payment-methods.destination.spec.ts` | 34     |
 | HTTP-контракт способів                                                                              | `../payment-methods/payment-methods.contract.spec.ts`    | 7      |
 | системні способи оплати                                                                             | `../payment-methods/payment-methods.service.spec.ts`     | 5      |
-| сторно безготівкової оплати (BR-PAY-024)                                                            | `payments.reverse-noncash.spec.ts`                       | 24     |
+| сторно безготівкової оплати (BR-PAY-024)                                                            | `payments.reverse-noncash.spec.ts`                       | 25     |
 | HTTP-контракт сторно (BR-PAY-024)                                                                   | `payments.reverse-route.contract.spec.ts`                | 15     |
 | HTTP-контракт списку: query DTO, NUL (BR-PAY-025)                                                   | `payments.list-query.contract.spec.ts`                   | 8      |
 | NUL у query/param/тілі → 400, глоб. труби (BR-PAY-025, BR-SEC-NUL)                                  | `../../common/pipes/reject-nul-character.pipe.spec.ts`   | 7      |

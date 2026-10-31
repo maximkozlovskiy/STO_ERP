@@ -88,6 +88,22 @@ describe('CashDeskService.create — оплата постачальнику (SU
     expect(h.cashRows[0]).toMatchObject({ documentType: 'SupplierPayment', documentId: 'sp-1' });
   });
 
+  // Маршрут — під ключем ідемпотентності: кинуте читання ВЖЕ проведеної оплати знімає резервацію
+  // ключа, і повтор заплатив би постачальнику вдруге. Тому відповідь — рядок, записаний проведенням.
+  // guards: BR-CASH-019, BR-SUPPAY-013
+  it('відповідь — рядок, записаний проведенням: журнал каси після коміту не перечитується', async () => {
+    const h = makeDesk();
+    h.tables.cashOperation.findFirst.mockRejectedValue(new Error("з'єднання з базою обірвалось"));
+    const row = await createOp(h, validInput('SUPPLIER_PAYMENT'));
+    expect(h.cashRows).toHaveLength(1);
+    expect(row).toMatchObject({
+      id: h.cashRows[0].id,
+      documentType: 'SupplierPayment',
+      documentNumber: 'ОПП-2026-000001',
+    });
+    expect(h.tables.cashOperation.findFirst).not.toHaveBeenCalled();
+  });
+
   // guards: BR-CASH-019, BR-SUPPAY-013
   it('проведення не вдалося → помилка піднята, нічого не скасовують (нічого й не лишилось), каса не змінилась', async () => {
     const h = makeDesk();

@@ -220,6 +220,31 @@ describe('PaymentsService — готівка лише через касу (BR-PA
     );
   });
 
+  // Каса (BR-CASH-017) формує відповідь із цього рядка, а не перечитує журнал після коміту:
+  // маршрут під ключем ідемпотентності, і впале читання дозволило б повтору провести другу оплату.
+  // guards: BR-PAY-019
+  it('рядок каси, записаний оплатою, — приймачу onCashRow після коміту', async () => {
+    const cashRow = { id: 'op-1', documentType: 'Payment', documentId: PAY_ID };
+    cash.createOperation.mockResolvedValueOnce(cashRow);
+    let committed = false;
+    prisma.$transaction.mockImplementationOnce(async (fn: (tx: unknown) => Promise<unknown>) => {
+      const out = await fn(prisma);
+      committed = true;
+      return out;
+    });
+    const seen: { row: unknown; committed: boolean }[] = [];
+
+    await service.create(
+      ORG,
+      { ...cashDto, sourceType: 'CASH_REGISTER', cashRegisterId: EXPLICIT_CASH_ID },
+      'user-1',
+      undefined,
+      { onCashRow: row => seen.push({ row, committed }) },
+    );
+
+    expect(seen).toEqual([{ row: cashRow, committed: true }]);
+  });
+
   // guards: BR-PAY-019
   it('явна каса в запиті перемагає касу за замовчуванням', async () => {
     methodDefaults = {

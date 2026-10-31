@@ -455,13 +455,15 @@ export class CashService {
     orgId: string,
     cashRegisterId: string,
     operationId: string,
+    // Транзакція запису: відповідь маршруту під ключем ідемпотентності читається до коміту.
+    db: Prisma.TransactionClient | PrismaService = this.prisma,
   ): Promise<CashOperationResponseDto> {
-    const op = await this.prisma.cashOperation.findFirst({
+    const op = await db.cashOperation.findFirst({
       where: { id: operationId, orgId, cashRegisterId },
       include: { expenseCategory: { select: { name: true } } },
     });
     if (!op) throw new NotFoundException(translateError('err.cash.operationNotFound', getLocale()));
-    const [row] = await this.toHistoryDtos(orgId, [op]);
+    const [row] = await this.toHistoryDtos(orgId, [op], db);
     return row;
   }
 
@@ -491,6 +493,7 @@ export class CashService {
   private async toHistoryDtos(
     orgId: string,
     ops: CashOperationRow[],
+    db: Prisma.TransactionClient | PrismaService = this.prisma,
   ): Promise<CashOperationResponseDto[]> {
     const idsOf = (pick: (o: CashOperationRow) => string | null) => uniqueDefinedIds(ops.map(pick));
     const documentIds = (type: string) =>
@@ -517,37 +520,37 @@ export class CashService {
       reversals,
     ] = await Promise.all([
       counterpartyIds.length
-        ? this.prisma.counterparty.findMany({
+        ? db.counterparty.findMany({
             where: { id: { in: counterpartyIds }, orgId },
             select: { id: true, firstName: true, lastName: true, companyName: true },
           })
         : [],
       employeeIds.length
-        ? this.prisma.employee.findMany({
+        ? db.employee.findMany({
             where: { id: { in: employeeIds }, orgId },
             select: { id: true, firstName: true, lastName: true },
           })
         : [],
       workOrderIds.length
-        ? this.prisma.workOrder.findMany({
+        ? db.workOrder.findMany({
             where: { id: { in: workOrderIds }, orgId },
             select: { id: true, number: true },
           })
         : [],
       purchaseOrderIds.length
-        ? this.prisma.purchaseOrder.findMany({
+        ? db.purchaseOrder.findMany({
             where: { id: { in: purchaseOrderIds }, orgId },
             select: { id: true, number: true },
           })
         : [],
       paymentIds.length
-        ? this.prisma.payment.findMany({
+        ? db.payment.findMany({
             where: { id: { in: paymentIds }, orgId },
             select: { id: true, fiscalStatus: true },
           })
         : [],
       supplierPaymentIds.length
-        ? this.prisma.supplierPayment.findMany({
+        ? db.supplierPayment.findMany({
             where: { id: { in: supplierPaymentIds }, orgId },
             select: { id: true, number: true },
           })
@@ -555,7 +558,7 @@ export class CashService {
       // Сторно рядків сторінки: рядок оригіналу не змінюється (журнал лише дописується), тож
       // «сторновано» видно лише через рядок, що посилається на нього (`reversalOfId` унікальний).
       opIds.length
-        ? this.prisma.cashOperation.findMany({
+        ? db.cashOperation.findMany({
             where: { orgId, reversalOfId: { in: opIds } },
             select: { id: true, reversalOfId: true, createdAt: true, notes: true },
           })

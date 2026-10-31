@@ -30,6 +30,7 @@ import { kyivDayRangeFilter } from '../../common/utils/kyiv-date';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SettlementsService } from '../settlements/settlements.service';
 import { CashService, type CashOperationExtras } from '../cash/cash.service';
+import type { CashOperationResponseDto } from '../cash/cash.dto';
 import { WorkOrdersService } from '../work-orders/work-orders.service';
 import {
   isWorkOrderFullyPaid,
@@ -80,9 +81,16 @@ const WORK_ORDER_PAYMENT_SELECT = {
 // Примітка фіскального статусу оплати, чий чек зняли з черги сторно (BR-CASH-024).
 const REVERSED_FISCAL_NOTE = 'Оплату сторновано';
 
-/** Звідки прийшла оплата: `fromRequest` — `POST /payments` (спосіб обрала людина, BR-PAY-027). */
+/**
+ * Звідки прийшла оплата: `fromRequest` — `POST /payments` (спосіб обрала людина, BR-PAY-027).
+ * `onCashRow` — приймач рядка каси, записаного в транзакції оплати (кличеться після коміту): каса
+ * (`CashDeskService`, BR-CASH-017) формує відповідь із нього, а не перечитує рядок після коміту —
+ * впале читання вже проведеної оплати зняло б резервацію ключа ідемпотентності, і повтор провів
+ * би ДРУГУ оплату.
+ */
 export interface CreatePaymentOptions {
   fromRequest?: boolean;
+  onCashRow?: (row: CashOperationResponseDto) => void;
 }
 
 /**
@@ -204,8 +212,13 @@ export class PaymentsService {
     return { items: items.map(item => this.toDto(item)), total, page: safePage, limit: safeLimit };
   }
 
-  async findOne(orgId: string, id: string): Promise<PaymentResponseDto> {
-    const payment = await this.prisma.payment.findFirst({
+  async findOne(
+    orgId: string,
+    id: string,
+    // Транзакція запису: відповідь маршруту під ключем ідемпотентності читається до коміту.
+    db: Prisma.TransactionClient | PrismaService = this.prisma,
+  ): Promise<PaymentResponseDto> {
+    const payment = await db.payment.findFirst({
       where: { id, orgId },
       include: PAYMENT_INCLUDE,
     });
@@ -521,6 +534,8 @@ export class PaymentsService {
 
     // Кроки наряду до «Оплачено», зроблені в транзакції (BR-PAY-005) — події для них після коміту.
     let statusSteps: WorkOrderStatusStep[] = [];
+    // Рядок каси, записаний у транзакції, — приймачу після коміту (`opts.onCashRow`).
+    let cashOperation = null as CashOperationResponseDto | null;
     const payment = await this.prisma.$transaction(
       async tx => {
         // Курсові різниці (Фаза 4) рахунку БЕЗ наряду: контекст іновалютного рахунку, що став PAID
@@ -778,7 +793,7 @@ export class PaymentsService {
         // Готівкова оплата → рух готівки у касу (cash-in). У ту саму транзакцію, щоб не розсинхронити
         // оплату/розрахунок/касу. Фіскальна каса вимагає відкриту зміну (кине 400 → відкат усього).
         if (resolvedSource.sourceType === 'CASH_REGISTER' && resolvedSource.cashRegisterId) {
-          await this.cash.createOperation(
+          cashOperation = await this.cash.createOperation(
             orgId,
             {
               cashRegisterId: resolvedSource.cashRegisterId,
@@ -800,6 +815,7 @@ export class PaymentsService {
       },
       { timeout: TRANSACTION_TIMEOUT_MS },
     ); // explicit timeout — payment + settlement + invoice/WO updates
+    if (cashOperation) opts.onCashRow?.(cashOperation);
 
     // Події переходів наряду (аудит статусу) — ПІСЛЯ коміту, як у WorkOrdersService.transition.
     if (workOrderId) this.workOrders.emitStatusSteps(orgId, workOrderId, statusSteps, userId);
@@ -1294,7 +1310,9 @@ export class PaymentsService {
             throw new ConflictException(translateError('err.bankStatement.notMatched', locale));
           }
         }
-        return { reversal, bankRow };
+        // Відповідь — з цієї ж транзакції (маршрут під ключем ідемпотентності): читання після
+        // коміту, що впало, зняло б резервацію, і повтор отримав би 400 замість збереженої відповіді.
+        return { reversal, bankRow, response: await this.findOne(orgId, id, tx) };
       },
       {
         timeout: TRANSACTION_TIMEOUT_MS,
@@ -1324,7 +1342,7 @@ export class PaymentsService {
           this.logger.warn(`Audit record failed: ${e instanceof Error ? e.message : String(e)}`),
         );
     }
-    return this.findOne(orgId, id);
+    return outcome.response;
   }
 
   /** BR-PAY-001: наряд приймає оплату лише в `WO_PAYABLE_STATUSES`; інакше 400 з назвою статусу. */

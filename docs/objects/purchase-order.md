@@ -248,7 +248,7 @@ cd apps/api && npx vitest run src/modules/purchase-orders/purchase-orders.fsm.sp
 | ------------------------------------------------------------------------ | ---------------------------------------------------------------- | ------ |
 | `applyPricing` — правила ціноутворення                                   | `purchase-orders.pricing.spec.ts`                                | 13     |
 | `receive()` — UoM-override + tenant-валідація                            | `purchase-orders.receive-uom.spec.ts`                            | 14     |
-| `receive()` — activeLines, CAS → RECEIPT, борг, CAS статусу (BR-AUT-060) | `purchase-orders.receive-ledger.spec.ts`                         | 7      |
+| `receive()` — activeLines, CAS → RECEIPT, борг, CAS статусу (BR-AUT-060) | `purchase-orders.receive-ledger.spec.ts`                         | 8      |
 | `create`/`update` — tenant-guard goodId рядків                           | `purchase-orders.line-goods.spec.ts`                             | 3      |
 | `update()` — резолв контракту контрагента                                | `purchase-orders.contract-resolution.spec.ts`                    | 9      |
 | `transition()` — карта `PO_TRANSITIONS`                                  | `purchase-orders.fsm.spec.ts`                                    | 16     |

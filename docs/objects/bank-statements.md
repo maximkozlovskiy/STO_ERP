@@ -273,7 +273,7 @@ cd apps/api && npx vitest run src/modules/bank-statements/<файл>.spec.ts
 | Аспект                                                                                                               | Тест                                                       | Кейсів |
 | -------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- | ------ |
 | авто-матч з контрагентом; підказка постачальнику (BR-BANK-048)                                                       | `bank-reconciliation.auto-match.spec.ts`                   | 8      |
-| внесення з рознесенням (BR-BANK-041)                                                                                 | `bank-reconciliation.create-allocated.spec.ts`             | 48     |
+| внесення з рознесенням (BR-BANK-041)                                                                                 | `bank-reconciliation.create-allocated.spec.ts`             | 49     |
 | напрям в імпорті, ручні дублі, підказки вихідних                                                                     | `bank-reconciliation.direction.spec.ts`                    | 21     |
 | імпорт у staging, межа amountBase (BR-BANK-042)                                                                      | `bank-reconciliation.import.spec.ts`                       | 6      |
 | ручне внесення і видалення ручного рядка                                                                             | `bank-reconciliation.manual.spec.ts`                       | 25     |

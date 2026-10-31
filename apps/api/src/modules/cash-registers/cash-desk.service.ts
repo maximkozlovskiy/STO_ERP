@@ -31,7 +31,7 @@ import { assertCounterpartyRole } from '../../common/utils/counterparty-role';
 import { money } from '../../common/utils/money';
 import { isSerializationConflict } from '../../common/utils/prisma-errors';
 import { PrismaService } from '../../prisma/prisma.service';
-import { CashService, toCashOperationDto, type CashOperationExtras } from '../cash/cash.service';
+import { CashService, type CashOperationExtras } from '../cash/cash.service';
 import { CashOperationResponseDto } from '../cash/cash.dto';
 import { cashReasonLabel } from '../cash/cash-reason-labels';
 import { PaymentsService, type PaymentReversalResult } from '../payments/payments.service';
@@ -360,6 +360,7 @@ export class CashDeskService {
         }),
       );
     }
+    const written = rowSink();
     const payment = await this.payments.create(
       orgId,
       {
@@ -373,11 +374,9 @@ export class CashDeskService {
       },
       actor.id,
       cashRow,
+      { onCashRow: written.accept },
     );
-    return {
-      row: await this.readRowOf(orgId, 'Payment', payment.id),
-      fiscalStatus: payment.fiscalStatus,
-    };
+    return { row: written.take(), fiscalStatus: payment.fiscalStatus };
   }
 
   /**
@@ -397,6 +396,7 @@ export class CashDeskService {
   ): Promise<DeskOutcome> {
     // Проведення вимагає автора; маршрут завжди дає його з токена.
     const userId = required(actor.id);
+    const written = rowSink();
     const paid = await this.supplierPayments.createAndConfirm(
       orgId,
       {
@@ -410,11 +410,9 @@ export class CashDeskService {
       },
       userId,
       cashRow,
+      { onCashRow: written.accept },
     );
-    return {
-      row: await this.readRowOf(orgId, 'SupplierPayment', paid.id),
-      documentNumber: paid.number,
-    };
+    return { row: written.take(), documentNumber: paid.number };
   }
 
   /**
@@ -536,7 +534,12 @@ export class CashDeskService {
       throw new BadRequestException(translateError('err.cash.reversalReasonRequired', locale));
     }
 
-    let outcome: { row: CashOperationResponseDto; paymentReversal: PaymentReversalResult | null };
+    let outcome: {
+      row: CashOperationResponseDto;
+      /** Рядок сторно у формі рядка історії — прочитаний У транзакції (маршрут під ключем). */
+      response: CashOperationResponseDto;
+      paymentReversal: PaymentReversalResult | null;
+    };
     try {
       outcome = await this.prisma.$transaction(
         async tx => {
@@ -594,11 +597,17 @@ export class CashDeskService {
           );
 
           const ctx = { cashOperationId: row.id, reason, userId: actor.id };
+          // Відповідь — з цієї ж транзакції: читання після коміту, що впало, зняло б резервацію
+          // ключа, і повтор отримав би 400 «уже сторновано» замість збереженої відповіді.
+          const respond = () => this.cash.getHistoryRow(orgId, cashRegisterId, row.id, tx);
           if (original.documentType === 'Payment' && original.documentId) {
-            return {
-              row,
-              paymentReversal: await this.payments.reverse(orgId, original.documentId, ctx, tx),
-            };
+            const paymentReversal = await this.payments.reverse(
+              orgId,
+              original.documentId,
+              ctx,
+              tx,
+            );
+            return { row, response: await respond(), paymentReversal };
           }
           if (original.documentType === 'SupplierPayment' && original.documentId) {
             await this.supplierPayments.reverse(orgId, original.documentId, ctx, tx);
@@ -608,7 +617,7 @@ export class CashDeskService {
           ) {
             await this.reverseRefundSettlement(orgId, original, row.id, reason, actor, tx);
           }
-          return { row, paymentReversal: null };
+          return { row, response: await respond(), paymentReversal: null };
         },
         { timeout: TRANSACTION_TIMEOUT_MS },
       );
@@ -623,7 +632,7 @@ export class CashDeskService {
     if (outcome.paymentReversal) {
       this.payments.afterReversal(orgId, outcome.paymentReversal, actor.id);
     }
-    return this.cash.getHistoryRow(orgId, cashRegisterId, outcome.row.id);
+    return outcome.response;
   }
 
   /** BR-CASH-023: сторно сторно немає; рядки зарплати й банку скасовують там, де створили. */
@@ -689,24 +698,29 @@ export class CashDeskService {
       tx,
     );
   }
+}
 
-  /**
-   * Рядок каси, який написав сервіс оплат, — за платіжним документом. Пишеться він у тій самій
-   * транзакції, що й оплата: оплата є, а рядка немає — порушений інваріант, не помилка користувача.
-   */
-  private async readRowOf(
-    orgId: string,
-    documentType: 'Payment' | 'SupplierPayment',
-    documentId: string,
-  ): Promise<CashOperationResponseDto> {
-    const row = await this.prisma.cashOperation.findFirst({
-      // Рядок сторно несе той самий платіжний документ (BR-CASH-023) — тут потрібен оригінал.
-      where: { orgId, documentType, documentId, reversalOfId: null },
-      include: { expenseCategory: { select: { name: true } } },
-    });
-    if (!row) throw new InternalServerErrorException();
-    return toCashOperationDto(row);
-  }
+/**
+ * Рядок каси, який сервіс оплат записав у СВОЇЙ транзакції (BR-CASH-017, BR-CASH-019): відповідь
+ * каси будується з нього, а не з читання після коміту. Маршрут — під ключем ідемпотентності: впале
+ * читання вже проведеної оплати зняло б резервацію ключа, і повтор із тим самим ключем провів би
+ * ДРУГУ оплату. Оплата з джерелом «каса» рядок пише завжди — його відсутність є порушеним
+ * інваріантом, а не помилкою користувача.
+ */
+function rowSink(): {
+  accept: (row: CashOperationResponseDto) => void;
+  take: () => CashOperationResponseDto;
+} {
+  let written: CashOperationResponseDto | null = null;
+  return {
+    accept: row => {
+      written = row;
+    },
+    take: () => {
+      if (!written) throw new InternalServerErrorException();
+      return written;
+    },
+  };
 }
 
 /** Обов'язкове за таблицею приводів поле: його відсутність уже відсіяв `assertReasonRule`. */

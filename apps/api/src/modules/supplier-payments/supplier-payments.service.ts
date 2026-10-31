@@ -23,6 +23,7 @@ import { DocumentNumberService } from '../document-number/document-number.servic
 import { SettlementsService } from '../settlements/settlements.service';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 import { CashService, type CashOperationExtras } from '../cash/cash.service';
+import type { CashOperationResponseDto } from '../cash/cash.dto';
 import { recordDocumentEvent } from '../automation/record-document-event';
 import { hasNetFx, netFxBalanceEffect, reverseNetFxInTx } from '../settlements/fx-net';
 import {
@@ -604,6 +605,7 @@ export class SupplierPaymentsService {
     dto: CreateSupplierPaymentDto,
     userId: string,
     cashRow?: CashOperationExtras,
+    opts: { onCashRow?: (row: CashOperationResponseDto) => void } = {},
   ): Promise<SupplierPaymentResponseDto> {
     const { currencyId } = await this.prepareCreate(orgId, dto);
     const source: ConfirmSource = {
@@ -619,21 +621,29 @@ export class SupplierPaymentsService {
     // Відповідь читається В транзакції: читання після коміту могло б упасти вже на проведеній
     // оплаті — інтерсептор ідемпотентності тоді знімає резервацію ключа, і повтор із тим самим
     // ключем провів би ДРУГУ оплату (BR-SUPPAY-013).
-    const sp = await this.prisma.$transaction(
+    // Так само рядок каси: каса (`CashDeskService`, BR-CASH-019) бере його з `opts.onCashRow`, а
+    // не перечитує після коміту.
+    const { sp, cashOperation } = await this.prisma.$transaction(
       async tx => {
         const created = await this.createInTx(tx, orgId, dto, currencyId, userId);
-        await this.confirmInTx(tx, orgId, created.id, source, plan, userId, cashRow);
-        const row = await tx.supplierPayment.findFirst({
-          where: { id: created.id, orgId },
-          include: SP_DETAIL_INCLUDE,
-        });
-        if (!row)
-          throw new NotFoundException(translateError('err.supplierPayment.notFound', getLocale()));
-        return row;
+        const op = await this.confirmInTx(tx, orgId, created.id, source, plan, userId, cashRow);
+        return { sp: await this.readDetailInTx(tx, orgId, created.id), cashOperation: op };
       },
       { timeout: TRANSACTION_TIMEOUT_MS },
     );
+    if (cashOperation) opts.onCashRow?.(cashOperation);
     return this.toDto(sp);
+  }
+
+  /** Документ із підписами для відповіді — у транзакції запису (див. `createAndConfirm`). */
+  private async readDetailInTx(tx: Prisma.TransactionClient, orgId: string, id: string) {
+    const row = await tx.supplierPayment.findFirst({
+      where: { id, orgId },
+      include: SP_DETAIL_INCLUDE,
+    });
+    if (!row)
+      throw new NotFoundException(translateError('err.supplierPayment.notFound', getLocale()));
+    return row;
   }
 
   /**
@@ -794,12 +804,17 @@ export class SupplierPaymentsService {
     }
 
     const plan = await this.prepareConfirm(orgId, pre, opts?.rateDate);
-    await this.prisma.$transaction(
-      tx => this.confirmInTx(tx, orgId, id, pre, plan, userId, cashRow),
+    // Відповідь — з транзакції проведення: маршрут під ключем ідемпотентності, і впале читання
+    // після коміту зняло б резервацію — повтор отримав би 400 «уже проведено» замість збереженої
+    // відповіді (MV-M2).
+    const sp = await this.prisma.$transaction(
+      async tx => {
+        await this.confirmInTx(tx, orgId, id, pre, plan, userId, cashRow);
+        return this.readDetailInTx(tx, orgId, id);
+      },
       { timeout: TRANSACTION_TIMEOUT_MS },
     );
-
-    return this.findOne(orgId, id);
+    return this.toDto(sp);
   }
 
   /**
@@ -866,7 +881,7 @@ export class SupplierPaymentsService {
     { po, conv, confirmDate }: ConfirmPlan,
     userId: string,
     cashRow?: CashOperationExtras,
-  ): Promise<void> {
+  ): Promise<CashOperationResponseDto | null> {
     // CAS DRAFT→CONFIRMED ПЕРШИМ (не stale-read!): два concurrent confirm() інакше обидва
     // проходять re-read і дають ПОДВІЙНИЙ SUPPLIER_PAYMENT (борг постачальнику ×2). Дзеркалить
     // stock-documents.transition / completion-acts.confirm. count===0 → інший уже провів.
@@ -920,8 +935,9 @@ export class SupplierPaymentsService {
     // руху готівки: застосовує overdraft-guard (OUT не вижене касу в мінус → 400 + rollback усього
     // confirm) і shift-guard для фіскальної каси. Без цього cash-оплата постачальнику ніколи не
     // залишала касу → баланс завищений, guard оминається.
+    let cashOperation: CashOperationResponseDto | null = null;
     if (pre.sourceType === PaymentSourceType.CASH_REGISTER && pre.cashRegisterId) {
-      await this.cash.createOperation(
+      cashOperation = await this.cash.createOperation(
         orgId,
         {
           cashRegisterId: pre.cashRegisterId,
@@ -1026,6 +1042,7 @@ export class SupplierPaymentsService {
         }
       }
     }
+    return cashOperation;
   }
 
   async cancel(orgId: string, id: string, userId?: string): Promise<SupplierPaymentResponseDto> {

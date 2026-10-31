@@ -228,6 +228,28 @@ describe('PurchaseOrdersService.receive — CAS рядків → RECEIPT → SUP
     );
   });
 
+  // Маршрут прийому — під ключем ідемпотентності: читання після коміту, що впало, зняло б
+  // резервацію ключа, а повтор ЧАСТКОВОГО прийому пройшов би CAS (він порівнює з receivedQty,
+  // уже прочитаним повтором) і оприбуткував би товар удруге.
+  // guards: BR-PO-005
+  it('відповідь читається В транзакції прийому: після коміту замовлення не перечитують', async () => {
+    let committed = false;
+    prisma.$transaction.mockImplementationOnce(async (fn: (tx: unknown) => Promise<unknown>) => {
+      const out = await fn(prisma);
+      committed = true;
+      return out;
+    });
+    const read = prisma.purchaseOrder.findFirst;
+    prisma.purchaseOrder.findFirst = vi.fn((args: unknown) =>
+      committed ? Promise.reject(new Error('читання після коміту')) : read(args),
+    );
+
+    const res = await service.receive(ORG, PO_ID, DTO, USER_ID);
+
+    expect(res).toMatchObject({ id: PO_ID });
+    expect(inventory.createMovement).toHaveBeenCalledTimes(2);
+  });
+
   // guards: BR-PO-005
   it('CAS ДРУГОГО рядка не зійшовся → throw; жодного RECEIPT-руху (і для першого рядка теж) і без SUPPLIER_CHARGE', async () => {
     prisma.purchaseOrderLine.updateMany

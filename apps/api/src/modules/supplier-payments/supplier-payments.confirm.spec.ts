@@ -46,6 +46,35 @@ describe('SupplierPaymentsService — confirm', () => {
   // confirm() — головний FSM-step
   // ──────────────────────────────────────────────────────────────────────
 
+  // Маршрут під ключем ідемпотентності (MV-M2): читання після коміту, що впало, зняло б
+  // резервацію, і повтор отримав би 400 «уже проведено» замість збереженої відповіді.
+  // guards: BR-SUPPAY-001
+  it('confirm(): відповідь читається В транзакції проведення, після коміту запитів немає', async () => {
+    let committed = false;
+    prisma.$transaction.mockImplementationOnce(async (fn: (tx: unknown) => Promise<unknown>) => {
+      const out = await fn(prisma);
+      committed = true;
+      return out;
+    });
+    prisma.supplierPayment.findFirst
+      .mockResolvedValueOnce({
+        status: SupplierPaymentStatus.DRAFT,
+        supplierId: SUPPLIER_ID,
+        amount: 500,
+        sourceType: PaymentSourceType.BANK_ACCOUNT,
+        cashRegisterId: null,
+      })
+      .mockImplementation(() => {
+        if (committed) throw new Error('читання після коміту');
+        return Promise.resolve(confirmedRow);
+      });
+    prisma.supplierPayment.updateMany.mockResolvedValueOnce({ count: 1 });
+
+    const res = await service.confirm(ORG, SP_ID, USER_ID);
+
+    expect(res.id).toBe(SP_ID);
+  });
+
   // guards: BR-SUPPAY-001, BR-SUPPAY-005
   it('confirm(): settlement SUPPLIER_PAYMENT (+1, наш борг ↓) + documentType=SupplierPayment', async () => {
     prisma.supplierPayment.findFirst

@@ -199,6 +199,18 @@ describe('CashDeskService.create — оплата контрагента (SALE_P
     expect(result.amount).toBe(120);
   });
 
+  // Маршрут — під ключем ідемпотентності: кинуте читання ВЖЕ проведеної оплати знімає резервацію
+  // ключа, і повтор провів би другу оплату. Тому відповідь — рядок, записаний самою оплатою.
+  // guards: BR-CASH-017
+  it('відповідь — рядок, записаний оплатою: журнал каси після коміту не перечитується', async () => {
+    const h = makeDesk();
+    h.tables.cashOperation.findFirst.mockRejectedValue(new Error("з'єднання з базою обірвалось"));
+    const result = await createOp(h, validInput('SALE_PAYMENT', { amount: 120 }));
+    expect(h.cashRows).toHaveLength(1);
+    expect(result).toMatchObject({ id: h.cashRows[0].id, amount: 120, documentType: 'Payment' });
+    expect(h.tables.cashOperation.findFirst).not.toHaveBeenCalled();
+  });
+
   // guards: BR-CASH-003
   it('каса чужої організації або видалена → 404, нічого не проведено', async () => {
     for (const patchRow of [{ orgId: OTHER_ORG }, { deletedAt: new Date() }]) {

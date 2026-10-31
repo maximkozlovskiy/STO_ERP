@@ -121,6 +121,26 @@ describe('SupplierPaymentsService.createAndConfirm — одна транзакц
     expect(res.status).toBe(SupplierPaymentStatus.CONFIRMED);
   });
 
+  // Каса (BR-CASH-019) формує відповідь із цього рядка, а не перечитує журнал після коміту.
+  // guards: BR-SUPPAY-013
+  it('рядок каси, записаний проведенням, — приймачу onCashRow після коміту', async () => {
+    const cashRow = { id: 'op-1', documentType: 'SupplierPayment', documentId: SP_ID };
+    h.cash.createOperation.mockResolvedValueOnce(cashRow);
+    let committed = false;
+    h.prisma.$transaction.mockImplementationOnce(async (fn: (tx: unknown) => Promise<unknown>) => {
+      const out = await fn(h.prisma);
+      committed = true;
+      return out;
+    });
+    const seen: { row: unknown; committed: boolean }[] = [];
+
+    await h.service.createAndConfirm(ORG, cashPayment(), USER_ID, undefined, {
+      onCashRow: row => seen.push({ row, committed }),
+    });
+
+    expect(seen).toEqual([{ row: cashRow, committed: true }]);
+  });
+
   // guards: BR-SUPPAY-013
   it('каса відмовила (в мінус / зміна закрита) → помилка піднята; скасування й другої транзакції немає', async () => {
     const boom = new BadRequestException('Недостатньо готівки в касі');

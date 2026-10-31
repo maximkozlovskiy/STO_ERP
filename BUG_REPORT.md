@@ -5557,3 +5557,72 @@ cancel, `pendingIdRef` і `settlePayment` прибрано. Тести: `supplie
 `SupplierPaymentCreateModal.test.tsx`, E2E `supplier-payment-pay.spec.ts` («Оплатити» → `CONFIRMED:150`, жодної
 скасованої). Наживо (:3010/:3012, OWNER): один `POST /supplier-payments/pay` 201, скасованих оплат немає.
 **Статус:** [x] виправлено
+
+## Session 2026-10-31 — sto-tester: етап Г2 «постачальники» (29fb5d7e3..7f4983061) — оплата однією дією, чернетки, підстава за статусом, ключ прийому, банк ↔ каса; живі сценарії 1440 / 390, ролі OWNER / ACCOUNTANT / STOREKEEPER
+
+## Bug #1021 — [CRITICAL] Каса: оплата клієнта й оплата постачальнику читають відповідь ПІСЛЯ коміту — повтор із тим самим ключем проводить другу оплату
+
+**Файл:** `apps/api/src/modules/cash-registers/cash-desk.service.ts` (`payByCounterparty`, `payToSupplier`, `readRowOf`)
+**Severity:** CRITICAL
+**Категорія:** business-logic / гроші / ідемпотентність
+
+**Опис:** `POST /cash-registers/:id/operations` стоїть під `@RequireIdempotencyKey()`. Приводи «Оплата контрагента» і
+«Оплата постачальнику» проводять оплату (`PaymentsService.create` / `SupplierPaymentsService.createAndConfirm`, кожна
+у своїй транзакції), а рядок каси для відповіді `readRowOf` читав окремим запитом уже після коміту. Якщо це читання
+падає (обрив з'єднання, тайм-аут пулу), обробник кидає 500, `IdempotencyInterceptor` знімає резервацію ключа — і
+повтор клієнта з тим самим ключем проводить ДРУГУ оплату (гроші й борг двічі). Той самий клас, що review виправив у
+`createAndConfirm` (`a1ebd73f5`).
+**Очікувана поведінка:** відповідь формується з даних, записаних у транзакції оплати.
+**Фікс:** писачі каси повертають створений рядок нагору: `CreatePaymentOptions.onCashRow` і
+`createAndConfirm(…, { onCashRow })` — рядок, який повернув `CashService.createOperation` у транзакції, віддається
+приймачу після коміту; `confirmInTx` повертає свій рядок. `readRowOf` прибрано, каса бере рядок із приймача
+(`rowSink`). Тести: `cash-desk.client.spec.ts`, `cash-desk.supplier.spec.ts` («журнал каси після коміту не
+перечитується» — читання журналу кидає, операція проходить), `payments.cash-register-required.spec.ts`,
+`supplier-payments.pay.spec.ts` («приймачу onCashRow після коміту»). Мутація (старі сервіси) — 4 червоних.
+**Статус:** [x] виправлено
+
+## Bug #1022 — [HIGH] Прийом замовлення: відповідь читається після коміту — повтор часткового прийому оприбутковує товар удруге
+
+**Файл:** `apps/api/src/modules/purchase-orders/purchase-orders.service.ts` (`receive`, `return this.findOne` після `$transaction`)
+**Severity:** HIGH
+**Категорія:** business-logic / склад і борг / ідемпотентність
+
+**Опис:** `POST /purchase-orders/:id/receive` з Г2 під ключем ідемпотентності (TECH-DEBT (б) №40), але відповідь
+`findOne` читалась після коміту. Впале читання знімає резервацію ключа; повтор ЧАСТКОВОГО прийому читає вже новий
+`receivedQty`, CAS рядків сходиться — RECEIPT і SUPPLIER_CHARGE удруге. Ключ, доданий саме проти подвоєння прийому,
+у цьому сценарії не захищав.
+**Фікс:** `findOne(…, { db: tx })` — відповідь з транзакції прийому. Тест `purchase-orders.receive-ledger.spec.ts`
+«відповідь читається В транзакції прийому»; мутація (старий сервіс) — червоний.
+**Статус:** [x] виправлено
+
+## Bug #1023 — [HIGH] Банк: внесення платежу з рознесенням (вихідні види) читає відповідь після коміту — повтор вносить і розносить удруге
+
+**Файл:** `apps/api/src/modules/bank-statements/bank-reconciliation.service.ts` (`createAllocated`, `loadResponse`)
+**Severity:** HIGH
+**Категорія:** business-logic / гроші / ідемпотентність
+
+**Опис:** `POST /bank-statements/transactions` під ключем; вставка рядка й рознесення (витрата, зарплата, переказ,
+повернення клієнту, зняття готівки) — одна транзакція, а `loadResponse` — після неї. Впале читання → ключ знято →
+повтор вносить новий рядок (`externalId` випадковий) і проводить витрату / касове надходження вдруге.
+**Фікс:** `loadResponse(…, tx)` усередині транзакції. Тест `bank-reconciliation.create-allocated.spec.ts`
+«відповідь читається в транзакції вставки й рознесення»; мутація — червоний.
+**Лишається:** шлях вхідних видів і нової оплати постачальнику з виписки — кілька власних транзакцій за задумом
+(BR-BANK-041), останнє читання там поза транзакцією; виправлення потребує переробки на одну транзакцію.
+**Статус:** [x] виправлено (одно-транзакційний шлях)
+
+## Bug #1024 — [MEDIUM] Проведення чернетки, сторно в касі й безготівкове сторно: відповідь після коміту — повтор із ключем отримує 400 замість збереженої відповіді
+
+**Файл:** `apps/api/src/modules/supplier-payments/supplier-payments.service.ts` (`confirm`),
+`apps/api/src/modules/cash-registers/cash-desk.service.ts` (`reverse` → `getHistoryRow`),
+`apps/api/src/modules/payments/payments.service.ts` (`reverseNonCash` → `findOne`)
+**Severity:** MEDIUM
+**Категорія:** api contract / ідемпотентність
+
+**Опис:** ті самі маршрути під ключем читали відповідь після коміту. Подвоєння тут тримають CAS (`DRAFT→CONFIRMED`,
+`reversedAt: null`, унікальний `reversalOfId`), але впале читання знімало резервацію, і повтор отримував 400 «уже
+проведено / сторновано» замість збереженої відповіді — контракт MV-M2 («повтор віддає збережене тіло») порушено.
+**Фікс:** відповідь читається в транзакції: `readDetailInTx` у `confirm`, `getHistoryRow(…, tx)` (довідки рядка
+історії — тим самим клієнтом), `findOne(…, tx)` у `reverseNonCash`. Тести: `supplier-payments.confirm.spec.ts`,
+`cash-desk.reverse.spec.ts`, `payments.reverse-noncash.spec.ts`; мутація — 3 червоних. Попутно: мок
+`getHistoryRow` у `cash-desk.spec-fixture.ts` мав переставлені аргументи (шукав рядок за id каси).
+**Статус:** [x] виправлено

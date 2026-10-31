@@ -203,6 +203,18 @@ describe('CashDeskService.reverse — рядок сторно', () => {
     expect(h.isTx(reversalCall(h).tx)).toBe(true);
   });
 
+  // Маршрут сторно — під ключем ідемпотентності: читання після коміту, що впало, зняло б
+  // резервацію, і повтор отримав би 400 «уже сторновано» замість збереженої відповіді.
+  // guards: BR-CASH-023
+  it('відповідь сторно читається в його транзакції, а не після коміту', async () => {
+    const h = makeDesk();
+    const orig = seedOperation(h);
+    const result = await reverseOp(h, orig.id as string);
+    expect(h.cash.getHistoryRow).toHaveBeenCalledTimes(1);
+    expect(h.isTx(h.cash.getHistoryRow.mock.calls[0][3])).toBe(true);
+    expect(result).toMatchObject({ reversalOfId: orig.id });
+  });
+
   // guards: BR-CASH-023
   it('автор сторно — користувач запиту, а не автор оригіналу', async () => {
     const h = makeDesk();

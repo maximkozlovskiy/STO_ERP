@@ -260,9 +260,10 @@ export class PurchaseOrdersService {
   async findOne(
     orgId: string,
     id: string,
-    opts: { withDeleted?: boolean } = {},
+    // `db` — транзакція запису: відповідь маршруту під ключем ідемпотентності читається до коміту.
+    opts: { withDeleted?: boolean; db?: Prisma.TransactionClient } = {},
   ): Promise<PurchaseOrderResponseDto> {
-    const po = await this.prisma.purchaseOrder.findFirst({
+    const po = await (opts.db ?? this.prisma).purchaseOrder.findFirst({
       where: { id, orgId, ...(opts.withDeleted === true ? {} : { deletedAt: null }) },
       include: {
         supplier: { select: { firstName: true, lastName: true, companyName: true } },
@@ -889,7 +890,7 @@ export class PurchaseOrdersService {
     const baseQty = (line: (typeof activeLines)[number]['line'], receivedQty: number) =>
       receivedQty * (coeffByLineId.get(line.id) ?? 1);
 
-    await this.prisma.$transaction(
+    return this.prisma.$transaction(
       async tx => {
         // CAS per-line (не просто stale-read!): без цього два concurrent receive() з однаковим
         // payload обидва проходять і дають ПОДВІЙНИЙ SUPPLIER_CHARGE (борг постачальнику ×2) +
@@ -1048,10 +1049,13 @@ export class PurchaseOrdersService {
         if (newStatus === PurchaseOrderStatus.RECEIVED) {
           await this.purchaseLists.onOrderClosed(tx, orgId, id);
         }
+        // Відповідь — з цієї ж транзакції (маршрут під ключем ідемпотентності): читання після
+        // коміту, що впало, зняло б резервацію ключа, і повтор ЧАСТКОВОГО прийому оприбуткував
+        // би товар удруге — CAS рядків порівнює з `receivedQty`, уже прочитаним повтором.
+        return this.findOne(orgId, id, { db: tx });
       },
       { timeout: 30_000 }, // large PO (hundreds of lines) × createMovement with batch tracking
     );
-    return this.findOne(orgId, id);
   }
 
   async remove(orgId: string, id: string, force = false): Promise<void> {
