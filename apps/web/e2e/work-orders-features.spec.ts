@@ -256,10 +256,16 @@ test.describe('Наряд — кнопка "Виставити рахунок" �
     const modal = page.locator('[role="dialog"]').first();
     await expect(modal).toBeVisible({ timeout: 15_000 });
 
-    // Status must be COMPLETED or INVOICED — button must be visible.
-    await expect(modal.locator('button:has-text("Виставити рахунок")')).toBeVisible({
-      timeout: 10_000,
-    });
+    // BR-WO-037: «Виставити рахунок» — лише поки рахунку наряду немає; є рахунок — замість неї
+    // «Друк рахунку». Перший рядок списку може мати рахунок (дані dev-бази), тож перевіряємо, що
+    // видно рівно одну з двох кнопок.
+    const issue = modal.getByRole('button', { name: 'Виставити рахунок', exact: true });
+    const print = modal.getByRole('button', { name: 'Друк рахунку' });
+    await expect(issue.or(print).first()).toBeVisible({ timeout: 10_000 });
+    expect(
+      (await issue.isVisible()) !== (await print.isVisible()),
+      '«Виставити рахунок» і «Друк рахунку» — рівно одна',
+    ).toBe(true);
 
     await page.keyboard.press('Escape');
   });
