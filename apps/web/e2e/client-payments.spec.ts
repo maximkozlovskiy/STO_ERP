@@ -87,7 +87,7 @@ async function createSentInvoice(
 }
 
 async function getInvoice(page: Page, token: string, id: string) {
-  const res = await apiCall<{ status: string; paidAmount: number }>(
+  const res = await apiCall<{ status: string; paidAmount: number; amount: number }>(
     page,
     token,
     'GET',
@@ -355,6 +355,120 @@ test.describe('Оплати клієнтів (money-flow)', () => {
 
     expect(await paymentRows(page, token, payRegisterId, paymentId)).toHaveLength(1);
     expect((await registerBalance(page, token, payRegisterId)) - before).toBeCloseTo(75, 2);
+  });
+
+  // ─── Картка рахунку: «Оплачено» = вікно оплати (рішення власника 2026-10-31) ─────────────────
+  // Рахунок створюється й виставляється в картці через інтерфейс; «▶ Оплачено» відкриває те саме
+  // вікно, що «Оплатити» у списку, — переходу PAID без грошей більше немає.
+  let cardInvoice: { id: string; number: string } | null = null;
+
+  // guards: BR-INV-026
+  test('картка рахунку: створити → «Надіслано» → «▶ Оплачено» відкриває вікно оплати, оплата в касі', async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+    await page.goto('/invoices');
+    await expect(page.locator('h1:has-text("Рахунки")')).toBeVisible({ timeout: 20_000 });
+    const token = await getToken(page);
+    const before = await registerBalance(page, token, payRegisterId);
+    const transitions: string[] = [];
+    page.on('request', r => {
+      if (r.method() === 'POST' && /\/invoices\/[^/]+\/transition$/.test(new URL(r.url()).pathname))
+        transitions.push(r.postData() ?? '');
+    });
+
+    // ── Новий рахунок у картці: клієнт, рядок, «Створити рахунок» ──────
+    await page
+      .getByRole('button', { name: /^Рахунок$/ })
+      .first()
+      .click();
+    const modal = page.getByRole('dialog').filter({ hasText: 'Новий рахунок' });
+    await expect(modal).toBeVisible({ timeout: 10_000 });
+    await modal.locator('button[aria-label="Обрати"]').first().click();
+    const picker = page
+      .getByRole('dialog')
+      .filter({ has: page.getByPlaceholder("Ім'я, телефон, компанія...") })
+      .first();
+    await picker.locator('button.w-full.text-left').first().click();
+    await expect(picker).toBeHidden({ timeout: 5_000 });
+    await modal.getByRole('button', { name: 'Додати', exact: true }).click();
+    await modal.getByPlaceholder('Опис позиції…').fill('000 E2E картка рахунку оплата');
+    await modal.getByPlaceholder('0.00').first().fill('90');
+    await modal.locator('button:has(svg.lucide-plus)').last().click();
+    const created = page.waitForResponse(
+      r => r.request().method() === 'POST' && /\/invoices$/.test(new URL(r.url()).pathname),
+    );
+    await modal.getByRole('button', { name: 'Створити рахунок' }).click();
+    const createdBody = (await (await created).json()) as { id: string; number: string };
+    cardInvoice = { id: createdBody.id, number: createdBody.number };
+    await expect(modal).toBeHidden({ timeout: 15_000 });
+
+    // ── Картка за посиланням: «▶ Надіслано», далі «▶ Оплачено» ─────────────
+    await page.goto(`/invoices?open=${cardInvoice.id}`);
+    const card = page.getByRole('dialog').filter({ hasText: cardInvoice.number });
+    await expect(card).toBeVisible({ timeout: 20_000 });
+    await card
+      .getByRole('button', { name: /Надіслано/ })
+      .first()
+      .click();
+    const payArrow = card.getByRole('button', { name: /Оплачено/ }).first();
+    await expect(payArrow).toBeVisible({ timeout: 10_000 });
+    await payArrow.click();
+
+    const payDialog = page.getByRole('dialog', {
+      name: `Реєстрація оплати по рахунку ${cardInvoice.number}`,
+    });
+    await expect(payDialog).toBeVisible({ timeout: 10_000 });
+    await payDialog.getByLabel('Метод оплати').selectOption(payMethodCode);
+    await expect(payDialog.getByLabel(/^Каса/)).toHaveValue(payRegisterId);
+    const posted = page.waitForResponse(
+      r => r.request().method() === 'POST' && /\/payments$/.test(new URL(r.url()).pathname),
+    );
+    await payDialog.getByRole('button', { name: 'Підтвердити оплату' }).click();
+    const payment = await posted;
+    expect(payment.status(), 'оплату прийнято').toBe(201);
+    const paymentId = ((await payment.json()) as { id: string }).id;
+    await expect(payDialog).toBeHidden({ timeout: 10_000 });
+    // Картка лишилась відкритою й показує новий статус.
+    await expect(card.getByText('Оплачено').first()).toBeVisible({ timeout: 10_000 });
+    await card.screenshot({ path: test.info().outputPath('invoice_card_paid.png') });
+
+    // Сума рахунку — з ПДВ за режимом організації (рядок 90 без ПДВ або з ним).
+    const inv = await getInvoice(page, token, cardInvoice.id);
+    expect(inv.status).toBe('PAID');
+    expect(inv.paidAmount).toBeCloseTo(inv.amount, 2);
+    expect(await paymentRows(page, token, payRegisterId, paymentId)).toHaveLength(1);
+    expect((await registerBalance(page, token, payRegisterId)) - before).toBeCloseTo(inv.amount, 2);
+    // Перехід лише «Надіслати» — ручного PAID картка не слала.
+    expect(transitions.map(b => JSON.parse(b).status)).toEqual(['SENT']);
+  });
+
+  // Рішення власника 2026-10-31 (етап Г3): картка рахунку на телефоні без горизонтальної прокрутки.
+  test('картка рахунку на 390 px: сторінка й картка без горизонтальної прокрутки', async ({
+    page,
+  }) => {
+    expect(cardInvoice, 'попередній тест мав створити рахунок').toBeTruthy();
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(`/invoices?open=${cardInvoice!.id}`);
+    const card = page.getByRole('dialog').filter({ hasText: cardInvoice!.number });
+    await expect(card).toBeVisible({ timeout: 20_000 });
+    await expect(card.getByText('000 E2E картка рахунку оплата')).toBeVisible({ timeout: 10_000 });
+
+    const widths = await card.evaluate(el => ({
+      doc: [document.documentElement.scrollWidth, document.documentElement.clientWidth],
+      card: [el.getBoundingClientRect().left, el.getBoundingClientRect().right],
+      vw: window.innerWidth,
+    }));
+    expect(widths.doc[0], 'сторінка без горизонтальної прокрутки').toBeLessThanOrEqual(
+      widths.doc[1]!,
+    );
+    expect(widths.card[0], 'картка в межах екрана зліва').toBeGreaterThanOrEqual(0);
+    expect(widths.card[1], 'картка в межах екрана справа').toBeLessThanOrEqual(widths.vw);
+    // Поля шапки — одним стовпцем: «Тип рахунку» під «Контрагентом».
+    const cp = await card.getByText('Контрагент', { exact: true }).first().boundingBox();
+    const type = await card.getByText('Тип рахунку', { exact: true }).first().boundingBox();
+    expect(type!.y).toBeGreaterThan(cp!.y + cp!.height);
+    await page.screenshot({ path: test.info().outputPath('invoice_card_390.png') });
   });
 
   test('вибір методу monobank_qr → футер модалки міняється на «Показати QR»', async ({ page }) => {

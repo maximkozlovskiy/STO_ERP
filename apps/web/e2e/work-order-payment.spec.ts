@@ -15,7 +15,9 @@ test.describe.configure({ mode: 'serial' });
  *   3. акт на повністю оплаченому наряді → рахунок-чернетка зі сплаченим = сума (BR-INV-020);
  *   4. оплата рахунку наряду зі сторінки «Рахунки» → «Сплачено» наряду росте (BR-PAY-021);
  *   5. скасування наряду з оплатою → «спершу сторнуйте оплату» (BR-WO-014);
- *   6. аванс з вікна наряду в касу → «Підстава» рядка каси — наряд (BR-CASH-030).
+ *   6. аванс з вікна наряду в касу → «Підстава» рядка каси — наряд (BR-CASH-030);
+ *   7. наряд «Оплачено» без акта й рахунку → «Сформувати акт» і «Виставити рахунок» (BR-WO-037);
+ *      сторінка наряду на 390 px без горизонтальної прокрутки.
  *
  * Спек створює власні дані й не покладається на вміст dev-бази: касу «000 E2E Каса оплата
  * наряду …», спосіб оплати з цією касою за замовчуванням, клієнта з гаражем і авто, категорію й
@@ -301,6 +303,81 @@ test.describe('Оплата наряду з документа наряду', ()
       'Оплачено',
     );
     await expect(page.getByRole('button', { name: 'Оплатити', exact: true })).toHaveCount(0);
+  });
+
+  // TECH-DEBT (б) №51: наряд, сплачений повністю з «Виконано», стає «Оплачено» без акта й рахунку.
+  // guards: BR-WO-037
+  test('наряд «Оплачено» без акта й рахунку → «Сформувати акт» і «Виставити рахунок» працюють', async ({
+    page,
+  }) => {
+    expect(woId, 'попередній тест мав довести наряд до «Оплачено»').toBeTruthy();
+    await page.goto('/work-orders');
+    const token = await getToken(page);
+    const wo = await getWo(page, token, woId);
+    expect(wo.status).toBe('PAID');
+
+    await openWorkOrderPage(page, wo);
+    await page.getByRole('button', { name: 'Сформувати акт' }).click();
+    await expect(page.getByText(/^Акт № /)).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('button', { name: 'Сформувати акт' })).toHaveCount(0);
+
+    await page.getByRole('button', { name: 'Виставити рахунок' }).click();
+    // Номер у секції «Рахунок» (тост «Рахунок № … створено» — інший текст).
+    await expect(page.getByText(/^Рахунок № \S+$/)).toBeVisible({ timeout: 15_000 });
+    // Рахунок є — кнопки створення більше немає; «Оновити з наряду» на «Оплачено» сервер не
+    // приймає — її теж немає.
+    await expect(page.getByRole('button', { name: 'Виставити рахунок' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Оновити з наряду' })).toHaveCount(0);
+
+    const found = await api<{ id: string } | null>(
+      page,
+      token,
+      'GET',
+      `/invoices/from-work-order/${woId}/find`,
+    );
+    expect(found.body?.id, 'рахунок наряду створено').toBeTruthy();
+    const acts = await api<{ items: Array<{ status: string }> }>(
+      page,
+      token,
+      'GET',
+      `/completion-acts?workOrderId=${woId}`,
+    );
+    expect(acts.body.items.map(a => a.status)).toEqual(['DRAFT']);
+    expect((await getWo(page, token, woId)).status).toBe('PAID');
+  });
+
+  // Рішення власника 2026-10-31 (етап Г3): сторінка наряду на телефоні — без горизонтальної прокрутки.
+  test('сторінка наряду на 390 px: без горизонтальної прокрутки, підсумки одним стовпцем', async ({
+    page,
+  }) => {
+    expect(woId, 'попередні тести мали створити наряд').toBeTruthy();
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/work-orders');
+    const wo = await getWo(page, await getToken(page), woId);
+    await openWorkOrderPage(page, wo);
+    await expect(page.getByText(/^Акт № /)).toBeVisible({ timeout: 15_000 });
+
+    const widths = await page.evaluate(() => {
+      const main = document.querySelector('main');
+      return {
+        doc: [document.documentElement.scrollWidth, document.documentElement.clientWidth],
+        main: main ? [main.scrollWidth, main.clientWidth] : [0, 0],
+      };
+    });
+    expect(widths.doc[0], 'сторінка без горизонтальної прокрутки').toBeLessThanOrEqual(
+      widths.doc[1]!,
+    );
+    expect(widths.main[0], 'область вмісту без горизонтальної прокрутки').toBeLessThanOrEqual(
+      widths.main[1]!,
+    );
+    // Підсумки — одним стовпцем: «Оплачено» під «Запчастинами», а не поруч (було три стовпці).
+    const totals = page
+      .getByTestId('wo-totals-paid')
+      .locator('xpath=ancestor::div[contains(@class,"grid")][1]');
+    const parts = await totals.getByText('Запчастини', { exact: true }).boundingBox();
+    const paid = await totals.getByText('Оплачено', { exact: true }).boundingBox();
+    expect(paid!.y, '«Оплачено» — під «Запчастинами»').toBeGreaterThan(parts!.y + parts!.height);
+    await page.screenshot({ path: test.info().outputPath('wo_390.png'), fullPage: true });
   });
 
   // guards: BR-INV-020

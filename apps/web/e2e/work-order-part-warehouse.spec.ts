@@ -14,6 +14,10 @@ test.describe.configure({ mode: 'serial' });
  * в картці наряду, вікно «+ Запчастина» на сторінці наряду. Передумови через API — склад, товар,
  * клієнт з авто. Прибирання: наряд, списання залишку (інакше склад не видалити), склад, товар,
  * авто → гараж → клієнт. Документ приходу лишається (складський слід).
+ *
+ * BR-WO-038 (рішення власника 2026-10-31): запчастина, яку додала ПОСЛУГА («Послуга» в картці
+ * наряду), отримує склад філії наряду з найбільшою вільною кількістю — тестовий склад, єдиний із
+ * залишком. Послуга — передумова через API (каталог), прибирається.
  */
 
 const uid = Date.now().toString().slice(-6);
@@ -33,6 +37,8 @@ const state: {
   vehicleId?: string;
   woId?: string;
   woNumber?: string;
+  wo2Id?: string;
+  serviceId?: string;
   receiptId?: string;
 } = {};
 
@@ -44,9 +50,14 @@ test.describe('Склад рядка товару наряду — вільна 
   test.afterAll(async ({ request }) => {
     const token = state.token;
     if (!token) return;
-    if (state.woId) {
-      const del = await apiRequest(request, token, 'DELETE', `/work-orders/${state.woId}`);
+    for (const id of [state.woId, state.wo2Id]) {
+      if (!id) continue;
+      const del = await apiRequest(request, token, 'DELETE', `/work-orders/${id}`);
       expect.soft([200, 204, 404], 'DELETE наряду').toContain(del.status);
+    }
+    if (state.serviceId) {
+      const del = await apiRequest(request, token, 'DELETE', `/services/${state.serviceId}`);
+      expect.soft(del.status, 'DELETE послуги').toBeLessThan(300);
     }
     // Прихід, що не дійшов до проведення (тест упав раніше), — чернетку видалити.
     if (state.receiptId) {
@@ -322,5 +333,74 @@ test.describe('Склад рядка товару наряду — вільна 
     );
     await partModal.screenshot({ path: test.info().outputPath('wo029_add_part.png') });
     await page.keyboard.press('Escape');
+  });
+
+  // guards: BR-WO-038
+  test('послуга з товаром: склад рядка — склад філії з найбільшим вільним залишком', async ({
+    page,
+  }) => {
+    test.setTimeout(180_000);
+    expect(state.goodId && state.warehouseId, 'перший тест мав оприбуткувати товар').toBeTruthy();
+    await page.goto('/work-orders');
+    state.token ??= await getToken(page);
+
+    const service = await api<{ id: string }>(page, 'POST', '/services', {
+      name: `000 E2E Послуга BR038 ${uid}`,
+      goods: [{ goodId: state.goodId, quantity: 1 }],
+    });
+    expect(service.status, `послуга: ${JSON.stringify(service.body)}`).toBe(201);
+    state.serviceId = service.body.id;
+
+    // ── Новий наряд через список, у філії тестового складу ───────────────
+    await page
+      .getByRole('button', { name: /^Наряд$/ })
+      .first()
+      .click();
+    const woModal = page.getByRole('dialog').filter({ hasText: 'Новий наряд' });
+    await expect(woModal).toBeVisible({ timeout: 20_000 });
+    await woModal.getByRole('combobox', { name: 'Клієнт' }).fill(CLIENT);
+    await page.getByRole('option', { name: new RegExp(CLIENT) }).click();
+    const vehicleSelect = woModal
+      .locator('label', { hasText: 'Автомобіль' })
+      .locator('..')
+      .locator('select');
+    await expect(vehicleSelect.locator('option', { hasText: PLATE })).toHaveCount(1, {
+      timeout: 10_000,
+    });
+    await vehicleSelect.selectOption({ label: `Toyota Corolla (${PLATE})` });
+    const branch = woModal.locator('label', { hasText: 'Філія' }).locator('..').locator('select');
+    if (await branch.isEnabled()) await branch.selectOption(state.branchId!);
+    await woModal.getByPlaceholder('Заміна масла, колодок...').fill('000 E2E склад з послуги');
+    await woModal.getByRole('button', { name: 'Створити наряд' }).click();
+    await expect(woModal).toBeHidden({ timeout: 20_000 });
+    const list = await api<{ items: Array<{ id: string; number: string }> }>(
+      page,
+      'GET',
+      `/work-orders?counterpartyId=${state.cpId}&limit=1&sortBy=createdAt&sortDir=desc`,
+    );
+    state.wo2Id = list.body.items[0]!.id;
+    const card = page.getByRole('dialog').filter({ hasText: list.body.items[0]!.number });
+    await expect(card).toBeVisible({ timeout: 20_000 });
+
+    // ── «Послуга» → рядок товару зі складом ─────────────────────────────
+    await card.getByRole('button', { name: 'Послуга' }).click();
+    const picker = page.getByRole('dialog', { name: 'Оберіть комплексну послугу' });
+    await picker.getByPlaceholder('Пошук послуги...').fill(`BR038 ${uid}`);
+    await picker.getByRole('button', { name: new RegExp(`BR038 ${uid}`) }).click();
+    await expect(picker).toBeHidden({ timeout: 10_000 });
+    const row = card.locator('tbody tr', { hasText: GOOD });
+    await expect(row.locator('td').nth(1)).toHaveText(WAREHOUSE, { timeout: 15_000 });
+    await row.screenshot({ path: test.info().outputPath('wo038_service_row.png') });
+
+    await card.getByRole('button', { name: 'Зберегти зміни' }).click();
+    await expect(card).toBeHidden({ timeout: 20_000 });
+    const fresh = await api<{ parts: Array<{ goodId: string; warehouseId: string }> }>(
+      page,
+      'GET',
+      `/work-orders/${state.wo2Id}`,
+    );
+    expect(fresh.body.parts).toEqual([
+      expect.objectContaining({ goodId: state.goodId, warehouseId: state.warehouseId }),
+    ]);
   });
 });
