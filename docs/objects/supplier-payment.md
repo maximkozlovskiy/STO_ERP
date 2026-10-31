@@ -183,7 +183,7 @@ cd apps/api && npx vitest run src/modules/supplier-payments/<файл>.spec.ts
 | оплата однією транзакцією, статус замовлення-підстави, `POST /pay` (BR-SUPPAY-013, 015) | `supplier-payments.pay.spec.ts`                      | 21     |
 | номер відкочується з транзакцією — жива БД (BR-SUPPAY-013)                              | `supplier-payments.pay-rollback.integration.spec.ts` | 2      |
 
-Разом: **133** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **137** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
 **Component-тест вкладки графіка:**
 `apps/web/src/app/(app)/purchase-orders/__tests__/SupplierPaymentScheduleTab.test.tsx` — 3 кейси:

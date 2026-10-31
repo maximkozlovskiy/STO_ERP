@@ -286,7 +286,7 @@ cd apps/api && npx vitest run src/modules/bank-statements/<файл>.spec.ts
 | контролер провайдерів                                                                                                | `bank-statement-providers.controller.spec.ts`              | 7      |
 | BullMQ-processor                                                                                                     | `bank-statement-pull.processor.spec.ts`                    | 24     |
 | scheduler                                                                                                            | `bank-statement-pull.scheduler.spec.ts`                    | 4      |
-| DTO-межі запитів                                                                                                     | `bank-statement.dto.spec.ts`                               | 92     |
+| DTO-межі запитів                                                                                                     | `bank-statement.dto.spec.ts`                               | 94     |
 | доступ (ролі), маршрути                                                                                              | `bank-statements.controller.spec.ts`                       | 19     |
 | HTTP-клієнт                                                                                                          | `providers/mono-statement.client.spec.ts`                  | 16     |
 | провайдер                                                                                                            | `providers/monobank-statement.provider.spec.ts`            | 26     |
@@ -301,7 +301,7 @@ cd apps/api && npx vitest run src/modules/bank-statements/<файл>.spec.ts
 виконує `where`, справжній CAS в `updateMany`, відкат записів tx-клієнта в `$transaction`; сервіс збирається
 через DI за токенами класів).
 
-Разом: **631** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **634** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
 Спільні zod-схеми рознесення при внесенні (види за напрямом, обов'язкові поля виду) —
 `packages/shared/src/schemas/forms/bank-transaction.schema.spec.ts` (поза модулем api).

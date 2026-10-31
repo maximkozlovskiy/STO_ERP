@@ -13,15 +13,17 @@ import { invoiceStatusForPaid, isInvoicePastDue } from './invoice-paid-status';
 const TODAY = new Date('2026-10-30T00:00:00.000Z');
 const YESTERDAY = new Date('2026-10-29T00:00:00.000Z');
 const TOMORROW = new Date('2026-10-31T00:00:00.000Z');
+const DUE = { учора: YESTERDAY, сьогодні: TODAY, завтра: TOMORROW, немає: null } as const;
 
 describe('isInvoicePastDue — термін оплати минув (BR-INV-025)', () => {
   // guards: BR-INV-025
+  // Назва кейсу — підпис, не Date: текст Date залежить від часового поясу машини (spec-baseline).
   it.each([
-    ['учора', YESTERDAY, true],
-    ['сьогодні — ще не прострочено', TODAY, false],
-    ['завтра', TOMORROW, false],
-    ['терміну немає', null, false],
-  ] as const)('%s → %s', (_label, dueDate, expected) => {
+    ['учора', true, YESTERDAY],
+    ['сьогодні — ще не прострочено', false, TODAY],
+    ['завтра', false, TOMORROW],
+    ['терміну немає', false, null],
+  ] as const)('%s → %s', (_label, expected, dueDate) => {
     expect(isInvoicePastDue(dueDate, TODAY)).toBe(expected);
   });
 });
@@ -30,19 +32,19 @@ describe('invoiceStatusForPaid — статус від сплаченого (BR-
   // guards: BR-INV-025
   it.each([
     // [поточний, сума, сплачено, термін, очікуваний]
-    ['SENT', 1000, 1000, YESTERDAY, 'PAID'],
-    ['OVERDUE', 1000, 1000, YESTERDAY, 'PAID'],
-    ['SENT', 1000, 400, YESTERDAY, 'OVERDUE'],
-    ['PAID', 1000, 0, YESTERDAY, 'OVERDUE'],
-    ['PARTIALLY_PAID', 1000, 600, YESTERDAY, 'OVERDUE'],
-    ['SENT', 1000, 400, TODAY, 'PARTIALLY_PAID'],
-    ['PAID', 1000, 0, TOMORROW, 'SENT'],
-    ['PAID', 1000, 600, null, 'PARTIALLY_PAID'],
-    ['OVERDUE', 1000, 0, TOMORROW, 'OVERDUE'],
+    ['SENT', 1000, 1000, 'учора', 'PAID'],
+    ['OVERDUE', 1000, 1000, 'учора', 'PAID'],
+    ['SENT', 1000, 400, 'учора', 'OVERDUE'],
+    ['PAID', 1000, 0, 'учора', 'OVERDUE'],
+    ['PARTIALLY_PAID', 1000, 600, 'учора', 'OVERDUE'],
+    ['SENT', 1000, 400, 'сьогодні', 'PARTIALLY_PAID'],
+    ['PAID', 1000, 0, 'завтра', 'SENT'],
+    ['PAID', 1000, 600, 'немає', 'PARTIALLY_PAID'],
+    ['OVERDUE', 1000, 0, 'завтра', 'OVERDUE'],
   ] as const)(
     '%s, сума %d, сплачено %d, термін %s → %s',
     (current, amount, paid, due, expected) => {
-      expect(invoiceStatusForPaid(current as InvoiceStatus, amount, paid, due, TODAY)).toBe(
+      expect(invoiceStatusForPaid(current as InvoiceStatus, amount, paid, DUE[due], TODAY)).toBe(
         expected,
       );
     },
