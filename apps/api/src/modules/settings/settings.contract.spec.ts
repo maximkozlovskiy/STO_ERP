@@ -298,6 +298,7 @@ describe('Settings — HTTP Contract', () => {
         'RECEPTIONIST',
         'MECHANIC',
         'STOREKEEPER',
+        'ACCOUNTANT',
       ]);
     });
   });

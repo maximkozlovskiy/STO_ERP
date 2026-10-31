@@ -264,8 +264,10 @@ describe('MECHANIC — читання довідників картки наря
   // ── Рішення власника 2026-10-16, друге (employee.md, «Звуження й приймальня»): приймальня —
   // звужені налаштування й ставки ПДВ; механік — мінімум полів у працівниках і договорах.
 
-  // Комірник — ті самі поля для ПДВ картки замовлення постачальнику (рішення власника 2026-10-18).
-  it.each(['RECEPTIONIST', 'STOREKEEPER'])(
+  // Комірник — ті самі поля для ПДВ картки замовлення постачальнику (рішення власника 2026-10-18);
+  // бухгалтер — для картки замовлення на перегляд (BR-PO-015, 2026-10-30).
+  // guards: BR-PO-015
+  it.each(['RECEPTIONIST', 'STOREKEEPER', 'ACCOUNTANT'])(
     'GET /settings/organisation: %s — лише поля картки (ПДВ організації)',
     async r => {
       role = r;
@@ -306,9 +308,9 @@ describe('MECHANIC — читання довідників картки наря
     ['PATCH', '/settings/organisation', { invoiceDueDays: 10 }],
     ['POST', '/settings/tax-rates', { name: 'X', rate: 7 }],
   ] as const)(
-    '%s %s → 403 для приймальні й комірника: читання не дає права змінювати',
+    '%s %s → 403 для приймальні, комірника й бухгалтера: читання не дає права змінювати',
     async (method, url, payload) => {
-      for (const r of ['RECEPTIONIST', 'STOREKEEPER']) {
+      for (const r of ['RECEPTIONIST', 'STOREKEEPER', 'ACCOUNTANT']) {
         role = r;
         const res = await app.inject({ method, url, payload });
         expect(res.statusCode, r).toBe(403);

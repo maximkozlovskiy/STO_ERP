@@ -77,6 +77,7 @@ const CARD_SETTINGS_ONLY_ROLES: ReadonlySet<string> = new Set([
   'MECHANIC',
   'RECEPTIONIST',
   'STOREKEEPER',
+  'ACCOUNTANT',
 ]);
 
 @ApiTags('Налаштування')
@@ -91,7 +92,8 @@ export class SettingsController {
   // employee.md): ПДВ, валюта, мова, перерахунок годин і синхронізація запису календаря.
   // STOREKEEPER — ті самі поля для ПДВ картки замовлення постачальнику (рішення власника 2026-10-18:
   // без них картка комірника рахувала замовлення «без ПДВ» і сипала 403 у консоль).
-  @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC', 'STOREKEEPER')
+  // ACCOUNTANT — ті самі поля: картка замовлення на перегляд (BR-PO-015, рішення власника 2026-10-30).
+  @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC', 'STOREKEEPER', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Налаштування організації' })
   @ApiResponse({
     status: 200,
