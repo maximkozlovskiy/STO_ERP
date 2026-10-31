@@ -239,7 +239,7 @@ describe('PurchaseOrdersService.receive — CAS рядків → RECEIPT → SUP
       committed = true;
       return out;
     });
-    const read = prisma.purchaseOrder.findFirst;
+    const read = prisma.purchaseOrder.findFirst as (args: unknown) => Promise<unknown>;
     prisma.purchaseOrder.findFirst = vi.fn((args: unknown) =>
       committed ? Promise.reject(new Error('читання після коміту')) : read(args),
     );

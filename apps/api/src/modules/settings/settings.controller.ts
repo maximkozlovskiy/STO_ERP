@@ -230,7 +230,10 @@ export class SettingsController {
   // ставка ПДВ картки замовлення постачальнику (2026-10-18); список без чутливих полів.
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST', 'MECHANIC', 'STOREKEEPER')
   @ApiOperation({ summary: 'Список ставок ПДВ' })
-  getTaxRates(@OrgContext() orgId: string) {
+  getTaxRates(@OrgContext() orgId: string, @CurrentUser() user: AuthenticatedUser) {
+    // `inUse` (BR-INV-027) потрібен лише вкладці НДІ, де ставку правлять OWNER/ADMIN; картки решти
+    // ролей беруть сам список — без запиту по документах на кожне відкриття.
+    if (CARD_SETTINGS_ONLY_ROLES.has(user.role)) return this.service.getTaxRates(orgId);
     return this.service.getTaxRatesWithUsage(orgId);
   }
 

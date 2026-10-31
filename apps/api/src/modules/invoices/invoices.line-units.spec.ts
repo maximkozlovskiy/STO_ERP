@@ -107,6 +107,8 @@ describe('Рахунок — одиниця рядка як у наряді (Bug
         ],
       },
       NONE,
+      // Без ПДВ кандидат один — 0 %; довідник ставок не читається.
+      [],
     );
     expect(part).toMatchObject({ goodId: GOOD, quantity: 1, unitPrice: 450, unitOfMeasureId: PAK });
   });

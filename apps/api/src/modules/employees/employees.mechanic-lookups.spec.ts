@@ -136,6 +136,8 @@ const prisma = {
         { id: 'vat-20', name: 'ПДВ 20%', rate: 20, isDefault: true, isActive: true },
       ]),
   },
+  // Застосовані ставки (BR-INV-027) — лише для OWNER/ADMIN; тут жодна не застосована.
+  $queryRaw: vi.fn().mockResolvedValue([]),
 };
 const redis = { get: vi.fn().mockResolvedValue(null), set: vi.fn().mockResolvedValue('OK') };
 // Повний рядок договору, як його віддає сервіс решті ролей.
@@ -292,14 +294,29 @@ describe('MECHANIC — читання довідників картки наря
     },
   );
 
-  it.each(['RECEPTIONIST', 'STOREKEEPER', 'ACCOUNTANT', 'ADMIN'])(
-    'GET /settings/tax-rates → 200 для %s',
+  it.each(['MECHANIC', 'RECEPTIONIST', 'STOREKEEPER', 'ACCOUNTANT'])(
+    'GET /settings/tax-rates → 200 для %s: список без inUse і без запиту по документах',
+    async r => {
+      role = r;
+      prisma.$queryRaw.mockClear();
+      const res = await get('/settings/tax-rates');
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual([
+        { id: 'vat-20', name: 'ПДВ 20%', rate: 20, isDefault: true, isActive: true },
+      ]);
+      expect(prisma.$queryRaw).not.toHaveBeenCalled();
+    },
+  );
+
+  // guards: BR-INV-027
+  it.each(['ADMIN', 'OWNER'])(
+    'GET /settings/tax-rates → 200 для %s: із позначкою inUse для вкладки НДІ',
     async r => {
       role = r;
       const res = await get('/settings/tax-rates');
       expect(res.statusCode).toBe(200);
       expect(res.json()).toEqual([
-        { id: 'vat-20', name: 'ПДВ 20%', rate: 20, isDefault: true, isActive: true },
+        { id: 'vat-20', name: 'ПДВ 20%', rate: 20, isDefault: true, isActive: true, inUse: false },
       ]);
     },
   );
