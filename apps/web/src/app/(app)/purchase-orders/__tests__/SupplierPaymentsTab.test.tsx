@@ -110,6 +110,26 @@ describe('SupplierPaymentsTab — чернетки оплат постачаль
   });
 
   // guards: BR-SUPPAY-014
+  it('проведена чернетка з каси оновлює дані каси (залишок і рядки), не лише перелік оплат', async () => {
+    mockList();
+    const qc = makeTestQueryClient();
+    const spy = vi.spyOn(qc, 'invalidateQueries');
+    render(
+      <QueryClientProvider client={qc}>
+        <SupplierPaymentsTab />
+      </QueryClientProvider>,
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Провести оплату ОПП-2026-000042' }));
+    fireEvent.click(
+      within(await screen.findByRole('dialog')).getByRole('button', { name: 'Провести' }),
+    );
+
+    await waitFor(() =>
+      expect(spy.mock.calls.some(([f]) => (f?.queryKey as unknown[])?.[0] === 'cash')).toBe(true),
+    );
+  });
+
+  // guards: BR-SUPPAY-014
   it('відмова проведення (замовлення скасовано) — текст над таблицею', async () => {
     mockList();
     apiFetchMock.mockImplementation((path: string, init: Init) => {

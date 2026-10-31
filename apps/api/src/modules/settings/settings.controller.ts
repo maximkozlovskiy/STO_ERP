@@ -99,7 +99,7 @@ export class SettingsController {
     status: 200,
     type: OrganisationSettingsResponseDto,
     description:
-      'MECHANIC, RECEPTIONIST і STOREKEEPER отримують лише поля картки (OrganisationCardSettingsDto)',
+      'MECHANIC, RECEPTIONIST, STOREKEEPER і ACCOUNTANT отримують лише поля картки (OrganisationCardSettingsDto)',
   })
   getOrganisation(
     @OrgContext() orgId: string,

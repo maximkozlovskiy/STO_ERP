@@ -103,6 +103,25 @@ describe('SupplierPaymentsService.createAndConfirm — одна транзакц
   });
 
   // guards: BR-SUPPAY-013
+  it('відповідь читається В транзакції: після коміту запитів немає (впале читання не звільнило б ключ на проведеній оплаті)', async () => {
+    let committed = false;
+    h.prisma.$transaction.mockImplementationOnce(async (fn: (tx: unknown) => Promise<unknown>) => {
+      const out = await fn(h.prisma);
+      committed = true;
+      return out;
+    });
+    h.prisma.supplierPayment.findFirst.mockImplementation(() => {
+      if (committed) throw new Error('читання після коміту');
+      return Promise.resolve(confirmedRow);
+    });
+
+    const res = await h.service.createAndConfirm(ORG, cashPayment(), USER_ID);
+
+    expect(res.id).toBe(SP_ID);
+    expect(res.status).toBe(SupplierPaymentStatus.CONFIRMED);
+  });
+
+  // guards: BR-SUPPAY-013
   it('каса відмовила (в мінус / зміна закрита) → помилка піднята; скасування й другої транзакції немає', async () => {
     const boom = new BadRequestException('Недостатньо готівки в касі');
     h.cash.createOperation.mockRejectedValueOnce(boom);

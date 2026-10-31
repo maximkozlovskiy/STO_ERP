@@ -2,7 +2,9 @@
 
 import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useQueryClient } from '@tanstack/react-query';
 import { SUPPLIER_PAYMENT_STATUS_BADGE } from '@sto/shared';
+import { invalidatePurchaseSideEffects } from '@/lib/cache-invalidation';
 import {
   useSupplierPaymentsList,
   useConfirmSupplierPayment,
@@ -59,6 +61,7 @@ export function SupplierPaymentsTab({ onOpenOrder }: Props) {
   const { data, isLoading, error } = useSupplierPaymentsList({ status, page, limit: PAGE_SIZE });
   const confirmMut = useConfirmSupplierPayment();
   const cancelMut = useCancelSupplierPayment();
+  const queryClient = useQueryClient();
   const items = data?.items ?? [];
   const totalPages = data ? Math.max(1, Math.ceil(data.total / PAGE_SIZE)) : 1;
 
@@ -94,6 +97,9 @@ export function SupplierPaymentsTab({ onOpenOrder }: Props) {
       try {
         if (kind === 'confirm') {
           await confirmMut.mutateAsync({ id: p.id, idempotencyKey: newIdempotencyKey() });
+          // Проведення чернетки з каси видає готівку: залишок і рядки каси, баланси й звіти —
+          // те саме, що після «Оплатити» у вікні оплати.
+          invalidatePurchaseSideEffects(queryClient);
         } else {
           await cancelMut.mutateAsync(p.id);
         }
@@ -112,7 +118,7 @@ export function SupplierPaymentsTab({ onOpenOrder }: Props) {
         setBusyId(null);
       }
     },
-    [confirm, confirmMut, cancelMut, features.toastEnabled, t],
+    [confirm, confirmMut, cancelMut, queryClient, features.toastEnabled, t],
   );
 
   const emptyText = status === 'DRAFT' ? t('list.emptyDrafts') : t('list.empty');

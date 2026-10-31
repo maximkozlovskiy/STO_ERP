@@ -616,15 +616,24 @@ export class SupplierPaymentsService {
       purchaseOrderId: dto.purchaseOrderId ?? null,
     };
     const plan = await this.prepareConfirm(orgId, source);
-    const id = await this.prisma.$transaction(
+    // Відповідь читається В транзакції: читання після коміту могло б упасти вже на проведеній
+    // оплаті — інтерсептор ідемпотентності тоді знімає резервацію ключа, і повтор із тим самим
+    // ключем провів би ДРУГУ оплату (BR-SUPPAY-013).
+    const sp = await this.prisma.$transaction(
       async tx => {
         const created = await this.createInTx(tx, orgId, dto, currencyId, userId);
         await this.confirmInTx(tx, orgId, created.id, source, plan, userId, cashRow);
-        return created.id;
+        const row = await tx.supplierPayment.findFirst({
+          where: { id: created.id, orgId },
+          include: SP_DETAIL_INCLUDE,
+        });
+        if (!row)
+          throw new NotFoundException(translateError('err.supplierPayment.notFound', getLocale()));
+        return row;
       },
       { timeout: TRANSACTION_TIMEOUT_MS },
     );
-    return this.findOne(orgId, id);
+    return this.toDto(sp);
   }
 
   /**

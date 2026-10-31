@@ -224,7 +224,7 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": "MECHANIC, RECEPTIONIST і STOREKEEPER отримують лише поля картки (OrganisationCardSettingsDto)",
+            "description": "MECHANIC, RECEPTIONIST, STOREKEEPER і ACCOUNTANT отримують лише поля картки (OrganisationCardSettingsDto)",
             "content": {
               "application/json": {
                 "schema": {

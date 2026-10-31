@@ -11415,7 +11415,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description MECHANIC, RECEPTIONIST і STOREKEEPER отримують лише поля картки (OrganisationCardSettingsDto) */
+            /** @description MECHANIC, RECEPTIONIST, STOREKEEPER і ACCOUNTANT отримують лише поля картки (OrganisationCardSettingsDto) */
             200: {
                 headers: {
                     [name: string]: unknown;
