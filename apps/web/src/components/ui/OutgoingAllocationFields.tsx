@@ -615,7 +615,8 @@ export function OutgoingAllocationFields({
         title={t('reconcile.pickPurchaseOrder')}
         fetchItems={q =>
           apiFetch<{ items: PurchaseOrderRef[] }>(
-            `/purchase-orders?q=${encodeURIComponent(q)}&supplierId=${counterpartyId}&limit=30`,
+            // BR-SUPPAY-015: підстава оплати — лише «Замовлено» / «Частково» / «Отримано».
+            `/purchase-orders?q=${encodeURIComponent(q)}&supplierId=${counterpartyId}&payable=true&limit=30`,
           ).then(d => d.items.map(po => ({ id: po.id, primary: po.number })))
         }
       />

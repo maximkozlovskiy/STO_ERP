@@ -362,6 +362,8 @@ describe('CashOperationModal', () => {
       await pick(COUNTERPARTY, 'ТОВ Запчастини');
       await pick('Замовлення-підстава (необовʼязково)', 'ЗП-000003');
       expect(requested('/purchase-orders?').at(-1)).toContain(`supplierId=${SUPPLIER}`);
+      // guards: BR-SUPPAY-015 — підстава оплати лише зі статусів, що приймають оплату.
+      expect(requested('/purchase-orders?').at(-1)).toContain('payable=true');
 
       submit('OUT');
       await waitFor(() => expect(createCalls()).toHaveLength(1));

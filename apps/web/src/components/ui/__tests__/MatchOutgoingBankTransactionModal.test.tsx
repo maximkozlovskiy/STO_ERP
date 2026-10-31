@@ -409,7 +409,13 @@ describe('MatchOutgoingBankTransactionModal — SUPPLIER_PAYMENT', () => {
     await pickVia('Пошук постачальника…', 'Оберіть постачальника');
     await pickVia("Прив'язати замовлення…", 'Оберіть замовлення постачальнику');
     expect(
-      paths().some(p => p.startsWith('/purchase-orders?') && p.includes(`supplierId=${SUPPLIER}`)),
+      paths().some(
+        p =>
+          p.startsWith('/purchase-orders?') &&
+          p.includes(`supplierId=${SUPPLIER}`) &&
+          // guards: BR-SUPPAY-015
+          p.includes('payable=true'),
+      ),
     ).toBe(true);
     submit();
     await screen.findByRole('note');

@@ -294,11 +294,15 @@ export function CashOperationModal({
             d.items.map(w => ({ id: w.id, primary: w.number, secondary: woStatusLabel(w.status) })),
           )
         : apiFetch<{ items: DocumentRow[] }>(
-            `/purchase-orders?q=${encodeURIComponent(q)}&supplierId=${counterpartyId}&limit=30`,
+            // BR-SUPPAY-015: підстава ОПЛАТИ — лише замовлення, що приймають оплату; повернення від
+            // постачальника може посилатися на будь-яке його замовлення.
+            `/purchase-orders?q=${encodeURIComponent(q)}&supplierId=${counterpartyId}${
+              reason === 'SUPPLIER_PAYMENT' ? '&payable=true' : ''
+            }&limit=30`,
           ).then(d =>
             d.items.map(p => ({ id: p.id, primary: p.number, secondary: poStatusLabel(p.status) })),
           ),
-    [baseDocument, counterpartyId],
+    [baseDocument, counterpartyId, reason],
   );
 
   return (
