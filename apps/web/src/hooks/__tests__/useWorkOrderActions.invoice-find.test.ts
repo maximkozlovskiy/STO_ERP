@@ -80,4 +80,25 @@ describe('useWorkOrderActions — «Виставити рахунок» і по�
     expect(result.current.canPrintInvoice).toBe(true);
     expect(result.current.canInvoice).toBe(false);
   });
+
+  // Bug #1033: два кліки в одному такті — два переходи «Виконано» → «Виставлено» (другий — 400 і тост).
+  // Mutation-verify: без `invoiceBusyRef` → два POST /transition.
+  it('«Виставити рахунок» двічі в одному такті — один перехід і один POST рахунку', async () => {
+    apiFetchMock.mockImplementation((raw: unknown) => {
+      const url = String(raw);
+      if (url.endsWith('/find')) return Promise.resolve(null);
+      if (url.endsWith('/transition')) return Promise.resolve({ status: 'INVOICED' });
+      if (url === '/invoices/from-work-order/wo-1')
+        return Promise.resolve({ id: 'inv-1', number: 'РАХ-1' });
+      return Promise.resolve(null);
+    });
+    const { result } = setup();
+    await waitFor(() => expect(result.current.canInvoice).toBe(true));
+    await act(async () => {
+      await Promise.all([result.current.handleInvoice(), result.current.handleInvoice()]);
+    });
+    const urls = apiFetchMock.mock.calls.map(c => String(c[0]));
+    expect(urls.filter(u => u.endsWith('/transition'))).toHaveLength(1);
+    expect(urls.filter(u => u === '/invoices/from-work-order/wo-1')).toHaveLength(1);
+  });
 });

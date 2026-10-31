@@ -98,6 +98,9 @@ export function useWorkOrderActions({
   // відповідь «рахунку немає» (прочитана до коміту POST) затирала б щойно створений рахунок —
   // «Друк рахунку» зникав, а «Виставити рахунок» з'являвся знову.
   const findSeqRef = useRef(0);
+  // Bug #1033: синхронний гейт «Виставити рахунок» / «Оновити з наряду» — два кліки в одному такті
+  // слали два переходи в «Виставлено» (другий — 400 і тост помилки) ще до перерендеру з `disabled`.
+  const invoiceBusyRef = useRef(false);
   const createdInSeqRef = useRef(-1);
 
   const canShare = isEditMode && WO_SHAREABLE_STATUSES.includes(currentStatus);
@@ -361,7 +364,8 @@ export function useWorkOrderActions({
   };
 
   const handleInvoice = async () => {
-    if (!workOrderId) return;
+    if (!workOrderId || invoiceBusyRef.current) return;
+    invoiceBusyRef.current = true;
     setInvoiceLoading(true);
     try {
       if (currentStatus === 'COMPLETED') {
@@ -400,12 +404,14 @@ export function useWorkOrderActions({
         else setError(msg || t('invoice.createError'));
       }
     } finally {
+      invoiceBusyRef.current = false;
       setInvoiceLoading(false);
     }
   };
 
   const handleInvoiceRefresh = async () => {
-    if (!workOrderId) return;
+    if (!workOrderId || invoiceBusyRef.current) return;
+    invoiceBusyRef.current = true;
     setInvoiceConflict(false);
     setInvoiceLoading(true);
     try {
@@ -427,6 +433,7 @@ export function useWorkOrderActions({
       if (features.toastEnabled) toast.error(msg);
       else setError(msg);
     } finally {
+      invoiceBusyRef.current = false;
       setInvoiceLoading(false);
     }
   };

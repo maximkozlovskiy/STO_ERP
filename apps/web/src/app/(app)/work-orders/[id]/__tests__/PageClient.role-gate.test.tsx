@@ -17,7 +17,7 @@
 //   - `{!isDeleted && <CommentsSection …/>}` → без умови     → «видалений наряд: коментарі» падає;
 //   - гейти навпаки (запит лише для «чужих» ролей)           → кейси ADMIN падають.
 
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { vi, it, expect, describe, beforeEach } from 'vitest';
 
@@ -294,5 +294,36 @@ describe('сторінка наряду — «Сформувати акт» за
     await woShown();
     await waitFor(() => expect(requested('/completion-acts')).toBe(true));
     expect(screen.queryByRole('button', { name: 'Сформувати акт' })).toBeNull();
+  });
+});
+
+// Bug #1033: два кліки в одному такті (до перерендеру з `disabled`) слали два POST акта — другий
+// («акт уже існує») лишав червону смугу поруч зі щойно створеним актом.
+// Mutation-verify: без `actBusyRef` у generateAct → два POST.
+describe('сторінка наряду — «Сформувати акт» подвійним кліком', () => {
+  it('два кліки в одному такті — один запит, без помилки', async () => {
+    wo = workOrder({ status: 'PAID' });
+    const base = apiFetchMock.getMockImplementation()!;
+    let release: (v: unknown) => void = () => {};
+    apiFetchMock.mockImplementation((path: string, ...rest: unknown[]) =>
+      path === `/completion-acts/from-work-order/${WO_ID}`
+        ? new Promise(resolve => {
+            release = resolve;
+          })
+        : base(path, ...rest),
+    );
+    renderPage();
+    await woShown();
+    const btn = await screen.findByRole('button', { name: 'Сформувати акт' });
+    act(() => {
+      btn.click();
+      btn.click();
+    });
+    await act(async () => {
+      release({ id: 'act-1', number: 'АВР-1', status: 'DRAFT', signedAt: null });
+      await Promise.resolve();
+    });
+    expect(paths().filter(p => p === `/completion-acts/from-work-order/${WO_ID}`)).toHaveLength(1);
+    expect(await screen.findByText('Акт № АВР-1')).toBeInTheDocument();
   });
 });

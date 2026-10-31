@@ -10,7 +10,7 @@
 // (тобто apiFetch завершився, або null=немає). «Виставити рахунок» — лише в статусах, де сервер
 // рахунок приймає (WO_INVOICE_CREATABLE_STATUSES, разом з «Оплачено», BR-WO-037).
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useRouter } from 'next/navigation';
 import {
@@ -98,6 +98,9 @@ export function InvoiceSection({
   // Помилка дії секції, коли тости вимкнено: без цього відмова (вікно друку закрилось, рахунок не
   // створено) минала б без жодного сліду на екрані.
   const [error, setError] = useState('');
+  // Bug #1033: синхронний гейт «Виставити рахунок» / «Оновити з наряду» — другий клік у тому ж такті
+  // слав другий запит, і «рахунок уже існує» з'являлось поруч зі щойно створеним рахунком.
+  const busyRef = useRef(false);
   const reportError = (msg: string) => {
     if (features.toastEnabled) toast.error(msg);
     else setError(msg);
@@ -116,6 +119,8 @@ export function InvoiceSection({
   const canRefresh = !readOnly && WO_INVOICEABLE_STATUSES.includes(workOrderStatus);
 
   const createInvoice = async () => {
+    if (busyRef.current) return;
+    busyRef.current = true;
     setError('');
     setCreatingInvoice(true);
     try {
@@ -128,11 +133,14 @@ export function InvoiceSection({
       const msg = e instanceof Error ? e.message : t('invoice.createError');
       reportError(msg);
     } finally {
+      busyRef.current = false;
       setCreatingInvoice(false);
     }
   };
 
   const refreshInvoice = async () => {
+    if (busyRef.current) return;
+    busyRef.current = true;
     setError('');
     setRefreshingInvoice(true);
     try {
@@ -146,6 +154,7 @@ export function InvoiceSection({
       const msg = e instanceof Error ? e.message : t('invoice.refreshError');
       reportError(msg);
     } finally {
+      busyRef.current = false;
       setRefreshingInvoice(false);
     }
   };

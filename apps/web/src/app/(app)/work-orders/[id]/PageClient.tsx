@@ -496,7 +496,13 @@ export default function WorkOrderCardPage() {
     }
   };
 
+  // Bug #1033: синхронний гейт дій з актом — два кліки в одному такті (до перерендеру з `disabled`)
+  // слали два запити, і другий («акт уже існує») лишав червону смугу поруч зі щойно створеним актом.
+  const actBusyRef = useRef(false);
+
   const generateAct = async () => {
+    if (actBusyRef.current) return;
+    actBusyRef.current = true;
     setGeneratingAct(true);
     setError('');
     try {
@@ -507,6 +513,7 @@ export default function WorkOrderCardPage() {
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : t('detail.act.generateError'));
     } finally {
+      actBusyRef.current = false;
       setGeneratingAct(false);
     }
   };
@@ -600,6 +607,8 @@ export default function WorkOrderCardPage() {
   };
 
   const signAct = async (actId: string) => {
+    if (actBusyRef.current) return;
+    actBusyRef.current = true;
     setSigningAct(true);
     setError('');
     try {
@@ -614,6 +623,7 @@ export default function WorkOrderCardPage() {
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : t('detail.act.signError'));
     } finally {
+      actBusyRef.current = false;
       setSigningAct(false);
     }
   };

@@ -8,7 +8,7 @@
 //                    кнопка "Оновити з наряду", INVOICE_STATUS_LABELS lookup,
 //                    PDF download wire, empty state, повний shape state.
 
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi, it, expect, describe, beforeAll, beforeEach, afterAll } from 'vitest';
 
@@ -527,5 +527,39 @@ describe('InvoiceSection — «Друк рахунку»', () => {
       />,
     );
     expect(screen.getByRole('button', { name: 'Друк рахунку' })).toBeInTheDocument();
+  });
+});
+
+// Bug #1033: два кліки в одному такті слали два POST — другий («рахунок уже існує») давав тост
+// помилки поруч зі щойно створеним рахунком. Mutation-verify: без `busyRef` → два POST.
+describe('InvoiceSection — подвійний клік', () => {
+  it('«Виставити рахунок» двічі в одному такті — один POST', async () => {
+    let release: (v: unknown) => void = () => {};
+    apiFetchMock.mockImplementation(
+      () =>
+        new Promise(resolve => {
+          release = resolve;
+        }),
+    );
+    render(
+      <InvoiceSection
+        workOrderId={WO_ID}
+        workOrderStatus="PAID"
+        invoiceRef={null}
+        onChange={vi.fn()}
+      />,
+    );
+    const btn = screen.getByRole('button', { name: 'Виставити рахунок' });
+    act(() => {
+      btn.click();
+      btn.click();
+    });
+    await act(async () => {
+      release({ id: INV_ID, number: 'INV-1', status: 'DRAFT', amount: 10, documentDate: null });
+      await Promise.resolve();
+    });
+    expect(
+      apiFetchMock.mock.calls.filter(c => c[0] === `/invoices/from-work-order/${WO_ID}`),
+    ).toHaveLength(1);
   });
 });
