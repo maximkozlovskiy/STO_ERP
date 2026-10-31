@@ -326,7 +326,9 @@ describe('CalendarSlotModal — поле «Механік» (BR-CAL-012)', () =>
     await waitFor(() => expect(employeesCalls()).toHaveLength(2));
     expect(new URLSearchParams(employeesCalls()[1].split('?')[1]).get('liftId')).toBe(L1);
     await waitFor(() => expect(optionTexts()).toEqual(['— без механіка —', 'Шевчук Олена']));
-    expect(employeeId()).toBe('');
+    // Скидання значення — наступний рендер після нового переліку: у повному прогоні під навантаженням
+    // перевірка одразу після переліку бачила ще Коваля (2026-10-31).
+    await waitFor(() => expect(employeeId()).toBe(''));
   });
 
   // guards: BR-CAL-012
