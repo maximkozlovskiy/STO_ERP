@@ -261,3 +261,17 @@ failed-задачу, нова не ставилась, замовлення ви
 **Grep:** `grep -n "apiUrl: cfg.apiUrl ??" apps/api/src/modules/payments/provider-config.service.ts`
 **Фікс:** legacy-ключ лише для своєї адреси: `if (cfg.apiUrl && !sameApiUrl(cfg.apiUrl, legacy.apiUrl)) return null`.
 **Severity:** CRITICAL — обхід security-фіксу, write-only секрет виноситься без знання ключа.
+
+### 2026-10-31 — Читання відповіді після коміту під ключем ідемпотентності — §2
+
+**Сигнал:** `SupplierPaymentsService.createAndConfirm` (`POST /supplier-payments/pay`, Г2) проводив оплату в
+транзакції, а відповідь брав `this.findOne()` уже після коміту. Збій цього читання = виняток обробника →
+`IdempotencyInterceptor` знімає резервацію ключа → повтор вікна «Оплатити» з тим самим ключем створює й
+проводить другу оплату (гроші з каси двічі).
+**Grep:** `grep -rn -B2 -A12 "RequireIdempotencyKey()" apps/api/src/modules --include="*.controller.ts"` →
+у методі сервісу після `await this.prisma.$transaction(` немає `this.findOne(`.
+**Фікс:** читати рядок із `include` усередині тієї ж транзакції й віддавати `toDto` (тест
+`supplier-payments.pay.spec.ts` «відповідь читається В транзакції», доведено мутацією).
+**Severity:** IMPORTANT. Не виправлено (той самий клас, ширше за Г2): `POST /cash-registers/:id/operations`
+читає рядок каси `readRowOf` ПІСЛЯ коміту оплати (клієнта й постачальнику) — збій читання звільняє ключ, і
+повтор проведе другу оплату. `confirm` чернетки безпечний: повтор упирається в CAS статусу (400).

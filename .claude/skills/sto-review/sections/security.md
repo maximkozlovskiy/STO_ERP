@@ -161,5 +161,11 @@ grep -n "SentryProvider" apps/web/src/app/layout.tsx apps/web/src/app/\(setup\)/
 - [ ] **Блок із кнопками дій, вставлений у спільну картку → ролі кнопок звірено з УСІМА сторінками,
       що відкривають картку**, а не з коментарем «картка лише для адміна»: `canManage` хардкодом
       `true` у картці, яку відкриває ширша роль, = кнопки з 403 (`journal/security.md`, 2026-10-30)
+- [ ] **Грошовий маршрут під `@RequireIdempotencyKey()` не читає відповідь ПІСЛЯ коміту.** Обробник
+      кинув → інтерсептор знімає резервацію ключа; якщо кинуло читання вже проведеного документа
+      (`return this.findOne(...)` після `$transaction`), повтор із тим самим ключем проведе ДРУГИЙ.
+      Відповідь — з транзакції. Grep: `grep -rn -B2 -A12 "RequireIdempotencyKey()" apps/api/src/modules
+    --include="*.controller.ts"` → метод сервісу: після `await this.prisma.$transaction(` не має
+      бути `this.findOne(` (`journal/security.md`, 2026-10-31)
 
 ---
