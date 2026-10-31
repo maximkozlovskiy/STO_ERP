@@ -949,6 +949,13 @@ export class SupplierPaymentsService {
           documentId: id,
           createdBy: userId,
           ...cashRow,
+          // BR-CASH-033: оплата за замовленням (вікно «Оплатити» картки, чернетка) — підстава
+          // рядка каси — саме замовлення; підстава, задана карткою касової операції, має перевагу.
+          ...(!cashRow?.baseDocumentId &&
+            pre.purchaseOrderId && {
+              baseDocumentType: 'PurchaseOrder',
+              baseDocumentId: pre.purchaseOrderId,
+            }),
         },
         tx,
       );

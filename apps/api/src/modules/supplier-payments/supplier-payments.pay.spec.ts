@@ -180,6 +180,27 @@ describe('SupplierPaymentsService.createAndConfirm — одна транзакц
     expect([...cas.where.status.in].sort()).toEqual(['ORDERED', 'PARTIAL', 'RECEIVED']);
     expect(cas.data.paidAmount).toBe(300);
   });
+
+  // Оплата з картки замовлення: у журналі каси видно, за яке замовлення видано гроші, і бухгалтер
+  // відкриває його звідти; підстава, обрана в картці касової операції, має перевагу.
+  // guards: BR-CASH-033
+  it('оплата за замовленням → підстава рядка каси — замовлення; підстава з каси має перевагу', async () => {
+    orderIs('ORDERED');
+    await h.service.createAndConfirm(ORG, cashPayment({ purchaseOrderId: PO_ID }), USER_ID);
+    expect(h.cash.createOperation.mock.calls[0][1]).toMatchObject({
+      baseDocumentType: 'PurchaseOrder',
+      baseDocumentId: PO_ID,
+    });
+
+    const OTHER_PO = '66666666-6666-4666-8666-666666666666';
+    await h.service.createAndConfirm(ORG, cashPayment({ purchaseOrderId: PO_ID }), USER_ID, {
+      expenseCategoryId: null,
+      baseDocumentType: 'PurchaseOrder',
+      baseDocumentId: OTHER_PO,
+      notes: null,
+    });
+    expect(h.cash.createOperation.mock.calls[1][1]).toMatchObject({ baseDocumentId: OTHER_PO });
+  });
 });
 
 describe('Підстава оплати постачальнику — статус замовлення (BR-SUPPAY-015)', () => {
