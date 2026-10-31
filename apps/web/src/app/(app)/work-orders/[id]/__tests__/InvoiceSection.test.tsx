@@ -190,6 +190,59 @@ describe('InvoiceSection — empty state (invoiceRef=null)', () => {
   });
 });
 
+// TECH-DEBT (б) №51: «Виставити рахунок» — у статусах, де сервер рахунок приймає
+// (WO_INVOICE_CREATABLE_STATUSES); «Оновити з наряду» — де приймає refresh (WO_INVOICEABLE_STATUSES).
+// Mutation-verify: гейт кнопки створення на WO_INVOICEABLE_STATUSES → червоніє PAID; без гейта
+// статусу → червоніє ARCHIVED.
+describe('InvoiceSection — статуси наряду для дій (BR-WO-037)', () => {
+  // guards: BR-WO-037
+  it.each(['COMPLETED', 'INVOICED', 'PAID'])(
+    'наряд %s без рахунку → «Виставити рахунок» є',
+    status => {
+      render(
+        <InvoiceSection
+          workOrderId={WO_ID}
+          workOrderStatus={status}
+          invoiceRef={null}
+          onChange={vi.fn()}
+        />,
+      );
+      expect(screen.getByRole('button', { name: 'Виставити рахунок' })).toBeInTheDocument();
+    },
+  );
+
+  // guards: BR-WO-037
+  it('наряд «Архів» без рахунку → «Виставити рахунок» сховано (сервер відхиляє), порожній стан є', () => {
+    render(
+      <InvoiceSection
+        workOrderId={WO_ID}
+        workOrderStatus="ARCHIVED"
+        invoiceRef={null}
+        onChange={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('Рахунок не виставлено')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Виставити рахунок' })).not.toBeInTheDocument();
+  });
+
+  // guards: BR-WO-037
+  it.each(['PAID', 'ARCHIVED'])(
+    'наряд %s з чернеткою рахунку → «Оновити з наряду» сховано (refresh лише «Виконано» / «Виставлено»)',
+    status => {
+      render(
+        <InvoiceSection
+          workOrderId={WO_ID}
+          workOrderStatus={status}
+          invoiceRef={draftInvoice}
+          onChange={vi.fn()}
+        />,
+      );
+      expect(screen.queryByRole('button', { name: 'Оновити з наряду' })).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'PDF рахунку' })).toBeInTheDocument();
+    },
+  );
+});
+
 describe('InvoiceSection — DRAFT invoice present', () => {
   it('показує номер, badge "Чернетка", суму, дату і кнопку "Оновити з наряду"', () => {
     render(

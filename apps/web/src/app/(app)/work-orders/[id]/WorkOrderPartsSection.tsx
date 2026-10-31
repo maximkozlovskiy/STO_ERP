@@ -110,9 +110,9 @@ export function WorkOrderPartsSection({
   return (
     <>
       <div className="bg-surface rounded-xl border border-border p-5">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
           <h2 className="font-semibold text-foreground">{t('parts.title')}</h2>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             {status && (
               <SendToListButton
                 workOrderId={woId}
@@ -150,9 +150,9 @@ export function WorkOrderPartsSection({
         ) : (
           <div className="divide-y divide-border border border-border rounded-lg overflow-hidden">
             {parts.map(p => (
-              <div key={p.id} className="flex items-center justify-between px-4 py-3">
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-foreground">{p.goodName}</p>
+              <div key={p.id} className="flex items-center justify-between gap-2 px-4 py-3">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-foreground wrap-anywhere">{p.goodName}</p>
                   {(p.goodInternalCode || p.goodSku || p.goodBrandName) && (
                     <p className="text-[11px] text-muted-foreground">
                       {[p.goodInternalCode, p.goodSku, p.goodBrandName].filter(Boolean).join(' · ')}
@@ -169,7 +169,7 @@ export function WorkOrderPartsSection({
                     />
                   )}
                 </div>
-                <div className="text-right mr-3">
+                <div className="text-right mr-3 shrink-0 tabular-nums whitespace-nowrap">
                   <p className="text-sm font-medium text-foreground">{fmtMoney(p.amount)} ₴</p>
                 </div>
                 {canEdit && (

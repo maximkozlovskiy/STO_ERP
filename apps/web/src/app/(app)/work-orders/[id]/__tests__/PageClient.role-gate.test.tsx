@@ -262,3 +262,37 @@ describe('сторінка наряду — «Зберегти як послуг
     expect(screen.queryByRole('button', { name: 'Зберегти як послугу' })).toBeNull();
   });
 });
+
+// TECH-DEBT (б) №51: наряд, сплачений до «Виставлено», стає «Оплачено» без акта — «Сформувати акт»
+// для нього є (ті самі статуси, що приймає `POST /completion-acts/from-work-order`).
+// Mutation-verify: гейт на WO_INVOICEABLE_STATUSES → червоніє PAID; без гейта → ARCHIVED.
+describe('сторінка наряду — «Сформувати акт» за статусом (BR-WO-037)', () => {
+  // guards: BR-WO-037
+  it.each(['COMPLETED', 'INVOICED', 'PAID'])('%s без акта — кнопка є', async status => {
+    wo = workOrder({ status });
+    renderPage();
+    await woShown();
+    expect(await screen.findByRole('button', { name: 'Сформувати акт' })).toBeEnabled();
+  });
+
+  // Бухгалтер акт лише читає: `POST /completion-acts/from-work-order` йому — 403.
+  // guards: BR-WO-037
+  it('ACCOUNTANT: «Оплачено» без акта — кнопки немає (сервер не дозволяє)', async () => {
+    role = 'ACCOUNTANT';
+    wo = workOrder({ status: 'PAID' });
+    renderPage();
+    await woShown();
+    await waitFor(() => expect(requested('/completion-acts')).toBe(true));
+    expect(await screen.findByText('Акт виконаних робіт')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Сформувати акт' })).toBeNull();
+  });
+
+  // guards: BR-WO-037
+  it.each(['IN_PROGRESS', 'ARCHIVED'])('%s без акта — кнопки немає', async status => {
+    wo = workOrder({ status });
+    renderPage();
+    await woShown();
+    await waitFor(() => expect(requested('/completion-acts')).toBe(true));
+    expect(screen.queryByRole('button', { name: 'Сформувати акт' })).toBeNull();
+  });
+});

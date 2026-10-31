@@ -248,6 +248,64 @@ describe('CreateWorkOrderModal — «Друк рахунку» з наряду',
   });
 });
 
+// TECH-DEBT (б) №51: «Виставити рахунок» у картці — у статусах, де сервер рахунок приймає (разом з
+// «Оплачено»), і лише коли рахунку в наряду ще немає (`/find`). Mutation-verify: гейт на
+// WO_INVOICEABLE_STATUSES → червоніє PAID; прибрати `!invoiceForPrint` → червоніє «рахунок є»;
+// прибрати `invoiceChecked` → червоніє «до відповіді /find».
+describe('CreateWorkOrderModal — «Виставити рахунок» (BR-WO-037)', () => {
+  beforeEach(() => {
+    apiFetchMock.mockReset();
+    apiBlobFetchMock.mockReset();
+    role = 'OWNER';
+  });
+
+  // guards: BR-WO-037
+  it.each(['COMPLETED', 'INVOICED', 'PAID'])('%s, рахунку немає → кнопка є', async status => {
+    mockApi(status, { invoice: null });
+    await open();
+
+    expect(await screen.findByRole('button', { name: 'Виставити рахунок' })).toBeInTheDocument();
+  });
+
+  // guards: BR-WO-037
+  it.each(['COMPLETED', 'PAID'])('%s, рахунок уже є → кнопки немає', async status => {
+    mockApi(status);
+    await open();
+
+    await screen.findByRole('button', { name: /Друк рахунку/ });
+    expect(button('Виставити рахунок')).not.toBeInTheDocument();
+  });
+
+  // guards: BR-WO-037
+  it('до відповіді /find кнопки немає (не блимає на наряді з рахунком)', async () => {
+    let release: (v: unknown) => void = () => {};
+    mockApi('PAID');
+    const base = apiFetchMock.getMockImplementation()!;
+    apiFetchMock.mockImplementation((path: string) =>
+      path === '/invoices/from-work-order/wo-1/find'
+        ? new Promise(r => {
+            release = r;
+          })
+        : base(path),
+    );
+    await open();
+
+    await waitFor(() => expect(findCalls()).toHaveLength(1));
+    expect(button('Виставити рахунок')).not.toBeInTheDocument();
+    release(null);
+    expect(await screen.findByRole('button', { name: 'Виставити рахунок' })).toBeInTheDocument();
+  });
+
+  // guards: BR-WO-037
+  it('«Архів» без рахунку → кнопки немає (сервер відхиляє)', async () => {
+    mockApi('ARCHIVED', { invoice: null });
+    await open();
+
+    await waitFor(() => expect(findCalls()).toHaveLength(1));
+    expect(button('Виставити рахунок')).not.toBeInTheDocument();
+  });
+});
+
 describe('CreateWorkOrderModal — «Друк наряду»: вікно до запиту, закриття при помилці', () => {
   beforeEach(() => {
     apiFetchMock.mockReset();

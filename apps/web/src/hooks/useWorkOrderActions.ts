@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   WO_SHAREABLE_STATUSES,
-  WO_INVOICEABLE_STATUSES,
+  WO_INVOICE_CREATABLE_STATUSES,
   WO_INVOICE_VISIBLE_STATUSES,
 } from '@sto/shared';
 import type { ApiSchema } from '@sto/shared';
@@ -90,18 +90,30 @@ export function useWorkOrderActions({
   const [invoiceForPrint, setInvoiceForPrint] = useState<{ id: string; number: string } | null>(
     null,
   );
+  // Відповідь `/find` уже є (рахунок знайдено чи ні): до неї «Виставити рахунок» не показується —
+  // інакше кнопка блимала б на наряді, що вже має рахунок.
+  const [invoiceChecked, setInvoiceChecked] = useState(false);
 
   const canShare = isEditMode && WO_SHAREABLE_STATUSES.includes(currentStatus);
-  const canInvoice = isEditMode && WO_INVOICEABLE_STATUSES.includes(currentStatus);
   // BR-WO-013: наряд-замовлення друкується від «Виконано»; до того — кошторис (canShare).
   const canPrintOrder =
     isEditMode && !viewOnly && WO_INVOICE_VISIBLE_STATUSES.includes(currentStatus);
   const mayPrintInvoice = !!role && INVOICE_PRINT_ROLES.includes(role);
   const canPrintInvoice = canPrintOrder && mayPrintInvoice && !!invoiceForPrint;
+  // BR-WO-037: «Виставити рахунок» — у статусах, де сервер рахунок приймає (разом з «Оплачено»),
+  // ролям, яким дозволено `POST /invoices/from-work-order` (ті самі, що друкують рахунок), і лише
+  // коли рахунку в наряду ще немає.
+  const canInvoice =
+    isEditMode &&
+    WO_INVOICE_CREATABLE_STATUSES.includes(currentStatus) &&
+    mayPrintInvoice &&
+    invoiceChecked &&
+    !invoiceForPrint;
 
   // Рахунок наряду підтягується, коли наряд дійшов до «Виконано» і роль може його друкувати.
   // Повторно — при зміні статусу (рахунок міг з'явитись/скасуватись в іншому місці).
   useEffect(() => {
+    setInvoiceChecked(false);
     if (!workOrderId || !canPrintOrder || !mayPrintInvoice) {
       setInvoiceForPrint(null);
       return;
@@ -109,10 +121,16 @@ export function useWorkOrderActions({
     let cancelled = false;
     apiFetch<{ id: string; number: string } | null>(`/invoices/from-work-order/${workOrderId}/find`)
       .then(inv => {
-        if (!cancelled) setInvoiceForPrint(inv ? { id: inv.id, number: inv.number } : null);
+        if (cancelled) return;
+        setInvoiceForPrint(inv ? { id: inv.id, number: inv.number } : null);
+        setInvoiceChecked(true);
       })
       .catch(() => {
-        if (!cancelled) setInvoiceForPrint(null);
+        // Невідомо, чи є рахунок: кнопку показуємо — повторне створення сервер відхилить
+        // («вже існує»), і картка запропонує відкрити чи оновити наявний.
+        if (cancelled) return;
+        setInvoiceForPrint(null);
+        setInvoiceChecked(true);
       });
     return () => {
       cancelled = true;

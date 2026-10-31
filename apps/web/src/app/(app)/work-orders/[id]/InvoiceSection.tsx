@@ -6,8 +6,9 @@
 // Mirror-shape backend findByWorkOrder() з apps/api/src/modules/invoices/invoices.service.ts:
 //   { id, number, status: InvoiceStatus, amount: number, documentDate: string | null }
 //
-// Гейтінг: рендериться ТІЛЬКИ для статусів з WO_INVOICEABLE_STATUSES (COMPLETED, INVOICED)
-// + invoiceRef !== undefined (тобто apiFetch завершився, або null=немає).
+// Гейтінг: рендериться для статусів з WO_INVOICE_VISIBLE_STATUSES + invoiceRef !== undefined
+// (тобто apiFetch завершився, або null=немає). «Виставити рахунок» — лише в статусах, де сервер
+// рахунок приймає (WO_INVOICE_CREATABLE_STATUSES, разом з «Оплачено», BR-WO-037).
 
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -16,6 +17,7 @@ import {
   INVOICE_STATUS_BADGE,
   INVOICE_STATUS_DESCRIPTIONS,
   WO_INVOICEABLE_STATUSES,
+  WO_INVOICE_CREATABLE_STATUSES,
   WO_INVOICE_VISIBLE_STATUSES,
   type ApiSchema,
 } from '@sto/shared';
@@ -104,11 +106,14 @@ export function InvoiceSection({
   // Гейт: показуємо секцію якщо статус входить до WO_INVOICE_VISIBLE_STATUSES
   // (COMPLETED, INVOICED, PAID, ARCHIVED) і ТІЛЬКИ після того як apiFetch завершився
   // (invoiceRef !== undefined). Це уникає миготіння empty-state перед першим завантаженням.
-  // WO_INVOICEABLE_STATUSES (COMPLETED, INVOICED) — використовується тільки для гейту
-  // кнопки "Виставити рахунок" (create action), бо PAID/ARCHIVED вже мають рахунок.
   if (!WO_INVOICE_VISIBLE_STATUSES.includes(workOrderStatus) || invoiceRef === undefined) {
     return null;
   }
+  // «Виставити рахунок» — як `createFromWorkOrder` (BR-INV-020, BR-WO-037): «Оплачено» теж (наряд,
+  // сплачений до рахунку), «Архів» — ні (сервер відхиляє). «Оновити з наряду» — як
+  // `refreshFromWorkOrder`: лише «Виконано» / «Виставлено».
+  const canCreate = !readOnly && WO_INVOICE_CREATABLE_STATUSES.includes(workOrderStatus);
+  const canRefresh = !readOnly && WO_INVOICEABLE_STATUSES.includes(workOrderStatus);
 
   const createInvoice = async () => {
     setError('');
@@ -188,7 +193,7 @@ export function InvoiceSection({
     <div className="bg-surface rounded-xl border border-border p-5">
       <div className="flex items-center justify-between mb-3">
         <h2 className="font-semibold text-foreground">{t('invoice.title')}</h2>
-        {!invoiceRef && !readOnly && (
+        {!invoiceRef && canCreate && (
           <Button
             variant="outline"
             size="sm"
@@ -250,7 +255,7 @@ export function InvoiceSection({
           {invoiceRef.documentDate && (
             <p className="text-xs text-muted-foreground">{fmtDate(invoiceRef.documentDate)}</p>
           )}
-          {invoiceRef.status === 'DRAFT' && !readOnly && (
+          {invoiceRef.status === 'DRAFT' && canRefresh && (
             <Button
               variant="outline"
               size="sm"

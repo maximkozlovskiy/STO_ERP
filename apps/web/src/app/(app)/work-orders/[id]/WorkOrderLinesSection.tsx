@@ -87,7 +87,7 @@ export function WorkOrderLinesSection({
   return (
     <>
       <div className="bg-surface rounded-xl border border-border p-5">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
           <h2 className="font-semibold text-foreground">{t('lines.title')}</h2>
           {canEdit && (
             <button
@@ -107,9 +107,9 @@ export function WorkOrderLinesSection({
         ) : (
           <div className="divide-y divide-border border border-border rounded-lg overflow-hidden">
             {lines.map(l => (
-              <div key={l.id} className="flex items-center justify-between px-4 py-3">
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-foreground">{l.workName}</p>
+              <div key={l.id} className="flex items-center justify-between gap-2 px-4 py-3">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-foreground wrap-anywhere">{l.workName}</p>
                   <p className="text-xs text-muted-foreground">
                     {l.employeeName} ·{' '}
                     <span>{t('lines.normHoursSuffix', { hours: l.normoHours })}</span>
@@ -128,7 +128,7 @@ export function WorkOrderLinesSection({
                   </p>
                   {l.notes && <p className="text-xs text-muted-foreground mt-0.5">{l.notes}</p>}
                 </div>
-                <div className="text-right mr-3">
+                <div className="text-right mr-3 shrink-0 tabular-nums whitespace-nowrap">
                   <p className="text-sm font-medium text-foreground">{fmtMoney(l.amount)} ₴</p>
                   <p className="text-xs text-muted-foreground">
                     {fmtMoney(l.price)} × {l.normoHours}

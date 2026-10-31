@@ -100,7 +100,7 @@ import {
   fetchGoodPickerItems,
   type GoodPickerItem,
 } from '@/components/ui/GoodPickerModal';
-import { pickPartWarehouse } from '@/lib/part-warehouse';
+import { pickPartWarehouse, pickServicePartWarehouse } from '@/lib/part-warehouse';
 import {
   pickLineExecutor,
   slotMechanicId,
@@ -728,6 +728,9 @@ export function CreateWorkOrderModal({
   // BR-WO-029: товар, для якого рядок ще чекає автовибору складу (залишки ще не прийшли).
   // Ручний вибір складу знімає очікування — пізня відповідь його не перезапише.
   const partAutoPickRef = useRef<Record<PartRow, string | null>>({ new: null, edit: null });
+  // BR-WO-038: рядки товарів, доданих послугою, що чекають складу (_key → goodId): склад
+  // підставляє ефект нижче, щойно прийдуть залишки товару (`useStockTotals` бере й ці рядки).
+  const servicePartPickRef = useRef<Map<string, string>>(new Map());
 
   // Accumulated pre-save rows: lines/parts тепер джерело правди — RHF field-array (оголошено
   // вгорі як watch()-shim lines/parts + setLines/setParts→replace). Старий useState прибрано.
@@ -780,6 +783,7 @@ export function CreateWorkOrderModal({
     setLinkedSlotMechanicId(null);
     setNewPart(EMPTY_PART);
     partAutoPickRef.current = { new: null, edit: null };
+    servicePartPickRef.current.clear();
     setShowLineInput(false);
     setShowPartInput(false);
     setEditingLineKey(null);
@@ -1076,6 +1080,35 @@ export function CreateWorkOrderModal({
     apply('edit', editingPart.goodId, setEditingPart);
   }, [stockFreeByGood, warehouses, newPart.goodId, editingPart.goodId]);
 
+  // BR-WO-038: склад запчастини з послуги — склад філії наряду з найбільшою вільною кількістю,
+  // інакше основний / перший склад філії (`pickServicePartWarehouse`). Рядок, що зник, змінив
+  // товар чи вже має склад (людина обрала сама), більше не чекає.
+  const branchId = form.branchId;
+  useEffect(() => {
+    const pending = servicePartPickRef.current;
+    if (pending.size === 0 || warehouses.length === 0) return;
+    const picked = new Map<string, string>();
+    for (const [key, goodId] of pending) {
+      const row = parts.find(p => p._key === key);
+      if (!row || row.goodId !== goodId || row.warehouseId) {
+        pending.delete(key);
+        continue;
+      }
+      const free = stockFreeByGood.get(goodId);
+      if (free === undefined) continue;
+      pending.delete(key);
+      const warehouseId = pickServicePartWarehouse(free, warehouses, branchId);
+      if (warehouseId) picked.set(key, warehouseId);
+    }
+    if (picked.size === 0) return;
+    setParts(prev =>
+      prev.map(p => {
+        const warehouseId = picked.get(p._key);
+        return warehouseId && !p.warehouseId ? { ...p, warehouseId } : p;
+      }),
+    );
+  }, [stockFreeByGood, warehouses, parts, branchId, setParts]);
+
   // Counterparty search for the header picker.
   // Wrapped in useCallback so EntityPickerField's outside-click listener
   // is not re-attached on every parent render.
@@ -1254,12 +1287,14 @@ export function CreateWorkOrderModal({
             _key: nextKey(),
             goodId: g.goodId,
             goodName: g.goodName,
+            // Склад — щойно прийдуть залишки товару (BR-WO-038, ефект вище).
             warehouseId: '',
             quantity: String(g.quantity),
             price: String(g.salePrice),
             unitOfMeasureId: '',
             unitShortName: g.unit,
           }));
+        for (const p of toAdd) servicePartPickRef.current.set(p._key, p.goodId);
         return [...prev, ...toAdd];
       });
     }

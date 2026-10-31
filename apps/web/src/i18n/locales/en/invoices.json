@@ -128,7 +128,7 @@
     "status": "Status:",
     "transition": {
       "SENT": "Send",
-      "PAID": "Mark as paid",
+      "PAID": "Pay",
       "CANCELLED": "Cancel"
     },
     "minimizedLabel": "Invoice",

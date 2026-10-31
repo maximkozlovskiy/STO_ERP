@@ -28,11 +28,12 @@ import {
   WO_PRIORITY_BADGE,
   WO_PRIORITY_DESCRIPTIONS,
   WO_EDITABLE_STATUSES,
-  WO_INVOICEABLE_STATUSES,
+  WO_COMPLETION_ACT_STATUSES,
   WO_PAYABLE_STATUSES,
   WO_PREPAYMENT_STATUSES,
   PAYMENT_CREATE_ROLES,
   COMPLETION_ACT_READ_ROLES,
+  COMPLETION_ACT_WRITE_ROLES,
   INVOICE_READ_ROLES,
 } from '@sto/shared';
 import { ClientPaymentModal } from '@/components/ui/ClientPaymentModal';
@@ -687,6 +688,8 @@ export default function WorkOrderCardPage() {
     WO_PAYABLE_STATUSES.includes(wo.status) &&
     PAYMENT_CREATE_ROLES.includes(employee?.role ?? '');
   const payRemaining = invoiceRemaining(wo.totalAmount, wo.paidAmount);
+  // Акт: сформувати, підписати, скасувати — ролям, яким це дозволяє сервер (бухгалтер лише читає).
+  const canWriteActs = !isDeleted && COMPLETION_ACT_WRITE_ROLES.includes(employee?.role ?? '');
 
   // Мультивалюта (Фаза 3): валюта документа + сума у базовій валюті.
   const baseCode = baseCurrency?.code ?? 'UAH';
@@ -709,17 +712,17 @@ export default function WorkOrderCardPage() {
 
       {isDeleted && <DeletedDocumentBanner />}
 
-      {/* Header */}
-      <div className="flex items-start gap-4">
+      {/* Header — 390 px: сума переноситься під номер, довгі назви не розтягують сторінку. */}
+      <div className="flex flex-wrap items-start gap-x-4 gap-y-2">
         <button
           onClick={() => router.back()}
           className="mt-1 text-muted-foreground hover:text-foreground text-sm"
         >
           {t('detail.back')}
         </button>
-        <div className="flex-1">
+        <div className="flex-1 min-w-0">
           <div className="flex items-center gap-3 flex-wrap">
-            <h1 className="text-2xl font-bold text-foreground">{wo.number}</h1>
+            <h1 className="text-2xl font-bold text-foreground wrap-anywhere">{wo.number}</h1>
             <span
               className={cn(
                 'text-sm font-medium px-2.5 py-1 rounded-full',
@@ -729,11 +732,11 @@ export default function WorkOrderCardPage() {
               {woStatusLabel(wo.status)}
             </span>
           </div>
-          <p className="text-sm text-muted-foreground mt-1">
+          <p className="text-sm text-muted-foreground mt-1 wrap-anywhere">
             {wo.counterpartyName} · {wo.vehicleSummary}
           </p>
         </div>
-        <div className="text-right">
+        <div className="text-right ml-auto">
           <p className="text-lg font-bold text-foreground tabular-nums">
             {fmtMoney(wo.totalAmount)} {sym}
           </p>
@@ -765,7 +768,7 @@ export default function WorkOrderCardPage() {
             </Button>
           )}
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-3 [&>*]:min-w-0 wrap-anywhere">
           {wo.documentDate && (
             <div>
               <p className="text-xs text-muted-foreground">{t('detail.documentDate')}</p>
@@ -940,11 +943,11 @@ export default function WorkOrderCardPage() {
       />
 
       {/* Completion Act */}
-      {(WO_INVOICEABLE_STATUSES.includes(wo.status) || completionAct) && (
+      {(WO_COMPLETION_ACT_STATUSES.includes(wo.status) || completionAct) && (
         <div className="bg-surface rounded-xl border border-border p-5">
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-semibold text-foreground">{t('detail.act.title')}</h2>
-            {!isDeleted && WO_INVOICEABLE_STATUSES.includes(wo.status) && !completionAct && (
+            {canWriteActs && WO_COMPLETION_ACT_STATUSES.includes(wo.status) && !completionAct && (
               <Button
                 variant="outline"
                 size="sm"
@@ -979,7 +982,7 @@ export default function WorkOrderCardPage() {
                   {fmtDateTime(completionAct.signedAt)}
                 </p>
               )}
-              {!isDeleted && completionAct.status === 'DRAFT' && (
+              {canWriteActs && completionAct.status === 'DRAFT' && (
                 <Button
                   variant="outline"
                   size="sm"
@@ -997,7 +1000,7 @@ export default function WorkOrderCardPage() {
               >
                 {t('detail.act.pdf')}
               </Button>
-              {!isDeleted && completionAct.status === 'DRAFT' && (
+              {canWriteActs && completionAct.status === 'DRAFT' && (
                 <Button
                   variant="destructive"
                   size="sm"

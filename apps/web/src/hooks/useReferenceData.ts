@@ -31,6 +31,8 @@ export interface Warehouse {
   type?: string;
   /** Основний склад організації — автовибір складу рядка товару (BR-WO-029). */
   isMain?: boolean;
+  /** Філія складу — склад запчастин із послуги береться з філії наряду (BR-WO-038). */
+  branchId?: string;
   deletedAt?: string | null;
 }
 

@@ -21,6 +21,10 @@ export interface WarehouseFree {
 export interface PickableWarehouse {
   id: string;
   isMain?: boolean;
+  /** Філія складу — для запчастин із послуги (BR-WO-038). */
+  branchId?: string;
+  /** `WarehouseType`: MAIN / WORKSHOP / MOBILE (TIRE_HOTEL у перелік вибору не потрапляє). */
+  type?: string;
 }
 
 /** Склад потрапляє в перелік вибору рядка товару: не видалений і не «Шинний готель». */
@@ -57,4 +61,36 @@ export function pickPartWarehouse(
   if (withFree.size === 1) return [...withFree][0];
   if (withFree.size > 1) return mainId && withFree.has(mainId) ? mainId : '';
   return mainId;
+}
+
+/**
+ * Склад запчастини, яку додала ПОСЛУГА (BR-WO-038, рішення власника 2026-10-31: «де товар є, інакше
+ * основний»). На відміну від `pickPartWarehouse` склад підставляється завжди — людина не обирала
+ * товар сама, і порожнє поле вона б пропустила:
+ *  1. серед складів ФІЛІЇ наряду — той, де вільної кількості найбільше (рівність → основний, далі
+ *     порядок переліку: сервер віддає основний першим, решту за назвою);
+ *  2. вільної немає на жодному складі філії, або залишки отримати не вдалося (`free = null`) →
+ *     основний склад філії (`isMain` — прапорець організації: у філії його може й не бути);
+ *  3. основного у філії немає → перший склад філії типу «Основний» (MAIN), інакше перший будь-який.
+ * Філію ще не обрано → усі склади переліку; у філії складів немає → '' (обирає людина).
+ */
+export function pickServicePartWarehouse(
+  free: readonly WarehouseFree[] | null,
+  warehouses: readonly PickableWarehouse[],
+  branchId: string,
+): string {
+  const own = branchId ? warehouses.filter(w => w.branchId === branchId) : [...warehouses];
+  if (own.length === 0) return '';
+  const freeOn = new Map((free ?? []).map(f => [f.warehouseId, f.available]));
+  let best: PickableWarehouse | undefined;
+  let bestFree = 0;
+  for (const w of own) {
+    const qty = freeOn.get(w.id) ?? 0;
+    if (qty > bestFree || (qty > 0 && qty === bestFree && w.isMain && !best?.isMain)) {
+      best = w;
+      bestFree = qty;
+    }
+  }
+  if (best) return best.id;
+  return (own.find(w => w.isMain) ?? own.find(w => w.type === 'MAIN') ?? own[0]).id;
 }

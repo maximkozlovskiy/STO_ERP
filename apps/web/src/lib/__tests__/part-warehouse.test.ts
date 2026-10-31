@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { freeOf, pickPartWarehouse, type PickableWarehouse } from '../part-warehouse';
+import {
+  freeOf,
+  pickPartWarehouse,
+  pickServicePartWarehouse,
+  type PickableWarehouse,
+} from '../part-warehouse';
 
 /**
  * BR-WO-029: склад, що підставляється в рядок товару наряду, щойно обрано товар.
@@ -109,5 +114,110 @@ describe('freeOf — вільна кількість рядка складу', (
     expect(freeOf({ warehouseId: SIDE, quantity: 1, reserved: 0, available: 1e-16 })).toBe(0);
     // Без округлення SIDE мав би «вільну» 4e-16 і підставився б замість основного.
     expect(pickPartWarehouse([{ warehouseId: SIDE, available: drift }], list)).toBe(MAIN);
+  });
+});
+
+/**
+ * BR-WO-038: склад запчастини, доданої послугою, — склад філії наряду з найбільшою вільною
+ * кількістю, інакше основний склад філії, інакше перший склад філії (тип MAIN, далі будь-який).
+ * Mutation-verify (2026-10-31): без фільтра за філією → червоніє «склад іншої філії»; перший склад
+ * з вільною замість найбільшої → червоніє «найбільша»; без запасного MAIN → червоніє «основного
+ * у філії немає»; `free === null` як «немає складу» → червоніє «збій залишків».
+ */
+describe('pickServicePartWarehouse — BR-WO-038', () => {
+  const B1 = 'branch-1';
+  const B2 = 'branch-2';
+  const ORG_MAIN = 'wh-org-main'; // основний склад організації — у ІНШІЙ філії
+  const B1_SHOP = 'wh-b1-shop';
+  const B1_MAIN_TYPE = 'wh-b1-main-type';
+  const B1_MOBILE = 'wh-b1-mobile';
+  const B2_SIDE = 'wh-b2-side';
+  const warehouses: PickableWarehouse[] = [
+    { id: ORG_MAIN, isMain: true, branchId: B2, type: 'MAIN' },
+    { id: B1_SHOP, branchId: B1, type: 'WORKSHOP' },
+    { id: B1_MAIN_TYPE, branchId: B1, type: 'MAIN' },
+    { id: B1_MOBILE, branchId: B1, type: 'MOBILE' },
+    { id: B2_SIDE, branchId: B2, type: 'WORKSHOP' },
+  ];
+
+  // guards: BR-WO-038
+  it('склад філії з найбільшою вільною кількістю, а не перший з вільною', () => {
+    const got = pickServicePartWarehouse(
+      free([
+        [B1_SHOP, 1],
+        [B1_MOBILE, 7],
+        [B1_MAIN_TYPE, 3],
+      ]),
+      warehouses,
+      B1,
+    );
+    expect(got).toBe(B1_MOBILE);
+  });
+
+  // guards: BR-WO-038
+  it('найбільший залишок — на складі іншої філії: його не беремо, лише склади філії наряду', () => {
+    const got = pickServicePartWarehouse(
+      free([
+        [ORG_MAIN, 50],
+        [B2_SIDE, 40],
+        [B1_SHOP, 2],
+      ]),
+      warehouses,
+      B1,
+    );
+    expect(got).toBe(B1_SHOP);
+  });
+
+  // guards: BR-WO-038
+  it('рівність вільної → основний склад', () => {
+    const list: PickableWarehouse[] = [
+      { id: B1_SHOP, branchId: B1 },
+      { id: B1_MAIN_TYPE, branchId: B1, isMain: true },
+    ];
+    expect(
+      pickServicePartWarehouse(
+        free([
+          [B1_SHOP, 4],
+          [B1_MAIN_TYPE, 4],
+        ]),
+        list,
+        B1,
+      ),
+    ).toBe(B1_MAIN_TYPE);
+  });
+
+  // guards: BR-WO-038
+  it('вільної немає ніде у філії → основний склад філії', () => {
+    const list: PickableWarehouse[] = [
+      { id: B1_SHOP, branchId: B1, type: 'WORKSHOP' },
+      { id: B1_MAIN_TYPE, branchId: B1, type: 'WORKSHOP', isMain: true },
+    ];
+    expect(pickServicePartWarehouse(free([[ORG_MAIN, 9]]), list, B1)).toBe(B1_MAIN_TYPE);
+  });
+
+  // guards: BR-WO-038
+  it('основного у філії немає (він в іншій філії) → перший склад типу MAIN цієї філії', () => {
+    expect(pickServicePartWarehouse(free([]), warehouses, B1)).toBe(B1_MAIN_TYPE);
+  });
+
+  // guards: BR-WO-038
+  it('у філії ні основного, ні типу MAIN → перший склад філії', () => {
+    const list: PickableWarehouse[] = [
+      { id: B1_MOBILE, branchId: B1, type: 'MOBILE' },
+      { id: B1_SHOP, branchId: B1, type: 'WORKSHOP' },
+    ];
+    expect(pickServicePartWarehouse(free([]), list, B1)).toBe(B1_MOBILE);
+  });
+
+  // guards: BR-WO-038
+  it('збій запиту залишків (null) → основний / перший склад філії, не порожньо', () => {
+    expect(pickServicePartWarehouse(null, warehouses, B1)).toBe(B1_MAIN_TYPE);
+    expect(pickServicePartWarehouse(null, warehouses, B2)).toBe(ORG_MAIN);
+  });
+
+  // guards: BR-WO-038
+  it('у філії складів немає → порожньо (обирає людина); філію не обрано → усі склади', () => {
+    expect(pickServicePartWarehouse(free([[ORG_MAIN, 1]]), warehouses, 'branch-empty')).toBe('');
+    expect(pickServicePartWarehouse(free([[B2_SIDE, 3]]), warehouses, '')).toBe(B2_SIDE);
   });
 });

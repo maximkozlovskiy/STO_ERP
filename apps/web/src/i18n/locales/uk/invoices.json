@@ -128,7 +128,7 @@
     "status": "Статус:",
     "transition": {
       "SENT": "Надіслати",
-      "PAID": "Позначити оплаченим",
+      "PAID": "Оплатити",
       "CANCELLED": "Скасувати"
     },
     "minimizedLabel": "Рахунок",

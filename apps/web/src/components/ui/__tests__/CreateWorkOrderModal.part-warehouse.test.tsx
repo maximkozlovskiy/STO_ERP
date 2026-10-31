@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import { renderWithQueryClient } from '@/__tests__/query-utils';
 import userEvent from '@testing-library/user-event';
-import { vi, it, expect, describe, beforeEach } from 'vitest';
+import { vi, it, expect, describe, beforeEach, afterEach } from 'vitest';
 import { CreateWorkOrderModal } from '../CreateWorkOrderModal';
 
 /**
@@ -86,6 +86,10 @@ const STOCK: Record<string, WhRow[]> = {
 
 let stockGate: Promise<void> | null = null;
 let stockFail = false;
+/** Склади іншої філії (BR-WO-038): у переліку вибору, але не в філії наряду. */
+let otherBranchWarehouses: unknown[] = [];
+/** Послуги для вікна «Послуга» (BR-WO-038). */
+let services: unknown[] = [];
 
 function stockTotals(path: string) {
   if (stockFail) return Promise.reject(new Error('Сервер недоступний'));
@@ -105,10 +109,11 @@ function mockApi(savedParts: unknown[] = []) {
     if (path === '/branches') return Promise.resolve([{ id: B1, name: 'Філія №1' }]);
     if (path === '/warehouses') {
       return Promise.resolve([
-        { id: W_SIDE, name: 'Бічний', isMain: false, type: 'MAIN' },
-        { id: W_MAIN, name: 'Основний', isMain: true, type: 'MAIN' },
-        { id: W_THIRD, name: 'Третій', isMain: false, type: 'MAIN' },
-        { id: W_HOTEL, name: 'Шинний готель', isMain: false, type: 'TIRE_HOTEL' },
+        { id: W_SIDE, name: 'Бічний', isMain: false, type: 'MAIN', branchId: B1 },
+        { id: W_MAIN, name: 'Основний', isMain: true, type: 'MAIN', branchId: B1 },
+        { id: W_THIRD, name: 'Третій', isMain: false, type: 'MAIN', branchId: B1 },
+        { id: W_HOTEL, name: 'Шинний готель', isMain: false, type: 'TIRE_HOTEL', branchId: B1 },
+        ...otherBranchWarehouses,
       ]);
     }
     if (path.startsWith('/employees')) return Promise.resolve({ items: [] });
@@ -117,6 +122,7 @@ function mockApi(savedParts: unknown[] = []) {
     if (path === '/settings/organisation') return Promise.resolve({ vatMode: 'NONE' });
     if (path === '/settings/tax-rates') return Promise.resolve([]);
     if (path.startsWith('/goods/stock-totals')) return stockTotals(path);
+    if (path.startsWith('/services?')) return Promise.resolve({ items: services });
     if (path.startsWith('/goods?')) {
       const q = new URL(path, 'http://x').searchParams.get('q') ?? '';
       return Promise.resolve({
@@ -313,5 +319,105 @@ describe('CreateWorkOrderModal — склад рядка товару (BR-WO-029
     const row = screen.getByTitle('Зберегти').closest('tr')!;
     expect(within(row).getByTestId('part-warehouse-readonly')).toHaveTextContent('Третій');
     expect(within(row).queryByRole('combobox', { name: 'Склад' })).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * BR-WO-038: запчастини, додані ПОСЛУГОЮ, отримують склад самі — склад філії наряду з найбільшою
+ * вільною кількістю, інакше основний / перший склад філії; збій залишків — основний.
+ * Mutation-verify (2026-10-31): прибрати запис рядка в `servicePartPickRef` у `applyService` →
+ * червоніють усі кейси (склад «—»); не перевіряти склад рядка ні в ефекті (`row.warehouseId`), ні
+ * в `setParts` (`!p.warehouseId`) → червоніє «ручний вибір» (кожна перевірка окремо — запас іншої);
+ * виклик `pickPartWarehouse` замість `pickServicePartWarehouse` → червоніють «найбільша» і
+ * «склад іншої філії».
+ */
+describe('CreateWorkOrderModal — склад запчастин із послуги (BR-WO-038)', () => {
+  const W_OTHER = '20000000-0000-4000-8000-000000000009';
+  const G_BIG_ELSEWHERE = '20000000-0000-4000-8000-000000000016';
+
+  beforeEach(() => {
+    apiFetchMock.mockReset();
+    stockGate = null;
+    stockFail = false;
+    // Склад іншої філії з найбільшим залишком «Свічки» — його брати не можна.
+    otherBranchWarehouses = [
+      { id: W_OTHER, name: 'Чужа філія', isMain: false, type: 'MAIN', branchId: 'b-other' },
+    ];
+    STOCK[G_BIG_ELSEWHERE] = [wh(W_OTHER, 99), wh(W_THIRD, 2)];
+    services = [
+      {
+        id: 'svc-1',
+        name: 'ТО-1',
+        description: null,
+        price: null,
+        works: [],
+        goods: [
+          // вільна: Бічний 1, Третій 4 → найбільша — Третій (не основний, не перший).
+          { goodId: G_NOT_MAIN, goodName: 'Свічка', unit: 'шт', salePrice: 50, quantity: 4 },
+          // вільної немає ніде → основний склад філії.
+          { goodId: G_NOWHERE, goodName: 'Ремінь', unit: 'шт', salePrice: 70, quantity: 1 },
+          // найбільше — у чужій філії (99), у своїй — Третій (2).
+          { goodId: G_BIG_ELSEWHERE, goodName: 'Колодки', unit: 'шт', salePrice: 90, quantity: 1 },
+        ],
+      },
+    ];
+    mockApi();
+  });
+
+  afterEach(() => {
+    otherBranchWarehouses = [];
+    services = [];
+    delete STOCK[G_BIG_ELSEWHERE];
+  });
+
+  async function applyService() {
+    const user = userEvent.setup();
+    renderWithQueryClient(<CreateWorkOrderModal open onClose={vi.fn()} workOrderId={WO} />);
+    await screen.findByText('Натисніть «Додати» щоб додати товар');
+    await waitFor(() => expect(apiFetchMock).toHaveBeenCalledWith('/settings/organisation'));
+    await user.click(screen.getByRole('button', { name: 'Послуга' }));
+    await user.click(await screen.findByRole('button', { name: /ТО-1/ }));
+    return user;
+  }
+
+  const rowOf = (name: string) => screen.getByText(name).closest('tr') as HTMLElement;
+
+  // guards: BR-WO-038
+  it('найбільша вільна у філії → цей склад; вільної немає → основний; чужа філія не береться', async () => {
+    await applyService();
+
+    await waitFor(() => expect(within(rowOf('Свічка')).getByText('Третій')).toBeInTheDocument());
+    expect(within(rowOf('Ремінь')).getByText('Основний')).toBeInTheDocument();
+    expect(within(rowOf('Колодки')).getByText('Третій')).toBeInTheDocument();
+    expect(within(rowOf('Колодки')).queryByText('Чужа філія')).toBeNull();
+  });
+
+  // guards: BR-WO-038
+  it('залишки не отримано (запит упав) → основний склад філії, не «—»', async () => {
+    stockFail = true;
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    await applyService();
+
+    await waitFor(() => expect(within(rowOf('Свічка')).getByText('Основний')).toBeInTheDocument());
+    expect(within(rowOf('Колодки')).getByText('Основний')).toBeInTheDocument();
+  });
+
+  // guards: BR-WO-038
+  it('склад підставляється лише ПІСЛЯ відповіді залишків, а склад, обраний людиною, — не перезаписується', async () => {
+    let release!: () => void;
+    stockGate = new Promise<void>(r => (release = r));
+    const user = await applyService();
+
+    // До відповіді — склад ще не підставлено.
+    expect(rowOf('Свічка').querySelectorAll('td')[1]?.textContent).toBe('—');
+    // Людина змінює склад «Свічки» до відповіді.
+    await user.click(within(rowOf('Свічка')).getByRole('button', { name: 'Редагувати товар' }));
+    const editing = screen.getByTitle('Зберегти').closest('tr') as HTMLElement;
+    await user.selectOptions(within(editing).getByRole('combobox', { name: 'Склад' }), W_SIDE);
+    await user.click(within(editing).getByTitle('Зберегти'));
+    release();
+
+    await waitFor(() => expect(within(rowOf('Ремінь')).getByText('Основний')).toBeInTheDocument());
+    expect(within(rowOf('Свічка')).getByText('Бічний')).toBeInTheDocument();
   });
 });

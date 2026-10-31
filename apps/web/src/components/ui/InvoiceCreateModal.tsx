@@ -30,6 +30,7 @@ import {
   INVOICE_STATUS_DESCRIPTIONS,
   INVOICE_STATUS_TRANSITIONS,
   INVOICE_TYPE_LABELS,
+  PAYMENT_CREATE_ROLES,
 } from '@sto/shared';
 import { invoiceStatusLabel, invoiceTypeLabel } from '@/i18n/enumLabel';
 import i18n from '@/i18n/config';
@@ -55,6 +56,9 @@ import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { EntityPickerField } from '@/components/ui/entity-picker-field';
 import { SearchPickerModal, type SearchPickerItem } from '@/components/ui/search-picker-modal';
 import { useBaseCurrency } from '@/hooks/api/useCash';
+import { useAuth } from '@/lib/auth';
+import { optimisticInvoiceStatus } from '@/lib/invoice-payment';
+import { ClientPaymentModal } from '@/components/ui/ClientPaymentModal';
 import type { Invoice } from '@/hooks/api/useInvoices';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -216,6 +220,15 @@ export function InvoiceCreateModal({
   // Id документа, який справді завантажено у форму (Bug #844).
   const [loadedDocId, setLoadedDocId] = useState<string | null>(null);
   const [cpPickerOpen, setCpPickerOpen] = useState(false);
+  // BR-INV-026: «Оплатити» (крок «Оплачено») відкриває вікно оплати — ручного «Оплачено» без грошей
+  // з картки немає. Платник і валюта — збережені в рахунку, а не з незбереженої форми.
+  const [payOpen, setPayOpen] = useState(false);
+  const [payParty, setPayParty] = useState<{
+    counterpartyId: string;
+    currencyCode: string | null;
+  } | null>(null);
+  const { employee } = useAuth();
+  const mayPay = PAYMENT_CREATE_ROLES.includes(employee?.role ?? '');
 
   const savingRef = useRef(false);
   const transitioningRef = useRef(false);
@@ -275,6 +288,8 @@ export function InvoiceCreateModal({
     setPaidAmount(null);
     setSavedAmount(null);
     setSavedLineCount(0);
+    setPayOpen(false);
+    setPayParty(null);
     setNewLine(EMPTY_LINE);
     setShowLineInput(false);
     initialLineIdsRef.current = new Set();
@@ -341,6 +356,10 @@ export function InvoiceCreateModal({
         setWorkOrderLinked(!!inv.workOrderId);
         setPaidAmount(inv.paidAmount ?? null);
         setSavedAmount(inv.amount ?? null);
+        setPayParty({
+          counterpartyId: inv.counterpartyId,
+          currencyCode: inv.currencyCode ?? null,
+        });
         setSavedLineCount(inv.lines?.length ?? 0);
         const loadedLines = (inv.lines ?? []).map(l => ({
           _key: nextKey(),
@@ -419,12 +438,13 @@ export function InvoiceCreateModal({
   const viewOnly = isDeleted || notLoaded;
 
   // Видалений документ переходів не має: сервер відповість 404 на будь-яку зміну. Рахунок наряду
-  // ручного «Оплачено» не має (BR-INV-019) — його закриває оплата наряду («Оплатити»).
+  // ручного «Оплачено» не має (BR-INV-019) — його закриває оплата наряду («Оплатити»). Крок
+  // «Оплачено» рахунку без наряду — вікно оплати (BR-INV-026), тож лише ролям, що реєструють оплату.
   const allowedTransitions = useMemo(() => {
     if (!isEditMode || viewOnly) return EMPTY_TRANSITIONS;
     const all = INVOICE_STATUS_TRANSITIONS[currentStatus] ?? EMPTY_TRANSITIONS;
-    return workOrderLinked ? all.filter(s => s !== 'PAID') : all;
-  }, [isEditMode, viewOnly, currentStatus, workOrderLinked]);
+    return workOrderLinked || !mayPay ? all.filter(s => s !== 'PAID') : all;
+  }, [isEditMode, viewOnly, currentStatus, workOrderLinked, mayPay]);
 
   // BR-INV-023: чернетку без рядків не виставити — сервер відповість 400 err.invoice.noLinesToIssue.
   const blockedTransitions = useMemo(
@@ -456,6 +476,15 @@ export function InvoiceCreateModal({
     // меню під підтвердженням з'їло б його перший Escape.
     setStatusMenuOpen(false);
     if (!invoiceId || viewOnly) return;
+    // BR-INV-026: «Оплачено» — це отримані гроші: вікно оплати (каса / рахунок, ПРРО), як у списку
+    // рахунків. Перехід без оплати лишав рахунок «Оплачено» з віртуальною проводкою без грошей.
+    if (newStatus === 'PAID') {
+      if (payParty) {
+        setError('');
+        setPayOpen(true);
+      }
+      return;
+    }
     setTransitioningBoth(true);
     setError('');
     try {
@@ -470,6 +499,16 @@ export function InvoiceCreateModal({
     } finally {
       setTransitioningBoth(false);
     }
+  };
+
+  const handlePaid = (amount: number) => {
+    setPayOpen(false);
+    if (savedAmount != null) {
+      setCurrentStatus(optimisticInvoiceStatus(savedAmount, paidAmount, amount));
+    }
+    setPaidAmount(prev => (prev ?? 0) + amount);
+    // Кеші (рахунки, оплати, каса, баланс) скидає сам useCreatePayment; список — через onSaved.
+    onSaved?.();
   };
 
   // ── Lines ─────────────────────────────────────────────────────────────────
@@ -749,7 +788,7 @@ export function InvoiceCreateModal({
         size="content"
         hideClose
         headerContent={
-          <div className="flex items-center gap-6">
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-2 min-w-0">
             <DocumentNumberField
               label={t('card.number')}
               value={isEditMode && invoiceNumber ? invoiceNumber : t('card.autoNumber')}
@@ -851,7 +890,7 @@ export function InvoiceCreateModal({
           {/* ── Collapsible header ─────────────────────────────────────── */}
           <CollapsibleDocumentHeader collapsed={headerCollapsed} loading={loading}>
             {/* Рядок 2: Контрагент | Тип */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <EntityPickerField<CpItem>
                 label={t('columns.counterparty')}
                 required={!isEditMode}
@@ -888,7 +927,7 @@ export function InvoiceCreateModal({
             </div>
 
             {/* Рядок 3: Валюта */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <FormCurrencySelect
                 control={control}
                 name="currencyId"
@@ -898,7 +937,7 @@ export function InvoiceCreateModal({
             </div>
 
             {/* Рядок 4: Термін оплати | Примітки */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Controller
                 control={control}
                 name="dueDate"
@@ -922,7 +961,7 @@ export function InvoiceCreateModal({
 
             {/* Рядок 4: Наряд (тільки в edit mode якщо прив'язаний) */}
             {isEditMode && workOrderNumber && (
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Input
                   label={t('columns.workOrder')}
                   value={workOrderNumber}
@@ -947,218 +986,226 @@ export function InvoiceCreateModal({
               title={t('panel.tabLines')}
               onAdd={canEdit && !showLineInput ? () => setShowLineInput(true) : undefined}
             />
-            <table className="w-full table-fixed text-[12px]">
-              <colgroup>
-                <col className="w-[50%]" />
-                <col className="w-[15%]" />
-                <col className="w-[20%]" />
-                <col className="w-[15%]" />
-              </colgroup>
-              <thead>
-                <tr className="border-b border-border bg-secondary/40">
-                  <th className="text-left px-3 py-2 font-medium text-muted-foreground">
-                    {t('card.colDescription')}
-                  </th>
-                  <th className="text-right px-3 py-2 font-medium text-muted-foreground">
-                    {t('card.colQty')}
-                  </th>
-                  <th className="text-right px-3 py-2 font-medium text-muted-foreground">
-                    {t('card.colPrice', { sym: currencySymbol })}
-                  </th>
-                  <th className="text-right px-3 py-2 font-medium text-muted-foreground">
-                    {t('card.colSum', { sym: currencySymbol })}
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {/* Незавантажений документ (notLoaded) підказки не має: рядків ми ще не знаємо. */}
-                {fields.length === 0 && !showLineInput && !notLoaded && (
-                  <DocLinesEmptyRow colSpan={4} canEdit={canEdit} />
-                )}
-                {fields.map((field, index) => {
-                  const line = (watchedLines?.[index] ?? field) as FormLine;
-                  const lineErrors = errors.lines?.[index];
-                  return (
-                    <tr key={field.id} className="hover:bg-secondary/20 group">
-                      <td className="px-3 py-2">{line.description}</td>
-                      {canEdit ? (
-                        <>
-                          {/* BR-INV-024: кількість і ціну рядка чернетки правлять на місці —
+            {/* 390 px: таблиця гортається всередині картки, сторінка — ні. */}
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[480px] table-fixed text-[12px]">
+                <colgroup>
+                  <col className="w-[50%]" />
+                  <col className="w-[15%]" />
+                  <col className="w-[20%]" />
+                  <col className="w-[15%]" />
+                </colgroup>
+                <thead>
+                  <tr className="border-b border-border bg-secondary/40">
+                    <th className="text-left px-3 py-2 font-medium text-muted-foreground">
+                      {t('card.colDescription')}
+                    </th>
+                    <th className="text-right px-3 py-2 font-medium text-muted-foreground">
+                      {t('card.colQty')}
+                    </th>
+                    <th className="text-right px-3 py-2 font-medium text-muted-foreground">
+                      {t('card.colPrice', { sym: currencySymbol })}
+                    </th>
+                    <th className="text-right px-3 py-2 font-medium text-muted-foreground">
+                      {t('card.colSum', { sym: currencySymbol })}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {/* Незавантажений документ (notLoaded) підказки не має: рядків ми ще не знаємо. */}
+                  {fields.length === 0 && !showLineInput && !notLoaded && (
+                    <DocLinesEmptyRow colSpan={4} canEdit={canEdit} />
+                  )}
+                  {fields.map((field, index) => {
+                    const line = (watchedLines?.[index] ?? field) as FormLine;
+                    const lineErrors = errors.lines?.[index];
+                    return (
+                      <tr key={field.id} className="hover:bg-secondary/20 group">
+                        <td className="px-3 py-2">{line.description}</td>
+                        {canEdit ? (
+                          <>
+                            {/* BR-INV-024: кількість і ціну рядка чернетки правлять на місці —
                               збережений рядок іде PATCH-ем (`_dirty`), а не видаленням і новим. */}
-                          <td className="px-2 py-1.5">
-                            <div className="flex items-center justify-end gap-1">
+                            <td className="px-2 py-1.5">
+                              <div className="flex items-center justify-end gap-1">
+                                <input
+                                  type="number"
+                                  min="0.001"
+                                  step="1"
+                                  {...register(`lines.${index}.quantity`, {
+                                    onChange: () => markLineDirty(index),
+                                  })}
+                                  aria-label={t('card.lineQtyAria', { name: line.description })}
+                                  aria-invalid={lineErrors?.quantity ? true : undefined}
+                                  className={cn(
+                                    LINE_INPUT_CLASS,
+                                    lineErrors?.quantity && 'border-destructive',
+                                  )}
+                                />
+                                {line.unitShortName && (
+                                  <span className="text-muted-foreground">
+                                    {line.unitShortName}
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-2 py-1.5">
                               <input
                                 type="number"
-                                min="0.001"
-                                step="1"
-                                {...register(`lines.${index}.quantity`, {
+                                min="0"
+                                step="0.01"
+                                {...register(`lines.${index}.unitPrice`, {
                                   onChange: () => markLineDirty(index),
                                 })}
-                                aria-label={t('card.lineQtyAria', { name: line.description })}
-                                aria-invalid={lineErrors?.quantity ? true : undefined}
+                                aria-label={t('card.linePriceAria', { name: line.description })}
+                                aria-invalid={lineErrors?.unitPrice ? true : undefined}
                                 className={cn(
                                   LINE_INPUT_CLASS,
-                                  lineErrors?.quantity && 'border-destructive',
+                                  lineErrors?.unitPrice && 'border-destructive',
                                 )}
                               />
+                            </td>
+                          </>
+                        ) : (
+                          <>
+                            <td className="px-3 py-2 text-right tabular-nums">
+                              {line.quantity}
                               {line.unitShortName && (
-                                <span className="text-muted-foreground">{line.unitShortName}</span>
+                                <span className="ml-1 text-muted-foreground">
+                                  {line.unitShortName}
+                                </span>
                               )}
-                            </div>
-                          </td>
-                          <td className="px-2 py-1.5">
-                            <input
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              {...register(`lines.${index}.unitPrice`, {
-                                onChange: () => markLineDirty(index),
-                              })}
-                              aria-label={t('card.linePriceAria', { name: line.description })}
-                              aria-invalid={lineErrors?.unitPrice ? true : undefined}
-                              className={cn(
-                                LINE_INPUT_CLASS,
-                                lineErrors?.unitPrice && 'border-destructive',
-                              )}
-                            />
-                          </td>
-                        </>
-                      ) : (
-                        <>
-                          <td className="px-3 py-2 text-right tabular-nums">
-                            {line.quantity}
-                            {line.unitShortName && (
-                              <span className="ml-1 text-muted-foreground">
-                                {line.unitShortName}
-                              </span>
+                            </td>
+                            <td className="px-3 py-2 text-right tabular-nums">{line.unitPrice}</td>
+                          </>
+                        )}
+                        <td className="px-3 py-2 text-right tabular-nums">
+                          <div className="flex items-center justify-end gap-1">
+                            <span data-testid="invoice-line-sum">
+                              {/* WEB-R3-4: рядкова СУМА збігається з логікою «Разом» (linePreviewTotal). */}
+                              {fmtMoney(linePreviewTotal(line, serverNetRef.current))}
+                            </span>
+                            {canEdit && (
+                              <button
+                                type="button"
+                                onClick={() => removeLine(index)}
+                                aria-label={t('card.removeLineAria', { name: line.description })}
+                                className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 ml-1 text-muted-foreground hover:text-destructive transition-all"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
                             )}
-                          </td>
-                          <td className="px-3 py-2 text-right tabular-nums">{line.unitPrice}</td>
-                        </>
-                      )}
-                      <td className="px-3 py-2 text-right tabular-nums">
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+
+                  {/* Add line input row */}
+                  {canEdit && showLineInput && (
+                    <tr className="bg-primary/5">
+                      <td className="px-2 py-1.5">
+                        <input
+                          ref={newLineInputRef}
+                          autoFocus
+                          type="text"
+                          value={newLine.description}
+                          onChange={e => setNewLine(l => ({ ...l, description: e.target.value }))}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') addLine();
+                          }}
+                          placeholder={t('card.linePlaceholder')}
+                          className="w-full rounded border border-input bg-background px-2 py-1 text-[12px] focus:outline-none focus:ring-1 focus:ring-ring"
+                        />
+                      </td>
+                      <td className="px-2 py-1.5">
+                        <input
+                          type="number"
+                          min="0.001"
+                          step="1"
+                          value={newLine.quantity}
+                          onChange={e => setNewLine(l => ({ ...l, quantity: e.target.value }))}
+                          className="w-full rounded border border-input bg-background px-2 py-1 text-[12px] text-right tabular-nums focus:outline-none focus:ring-1 focus:ring-ring"
+                        />
+                      </td>
+                      <td className="px-2 py-1.5">
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={newLine.unitPrice}
+                          onChange={e => setNewLine(l => ({ ...l, unitPrice: e.target.value }))}
+                          placeholder="0.00"
+                          className="w-full rounded border border-input bg-background px-2 py-1 text-[12px] text-right tabular-nums focus:outline-none focus:ring-1 focus:ring-ring"
+                        />
+                      </td>
+                      <td className="px-2 py-1.5 text-right">
                         <div className="flex items-center justify-end gap-1">
-                          <span data-testid="invoice-line-sum">
-                            {/* WEB-R3-4: рядкова СУМА збігається з логікою «Разом» (linePreviewTotal). */}
-                            {fmtMoney(linePreviewTotal(line, serverNetRef.current))}
+                          <span className="tabular-nums text-muted-foreground">
+                            {fmtMoney(
+                              lineAmount(
+                                parseFloat(newLine.quantity) || 0,
+                                parseFloat(newLine.unitPrice) || 0,
+                              ),
+                            )}
                           </span>
-                          {canEdit && (
-                            <button
-                              type="button"
-                              onClick={() => removeLine(index)}
-                              aria-label={t('card.removeLineAria', { name: line.description })}
-                              className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 ml-1 text-muted-foreground hover:text-destructive transition-all"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
-                          )}
+                          <button
+                            type="button"
+                            onClick={addLine}
+                            disabled={!newLine.description}
+                            className="ml-1 text-primary hover:text-primary/80 disabled:opacity-30"
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                          </button>
                         </div>
                       </td>
                     </tr>
-                  );
-                })}
-
-                {/* Add line input row */}
-                {canEdit && showLineInput && (
-                  <tr className="bg-primary/5">
-                    <td className="px-2 py-1.5">
-                      <input
-                        ref={newLineInputRef}
-                        autoFocus
-                        type="text"
-                        value={newLine.description}
-                        onChange={e => setNewLine(l => ({ ...l, description: e.target.value }))}
-                        onKeyDown={e => {
-                          if (e.key === 'Enter') addLine();
-                        }}
-                        placeholder={t('card.linePlaceholder')}
-                        className="w-full rounded border border-input bg-background px-2 py-1 text-[12px] focus:outline-none focus:ring-1 focus:ring-ring"
-                      />
+                  )}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t-2 border-border bg-secondary/20">
+                    <td
+                      colSpan={3}
+                      className="px-3 py-2 text-right text-[12px] font-medium text-muted-foreground"
+                    >
+                      {t('card.total')}
                     </td>
-                    <td className="px-2 py-1.5">
-                      <input
-                        type="number"
-                        min="0.001"
-                        step="1"
-                        value={newLine.quantity}
-                        onChange={e => setNewLine(l => ({ ...l, quantity: e.target.value }))}
-                        className="w-full rounded border border-input bg-background px-2 py-1 text-[12px] text-right tabular-nums focus:outline-none focus:ring-1 focus:ring-ring"
-                      />
+                    <td className="px-3 py-2 text-right text-[13px] font-semibold tabular-nums">
+                      {fmtMoney(shownTotal)} {currencySymbol}
                     </td>
-                    <td className="px-2 py-1.5">
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={newLine.unitPrice}
-                        onChange={e => setNewLine(l => ({ ...l, unitPrice: e.target.value }))}
-                        placeholder="0.00"
-                        className="w-full rounded border border-input bg-background px-2 py-1 text-[12px] text-right tabular-nums focus:outline-none focus:ring-1 focus:ring-ring"
-                      />
-                    </td>
-                    <td className="px-2 py-1.5 text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <span className="tabular-nums text-muted-foreground">
-                          {fmtMoney(
-                            lineAmount(
-                              parseFloat(newLine.quantity) || 0,
-                              parseFloat(newLine.unitPrice) || 0,
-                            ),
-                          )}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={addLine}
-                          disabled={!newLine.description}
-                          className="ml-1 text-primary hover:text-primary/80 disabled:opacity-30"
+                  </tr>
+                  {isEditMode && paidAmount != null && paidAmount > 0 && (
+                    <tr className="bg-success-subtle/40">
+                      <td
+                        colSpan={3}
+                        className="px-3 py-1.5 text-right text-[12px] font-medium text-success"
+                      >
+                        {t('card.paid')}
+                      </td>
+                      <td className="px-3 py-1.5 text-right text-[13px] font-semibold tabular-nums text-success">
+                        {fmtMoney(paidAmount)} {currencySymbol}
+                      </td>
+                    </tr>
+                  )}
+                  {isEditMode &&
+                    paidAmount != null &&
+                    shownTotal > 0 &&
+                    paidAmount < shownTotal && (
+                      <tr className="bg-secondary/10">
+                        <td
+                          colSpan={3}
+                          className="px-3 py-1.5 text-right text-[12px] font-medium text-muted-foreground"
                         >
-                          <Plus className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-              <tfoot>
-                <tr className="border-t-2 border-border bg-secondary/20">
-                  <td
-                    colSpan={3}
-                    className="px-3 py-2 text-right text-[12px] font-medium text-muted-foreground"
-                  >
-                    {t('card.total')}
-                  </td>
-                  <td className="px-3 py-2 text-right text-[13px] font-semibold tabular-nums">
-                    {fmtMoney(shownTotal)} {currencySymbol}
-                  </td>
-                </tr>
-                {isEditMode && paidAmount != null && paidAmount > 0 && (
-                  <tr className="bg-success-subtle/40">
-                    <td
-                      colSpan={3}
-                      className="px-3 py-1.5 text-right text-[12px] font-medium text-success"
-                    >
-                      {t('card.paid')}
-                    </td>
-                    <td className="px-3 py-1.5 text-right text-[13px] font-semibold tabular-nums text-success">
-                      {fmtMoney(paidAmount)} {currencySymbol}
-                    </td>
-                  </tr>
-                )}
-                {isEditMode && paidAmount != null && shownTotal > 0 && paidAmount < shownTotal && (
-                  <tr className="bg-secondary/10">
-                    <td
-                      colSpan={3}
-                      className="px-3 py-1.5 text-right text-[12px] font-medium text-muted-foreground"
-                    >
-                      {t('card.remaining')}
-                    </td>
-                    <td className="px-3 py-1.5 text-right text-[13px] font-semibold tabular-nums text-destructive">
-                      {fmtMoney(roundMoney(shownTotal - paidAmount))} {currencySymbol}
-                    </td>
-                  </tr>
-                )}
-              </tfoot>
-            </table>
+                          {t('card.remaining')}
+                        </td>
+                        <td className="px-3 py-1.5 text-right text-[13px] font-semibold tabular-nums text-destructive">
+                          {fmtMoney(roundMoney(shownTotal - paidAmount))} {currencySymbol}
+                        </td>
+                      </tr>
+                    )}
+                </tfoot>
+              </table>
+            </div>
           </div>
         </DocumentCardBody>
       </Modal>
@@ -1179,6 +1226,28 @@ export function InvoiceCreateModal({
         }}
       />
       <DirtyConfirmDialog {...dirty.dialogProps} />
+      {/* BR-INV-026: вікно оплати поверх картки — монтується лише відкритим (каси, способи оплати
+          й мутація не живуть у закритій картці). QR — зі списку рахунків. */}
+      {payOpen && (
+        <ClientPaymentModal
+          open={payOpen}
+          target={
+            invoiceId && payParty && savedAmount != null
+              ? {
+                  kind: 'invoice',
+                  id: invoiceId,
+                  counterpartyId: payParty.counterpartyId,
+                  amount: savedAmount,
+                  paidAmount: paidAmount ?? 0,
+                  currencyCode: payParty.currencyCode,
+                }
+              : null
+          }
+          title={t('payment.modalTitle', { number: invoiceNumber })}
+          onClose={() => setPayOpen(false)}
+          onPaid={handlePaid}
+        />
+      )}
     </>
   );
 }
