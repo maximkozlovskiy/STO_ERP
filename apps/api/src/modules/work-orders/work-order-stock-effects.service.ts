@@ -52,6 +52,9 @@ function takeFromReserve(
  * латентної помилки: fetchPartCoefficients тепер фільтрує GoodUoM за orgId (tenant-isolation).
  * Потреба й net-резерв наряду — у work-order-stock-requirements.ts (спільні зі списками купівлі).
  */
+/** Наряд, з якого списують запчастини й нараховують борг (і реверс цього при скасуванні). */
+type ChargedWorkOrder = { id: string; counterpartyId: string; totalAmount: Prisma.Decimal | null };
+
 @Injectable()
 export class WorkOrderStockEffectsService {
   constructor(
@@ -211,18 +214,24 @@ export class WorkOrderStockEffectsService {
     }
   }
 
+  /** Запчастини наряду (невидалені) і коефіцієнти їхніх одиниць до базової — спільний початок
+   *  списання (`writeOffPartsAndCharge`) і реверсу (`returnPartsAndCredit`). */
+  private async loadParts(db: Prisma.TransactionClient, orgId: string, workOrderId: string) {
+    const parts = await db.workOrderPart.findMany({
+      where: { workOrderId, orgId, deletedAt: null },
+      take: 1000,
+    });
+    return { parts, coeffMap: await fetchPartCoefficients(db, orgId, parts) };
+  }
+
   async writeOffPartsAndCharge(
     orgId: string,
-    wo: { id: string; counterpartyId: string; totalAmount: Prisma.Decimal | null },
+    wo: ChargedWorkOrder,
     userId?: string,
     tx?: Prisma.TransactionClient,
   ): Promise<void> {
     const db = tx ?? this.prisma;
-    const parts = await db.workOrderPart.findMany({
-      where: { workOrderId: wo.id, orgId, deletedAt: null },
-      take: 1000,
-    });
-    const coeffMap = await fetchPartCoefficients(db, orgId, parts);
+    const { parts, coeffMap } = await this.loadParts(db, orgId, wo.id);
 
     // Bug #780: резерв наряду може бути меншим за потребу (нестача на «В роботу», BR-WO-021) або
     // його може не бути зовсім. Безумовний RESERVATION_RELEASE(-baseQty) тоді: (а) reserved===0 →
@@ -335,16 +344,12 @@ export class WorkOrderStockEffectsService {
    */
   async returnPartsAndCredit(
     orgId: string,
-    wo: { id: string; counterpartyId: string; totalAmount: Prisma.Decimal | null },
+    wo: ChargedWorkOrder,
     userId?: string,
     tx?: Prisma.TransactionClient,
   ): Promise<void> {
     const db = tx ?? this.prisma;
-    const parts = await db.workOrderPart.findMany({
-      where: { workOrderId: wo.id, orgId, deletedAt: null },
-      take: 1000,
-    });
-    const coeffMap = await fetchPartCoefficients(db, orgId, parts);
+    const { parts, coeffMap } = await this.loadParts(db, orgId, wo.id);
     // BR-WO-039: повертаємо стільки, скільки рядок РЕАЛЬНО списав (його BatchConsumption), а не
     // перерахунок за поточним коефіцієнтом одиниці — коефіцієнт товару можна змінити між «Виконано»
     // і «Скасувати» (12 замість 10 → +4 одиниці без партій, Σ-інваріант зламано; 1 замість 10 → 18

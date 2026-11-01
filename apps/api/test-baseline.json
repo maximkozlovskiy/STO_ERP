@@ -3542,9 +3542,13 @@
    "InventoryService.createMovement guards RETURN — повернення на склад (реверс WRITEOFF) 0 негативних consumption (AVG_COST / без партій) → StockItem++, returnToBatch НЕ викликається, без throw",
    "InventoryService.createMovement guards RETURN — повернення на склад (реверс WRITEOFF) RETURN без documentType/documentId → BadRequest (нема як знайти джерело)",
    "InventoryService.createMovement guards RETURN — повернення на склад (реверс WRITEOFF) RETURN з від'ємною к-стю → 400 навіть за достатнього залишку (не стає списанням)",
-   "InventoryService.createMovement guards RETURN — повернення на склад (реверс WRITEOFF) shared-batch: дві частини з ОДНІЄЇ партії → ОДИН агрегований returnToBatch (per-line hazard)",
+   "InventoryService.createMovement guards RETURN — повернення на склад (реверс WRITEOFF) дві consumption рядка з ОДНІЄЇ партії → ОДИН агрегований returnToBatch",
+   "InventoryService.createMovement guards RETURN — повернення на склад (реверс WRITEOFF) записів рядка немає (списання до documentLineId) → пул записів без рядка, ключ — рядок руху",
+   "InventoryService.createMovement guards RETURN — повернення на склад (реверс WRITEOFF) повертається не більше кількості руху: найсвіжіше списання — першим",
    "InventoryService.createMovement guards RETURN — повернення на склад (реверс WRITEOFF) позитивна к-сть інкрементує StockItem.quantity і НЕ створює нову партію",
-   "InventoryService.createMovement guards RETURN — повернення на склад (реверс WRITEOFF) шукає негативні BatchConsumption документа й повертає у КОЖНУ партію",
+   "InventoryService.createMovement guards RETURN — повернення на склад (реверс WRITEOFF) пул без рядка: вираховує вже повернене з нього, не бере записів рядків із власними списаннями",
+   "InventoryService.createMovement guards RETURN — повернення на склад (реверс WRITEOFF) рух рядка → лише записи цього рядка; рядок — у ключі ідемпотентності returnToBatch",
+   "InventoryService.createMovement guards RETURN — повернення на склад (реверс WRITEOFF) шукає BatchConsumption товару руху в документі й повертає у КОЖНУ партію",
    "InventoryService.createMovement guards TRANSFER з кількістю 5 → 400, нічого не записано",
    "InventoryService.createMovement guards TRANSFER з мінусом (вибуття) приймається",
    "InventoryService.createMovement guards WRITEOFF single-batch → проставляє batchId у stockMovement",
@@ -3692,7 +3696,9 @@
    "C2 round-trip WRITEOFF→RETURN — реальний BatchService, Σ-інваріант multi-batch span: частина списана через 2 партії → RETURN відновлює обидві",
    "C2 round-trip WRITEOFF→RETURN — реальний BatchService, Σ-інваріант multi-part + multi-batch: змішаний сценарій — Σ-інваріант тримається після повного реверсу",
    "C2 round-trip WRITEOFF→RETURN — реальний BatchService, Σ-інваріант shared-batch: 2 частини з ОДНІЄЇ партії → RETURN відновлює РІВНО списане (агрегація)",
-   "C2 round-trip WRITEOFF→RETURN — реальний BatchService, Σ-інваріант shared-batch: якби агрегацію прибрали — недоповернення (сторож режекту без агрегації)"
+   "C2 round-trip WRITEOFF→RETURN — реальний BatchService, Σ-інваріант shared-batch: якби агрегацію прибрали — недоповернення (сторож режекту без агрегації)",
+   "C2 round-trip WRITEOFF→RETURN — реальний BatchService, Σ-інваріант повернення ОДНОГО рядка з двох: відновлено лише його партії, Σ-інваріант тримається",
+   "C2 round-trip WRITEOFF→RETURN — реальний BatchService, Σ-інваріант старі списання без рядка, два рядки одного товару → кожен повертає своє, Σ-інваріант тримається"
   ],
   "apps/api/src/modules/inventory/stock-items.access.spec.ts": [
    "Залишки — ролі доступу (вкладка «Звіти → Залишки») stock-items.byBatch — власник, адміністратор, комірник, приймальник і бухгалтер",
@@ -8005,6 +8011,12 @@
    "BR-WO-021 скасування й видалення: знімається весь net-резерв скасування з DRAFT знімає весь net-резерв наряду і не чіпає чужий",
    "BR-WO-021 скасування й видалення: знімається весь net-резерв скасування з ESTIMATE знімає весь net-резерв наряду і не чіпає чужий",
    "BR-WO-021 скасування й видалення: знімається весь net-резерв скасування з ON_HOLD знімає весь net-резерв наряду і не чіпає чужий"
+  ],
+  "apps/api/src/modules/work-orders/work-order-stock-effects.return-qty.spec.ts": [
+   "returnPartsAndCredit — кількість RETURN = списане рядком (BR-WO-039) коефіцієнт зменшено (10 → 1): повертається 20, а не 2",
+   "returnPartsAndCredit — кількість RETURN = списане рядком (BR-WO-039) коефіцієнт одиниці змінено після «Виконано» (10 → 12): повертається списане 20, а не 24",
+   "returnPartsAndCredit — кількість RETURN = списане рядком (BR-WO-039) кожен рядок — своє списане; рядок без записів списання — перерахунок за коефіцієнтом",
+   "returnPartsAndCredit — кількість RETURN = списане рядком (BR-WO-039) списане читається лише з від’ємних записів цього наряду й його рядків, в org"
   ],
   "apps/api/src/modules/work-orders/work-order-stock-effects.service.spec.ts": [
    "WorkOrderStockEffectsService — порядок рухів RESERVATION → RELEASE → WRITEOFF кілька запчастин: для КОЖНОЇ пара RELEASE → WRITEOFF іде саме в цьому порядку",
