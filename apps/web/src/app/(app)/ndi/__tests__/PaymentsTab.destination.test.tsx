@@ -266,6 +266,36 @@ describe('НДІ → способи оплати: куди надходять к
     });
   });
 
+  // TECH-DEBT (а) 2026-10-30: поле пояснювало суперечність, а «Додати» лишалась активною — сервер давав 400.
+  // guards: BR-PAY-019, BR-PAY-031
+  it('новий спосіб: «Готівка» + банківський рахунок чи онлайн-код + каса — «Додати» вимкнена', async () => {
+    renderTab();
+    fireEvent.click(await screen.findByRole('button', { name: /Метод оплати/ }));
+    const dialog = await screen.findByRole('dialog');
+    const add = () => within(dialog).getByRole('button', { name: 'Додати' });
+    fireEvent.change(within(dialog).getByLabelText(/^Код/), { target: { value: 'card2' } });
+    fireEvent.change(within(dialog).getByLabelText(/^Назва/), { target: { value: 'Картка 2' } });
+    fireEvent.change(destinationSelect(dialog), { target: { value: 'BANK_ACCOUNT' } });
+    fireEvent.change(within(dialog).getByRole('combobox', { name: /^Банківський рахунок/ }), {
+      target: { value: 'ba-1' },
+    });
+    expect(add()).toBeEnabled();
+
+    fireEvent.click(within(dialog).getByRole('checkbox', { name: /^Готівка/ }));
+    expect(within(dialog).getByText(/Для готівки кошти надходять лише в касу/)).toBeTruthy();
+    expect(add()).toBeDisabled();
+    fireEvent.click(within(dialog).getByRole('checkbox', { name: /^Готівка/ }));
+    expect(add()).toBeEnabled();
+
+    fireEvent.change(destinationSelect(dialog), { target: { value: 'CASH_REGISTER' } });
+    fireEvent.change(within(dialog).getByRole('combobox', { name: /^Каса/ }), {
+      target: { value: 'cr-main' },
+    });
+    expect(add()).toBeEnabled();
+    fireEvent.change(within(dialog).getByLabelText(/^Код/), { target: { value: 'monobank_qr' } });
+    expect(add()).toBeDisabled();
+  });
+
   // Bug #1010: відмова сервера («лише в касу») лишалась над списком і після успішного збереження.
   // Мутація: прибрати `setError('')` на початку `createPaymentMethod` — текст лишається, червоний.
   it('помилка попередньої спроби зникає після успішного додавання', async () => {

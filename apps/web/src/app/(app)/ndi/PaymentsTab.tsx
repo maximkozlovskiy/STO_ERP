@@ -37,6 +37,14 @@ const destinationIncomplete = (d: DestinationForm) =>
   (d.type === 'CASH_REGISTER' && !d.cashRegisterId) ||
   (d.type === 'BANK_ACCOUNT' && !d.bankAccountId);
 
+/**
+ * Призначення суперечить способу (BR-PAY-019 / BR-PAY-031): готівка — лише в касу, онлайн-спосіб — лише
+ * на банківський рахунок. Поле вже пояснює це текстом; новий спосіб із таким поєднанням сервер відхилить
+ * (400), тож «Додати» вимкнено. Картку наявного способу не блокуємо: старі рядки лишаються як є.
+ */
+const destinationConflicts = (isCash: boolean, code: string, d: DestinationForm) =>
+  (isCash && d.type === 'BANK_ACCOUNT') || (isOnlineMethodCode(code) && d.type === 'CASH_REGISTER');
+
 /** Тіло запиту: три поля разом; id іншого типу сервер обнулить сам. */
 const destinationBody = (d: DestinationForm) =>
   d.type === 'CASH_REGISTER'
@@ -544,7 +552,12 @@ export default function PaymentsTab() {
             disabled={
               !newPaymentForm.code ||
               !newPaymentForm.name ||
-              destinationIncomplete(newPaymentForm.destination)
+              destinationIncomplete(newPaymentForm.destination) ||
+              destinationConflicts(
+                newPaymentForm.isCash,
+                newPaymentForm.code,
+                newPaymentForm.destination,
+              )
             }
             className="w-full"
           >
