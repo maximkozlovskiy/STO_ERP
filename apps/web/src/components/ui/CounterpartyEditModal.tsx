@@ -233,6 +233,35 @@ export function CounterpartyEditModal({
     currentCpIdRef.current = counterparty?.id ?? null;
   }, [counterparty?.id]);
 
+  // Bug #1038: ЄДРПОУ — detail-only (список і відповідь створення його не віддають), а сторінка
+  // контрагентів дає модалці рядок списку → поле «ЄДРПОУ» було порожнім, хоч значення збережене.
+  // Без ключа `edrpou` у пропі дочитуємо картку і ставимо значення, якщо користувач ще не ввів своє.
+  // Дочитане йде й у `original` PATCH-тіла: інакше очищений ЄДРПОУ не дійшов би до сервера.
+  const [loadedEdrpou, setLoadedEdrpou] = useState<{ id: string; edrpou: string | null } | null>(
+    null,
+  );
+  useEffect(() => {
+    if (!open || !counterparty || counterparty.edrpou !== undefined) return;
+    const cp = counterparty;
+    const cpId = cp.id;
+    let cancelled = false;
+    apiFetch<{ edrpou?: string | null }>(`/counterparties/${cpId}`)
+      .then(detail => {
+        if (cancelled || currentCpIdRef.current !== cpId) return;
+        const edrpou = detail.edrpou ?? null;
+        setLoadedEdrpou({ id: cpId, edrpou });
+        // `reset`, а не `resetField`: поле в згорнутій секції ще не зареєстроване, і `resetField`
+        // його мовчки пропускає. `keepDirtyValues` лишає вже введене користувачем.
+        reset({ ...counterpartyToForm(cp), edrpou: edrpou ?? '' }, { keepDirtyValues: true });
+      })
+      // Збій — поле лишається порожнім, як до фіксу: PATCH поле без `original` не стирає.
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, counterparty?.id]);
+
   // ── Work Orders ──────────────────────────────────────────────────────────────
   const [modalWorkOrders, setModalWorkOrders] = useState<ModalWorkOrder[]>([]);
   const [modalWorkOrdersLoading, setModalWorkOrdersLoading] = useState(false);
@@ -471,8 +500,20 @@ export function CounterpartyEditModal({
       const updated = await apiFetch<CounterpartyForModal>(`/counterparties/${counterparty.id}`, {
         method: 'PATCH',
         // Очищене поле → null, інакше '' → undefined і PATCH його не очищає (BR-CP-018).
-        body: JSON.stringify(counterpartyPatchBody(values, counterparty)),
+        body: JSON.stringify(
+          counterpartyPatchBody(values, {
+            ...counterparty,
+            edrpou:
+              counterparty.edrpou !== undefined
+                ? counterparty.edrpou
+                : loadedEdrpou?.id === counterparty.id
+                  ? loadedEdrpou.edrpou
+                  : undefined,
+          }),
+        ),
       });
+      if (updated.edrpou !== undefined)
+        setLoadedEdrpou({ id: counterparty.id, edrpou: updated.edrpou });
       dirty.resetDirty();
       onSaved(updated, false);
       toast.success(t('toast.saved'));

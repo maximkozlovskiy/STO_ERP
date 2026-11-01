@@ -173,6 +173,8 @@ function mountApi(seed: {
   garages?: Record<string, { id: string }[]>;
   vehicles?: Record<string, VehicleRow[]>;
   contracts?: Record<string, ContractRow[]>;
+  /** Картка `GET /counterparties/:id` (ЄДРПОУ — detail-only, Bug #1038). */
+  details?: Record<string, Partial<CounterpartyForModal>>;
 }) {
   const calls: ApiCall[] = [];
   const handlers = new Map<string, Handler>();
@@ -192,6 +194,8 @@ function mountApi(seed: {
       if (vehicles) return Promise.resolve(seed.vehicles?.[vehicles[1]!] ?? []);
       const contracts = /^\/counterparties\/([^/?]+)\/contracts/.exec(path);
       if (contracts) return Promise.resolve(seed.contracts?.[contracts[1]!] ?? []);
+      const detail = /^\/counterparties\/([^/?]+)$/.exec(path);
+      if (detail && seed.details?.[detail[1]!]) return Promise.resolve(seed.details[detail[1]!]);
       if (path.startsWith('/work-orders')) return Promise.resolve({ items: [] });
       if (path === '/settings/organisation') return Promise.resolve({ currency: 'UAH' });
       if (path === '/currencies') {
@@ -761,5 +765,37 @@ describe('CounterpartyEditModal — очищення реквізиту (BR-CP-0
     const body = api.mutations()[0]!.body!;
     expect(body).toHaveProperty('bankAccount', null);
     expect(body).not.toHaveProperty('bankName');
+  });
+});
+
+// Bug #1038: рядок списку (і відповідь створення) не має `edrpou` — він detail-only. Модалка дочитує
+// картку й показує збережений ЄДРПОУ; очищення шле `edrpou: null`.
+// Mutation-verify: прибрати дочитування (ранній return в ефекті) → перший кейс падає (другий — контроль).
+describe('CounterpartyEditModal — ЄДРПОУ з картки, коли рядок списку його не має (Bug #1038)', () => {
+  it('поле показує збережений ЄДРПОУ; очищене — PATCH з edrpou: null', async () => {
+    const api = mountApi({ details: { 'cp-1': { ...cp('SUPPLIER'), edrpou: '12345678' } } });
+    api.on('PATCH /counterparties/cp-1', ({ body }) => ({ ...cp('SUPPLIER'), ...body }));
+    renderModal(cp('SUPPLIER'));
+    const edrpou = await screen.findByLabelText('ЄДРПОУ');
+    await waitFor(() => expect(edrpou).toHaveValue('12345678'));
+
+    fireEvent.change(edrpou, { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Оновити' }));
+    await waitFor(() => expect(api.mutations()).toHaveLength(1));
+    expect(api.mutations()[0]!.body).toHaveProperty('edrpou', null);
+  });
+
+  it('ЄДРПОУ у пропі — картку не дочитує, PATCH несе значення з пропа', async () => {
+    const api = mountApi({});
+    api.on('PATCH /counterparties/cp-1', ({ body }) => ({ ...cp('SUPPLIER'), ...body }));
+    renderModal({ ...cp('SUPPLIER'), edrpou: '87654321' });
+    const edrpou = await screen.findByLabelText('ЄДРПОУ');
+    await waitFor(() => expect(edrpou).toHaveValue('87654321'));
+    fireEvent.click(screen.getByRole('button', { name: 'Оновити' }));
+    await waitFor(() => expect(api.mutations()).toHaveLength(1));
+    expect(api.calls.some(c => c.method === 'GET' && c.path === '/counterparties/cp-1')).toBe(
+      false,
+    );
+    expect(api.mutations()[0]!.body).toHaveProperty('edrpou', '87654321');
   });
 });

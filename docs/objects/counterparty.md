@@ -237,9 +237,9 @@ cd apps/api && npx vitest run src/modules/counterparties/<файл>.spec.ts
 
 Поза модулем правила цього агрегату стережуть ще три файли:
 
-- `apps/web/src/components/ui/__tests__/CounterpartyEditModal.test.tsx` — 19 кейсів: вкладки
+- `apps/web/src/components/ui/__tests__/CounterpartyEditModal.test.tsx` — 21 кейс: вкладки
   «Договори» й «Авто» форми контрагента (вид договору за типом контрагента, CRUD договору,
-  CRUD авто з авто-створенням гаража) група «Статуси» в рядку з «Типом» і очищення реквізиту в PATCH (BR-CP-018). Запуск:
+  CRUD авто з авто-створенням гаража) група «Статуси» в рядку з «Типом», очищення реквізиту в PATCH (BR-CP-018) і ЄДРПОУ з картки, коли рядок списку його не має (Bug #1038). Запуск:
   `cd apps/web && npx vitest run src/components/ui/__tests__/CounterpartyEditModal.test.tsx`.
 - `apps/api/src/modules/sync/sync.contract.spec.ts` — кейс «pull counterparties: phone / email /
   edrpou НЕ потрапляють у payload» (pull-blacklist живе в `sync/sync.service.ts`, не в цьому модулі)

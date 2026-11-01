@@ -5855,3 +5855,52 @@ cancel, `pendingIdRef` і `settlePayment` прибрано. Тести: `supplie
 Тести: `work-order-stock-effects.return-qty.spec.ts` (4; мутація — повернути `part.quantity × coeff` → 3 червоні).
 Наживо після фіксу: обидва напрямки зміни коефіцієнта — залишок 50, Σ партій 50; п'ять сценаріїв вище — без змін.
 **Статус:** [x] виправлено
+
+---
+
+## Session 2026-11-01 — sto-tester: очищення реквізитів контрагента (21713db6b, 9afce727b) — живий браузер :3001, API :3000, postgres MCP
+
+Наживо (OWNER): картка `/counterparties/:id` — заповнити IBAN (`р/р ua21 3223 …`), e-mail, ЄДРПОУ, юр. адресу,
+банк → у БД `iban` = `UA213223130000026007233566001`; очистити IBAN, e-mail, ЄДРПОУ, адресу → усі `null`, `iban`
+`null`, «Банк» (не чіпали) лишився. Модалка зі списку (`?open=`): зміна «Нотаток» не стерла ні реквізит, ні ЄДРПОУ
+(якого в рядку списку немає); очищення IBAN, e-mail, адреси, телефону, форми власності → `null`. Нова картка з
+модалки з IBAN → `iban` нормалізований. Виписка: dry-run `POST /bank-statements/import/preview` (CSV, без запису) —
+рядок з `payerIban` нового контрагента → `matched`, `matchReason: iban`, `matchConfidence: 1`; чужий IBAN → `notFound`.
+
+## Bug #1038 — [MEDIUM] Модалка контрагента зі списку і щойно створений: ЄДРПОУ порожній, хоч збережений
+
+**Файл:** `apps/web/src/components/ui/CounterpartyEditModal.tsx` (форма з пропа `counterparty`)
+**Severity:** MEDIUM
+**Категорія:** frontend
+
+**Опис:** `edrpou` — detail-only: список `GET /counterparties` і відповідь `POST /counterparties` його не віддають
+(`toDto` без `includeEdrpou`). Сторінка контрагентів передає в модалку рядок списку (і після створення — відповідь
+POST), а модалка заповнює форму з пропа → поле «ЄДРПОУ» порожнє. Наживо: контрагент з ЄДРПОУ `12345678`, відкритий зі
+списку, — поле порожнє; новий контрагент, створений з ЄДРПОУ `87654321`, — після «Зберегти» модалка лишається
+відкритою, а щойно введений ЄДРПОУ «зник». Очистити ЄДРПОУ з такої модалки неможливо (його не видно), і з BR-CP-018
+`counterpartyPatchBody` його й не шле — поле, якого немає в `original`, не стирається, тож даних не губить, але
+бачить користувач неправду.
+**Очікувана поведінка:** модалка показує збережений ЄДРПОУ звідки б її не відкрили; очищення ЄДРПОУ шле `null`.
+**Фактична поведінка:** порожнє поле, хоч у БД значення є.
+**Фікс:** модалка, якщо в пропі немає ключа `edrpou`, дочитує `GET /counterparties/:id` і ставить ЄДРПОУ через
+`reset(…, { keepDirtyValues: true })` (не `resetField`: поле в згорнутій секції ще не зареєстроване, і `resetField`
+його мовчки пропускав — наживо перевірено); дочитане йде в `original` для `counterpartyPatchBody`. Тести:
+`CounterpartyEditModal.test.tsx` +2 (мутація — вимкнути дочитування → кейс «очищене — edrpou: null» червоний).
+Наживо після фіксу: модалка зі списку показує `12345678`, очищення → `edrpou` `null` у БД, «Банк» лишився; нова
+картка з ЄДРПОУ `11223344` після «Зберегти» показує його; Escape без змін закриває без питання.
+**Статус:** [x] виправлено
+
+### Знахідка без фіксу (за брифом): інші update-схеми не очищають рядкові поля
+
+`optionalString()` у PATCH-схемах `@sto/shared` перетворює `''` і `null` на `undefined` → «не чіпати»; PATCH з
+порожнім полем відповідає 200 і нічого не очищає. Клас Bug #891 / BR-CP-018.
+
+- **vehicle** (`vehicleUpdateSchema`: vin, licensePlate, fuelType, color, notes, transmissionType, driveType,
+  bodyType, engineCode): наживо — картка авто `/vehicles/:id` → «Редагувати» → очистити «Колір» і «Нотатки» →
+  «Зберегти» → PATCH 200, у БД `color = 'red'`, `notes` старі. Картка шле `notes: notes ?? null` — тобто очищення
+  нотаток колись працювало, а схема `null` тепер з'їдає. API: `{"color":"","notes":null}` → без змін.
+- **good** (`goodUpdateSchema` = `goodFormSchema.partial()`: sku, unit, category, barcode, notes): API
+  `{"barcode":"","notes":null}` → 200, без змін.
+- Статично той самий шлях (наживо не перевірено): employee (phone, email, dateOfHire, dateOfFire), work-order
+  (`description`, рядок і запчастина — `notes`), invoice / purchase-order / stock-document / supplier-return
+  (`notes`).
