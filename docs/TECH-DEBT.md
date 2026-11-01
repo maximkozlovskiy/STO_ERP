@@ -68,9 +68,11 @@
 - ~~(2026-10-26, tester) Суми рядків у кількох картках документів друкуються через `toFixed(2)` («30.00», не «30,00») — перевести на `formatMoney`.~~ ✅ ЗАКРИТО 2026-10-30: `0b800469d` + `8f59fc9c1` (тести) — `fmtMoney` у `WorksTable`, `PartsTable`, `PurchaseOrderCreateModal`, `StockDocumentCreateModal`, `SupplierReturnCreateModal` (33 місця); BR-WO-033, тест `WorksTable.money-format.test.tsx` (рендер + сканер `components/ui` на `toFixed(2)`).
 - ~~(2026-10-26) Публічна сторінка кошторису на 429 (ліміт 10/хв, `work-orders-public.controller.ts`) показує клієнту сирий текст `ThrottlerException: Too Many Requests` — потрібне українське «Забагато запитів, спробуйте за хвилину». Той самий ліміт робить flaky `e2e/estimate-share-revoke.spec.ts` у повному прогоні й при `--repeat-each`.~~ ✅ ЗАКРИТО 2026-10-30: `a27b00f3f` — будь-який 429 `ThrottlerGuard` → `err.tooManyRequests` мовою запиту (`http-exception.filter.ts`, BR-WO-034, тест `http-exception.filter.spec.ts`); ліміт продукту не змінено, E2E на 429 чекає вікна ліміту й перезавантажує (`loadPublic`).
 
-- (2026-10-30, tester борг (а) — 1) Типові повідомлення zod не перекладено, коли бракує обов'язкового поля-об'єкта:
+- ~~(2026-10-30, tester борг (а) — 1) Типові повідомлення zod не перекладено, коли бракує обов'язкового поля-об'єкта:
   `POST /employees` без `rateScheme`, `POST /work-orders/:id/lines` без `employeeId` → «Invalid input: expected object,
-  received undefined (поле …)».
+  received undefined (поле …)».~~ ✅ ЗАКРИТО 2026-11-01: `ZodValidationPipe` передає в `safeParse` власний `error` (zod 4
+  кличе його лише для issue без повідомлення схеми): поля немає → `v.required` «Обов'язкове поле», інше → `v.invalid`;
+  тести `zod-validation.i18n.e2e.spec.ts`.
 - (2026-10-30, tester) НДІ «Новий метод оплати»: «Додати» активна при відомо неправильному поєднанні «Готівка» +
   банківський рахунок (сервер дає зрозумілу 400, але форма могла б не пускати).
 - (2026-10-30, tester) `kyivWallTimeToUtc` бере зсув за «настінним часом як UTC»: у дні переведення годинника

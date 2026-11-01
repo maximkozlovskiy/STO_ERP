@@ -10,6 +10,7 @@ export const uk: Record<string, string> = {
   'v.validationFailed': 'Помилка валідації',
   'v.invalid': 'Невірне значення',
   'v.invalidNumber': 'Вкажіть число',
+  'v.required': "Обов'язкове поле",
 
   // ── validators.ts (спільні хелпери) ──
   'v.phone': 'Невірний формат телефону (+380XXXXXXXXX)',

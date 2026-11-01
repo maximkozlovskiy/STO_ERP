@@ -7,6 +7,7 @@ export const en: Record<string, string> = {
   'v.validationFailed': 'Validation failed',
   'v.invalid': 'Invalid value',
   'v.invalidNumber': 'Enter a number',
+  'v.required': 'Required field',
 
   // ── validators.ts (shared helpers) ──
   'v.phone': 'Invalid phone format (+380XXXXXXXXX)',

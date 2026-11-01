@@ -21,7 +21,7 @@ export class ZodValidationPipe<T> implements PipeTransform<unknown, T> {
   constructor(private readonly schema: ZodSchema<T>) {}
 
   transform(value: unknown): T {
-    const result = this.schema.safeParse(value);
+    const result = this.schema.safeParse(value, { error: builtInMessageKey });
     if (result.success) return result.data;
 
     // i18n: issue.message — це KEY (schemas у @sto/shared емітять ключі). Резолвимо у мову запиту
@@ -46,4 +46,14 @@ function formatIssue(issue: ZodIssue, locale: ValidationLocale): string {
   const msg = translateValidation(issue.message, locale);
   if (!path) return msg;
   return `${msg} ${translateValidation('v.fieldSuffix', locale, { path })}`;
+}
+
+/**
+ * Ключ для issue, у якого схема не задала свого повідомлення (zod 4 кличе per-parse `error` лише тоді;
+ * повідомлення схеми — ключ `v.*` чи текст — мають пріоритет). Без цього zod віддавав свій англійський
+ * текст: поле-об'єкт `rateScheme` відсутнє → «Invalid input: expected object, received undefined».
+ * Поля немає → «Обов'язкове поле», не той тип чи межа → «Невірне значення» (TECH-DEBT (а), 2026-10-30).
+ */
+function builtInMessageKey(issue: { code?: string; input?: unknown }): string {
+  return issue.code === 'invalid_type' && issue.input === undefined ? 'v.required' : 'v.invalid';
 }

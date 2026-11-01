@@ -9,6 +9,7 @@ export const V = {
   fieldSuffix: 'v.fieldSuffix',
   validationFailed: 'v.validationFailed',
   invalid: 'v.invalid',
+  required: 'v.required',
 
   // validators.ts
   phone: 'v.phone',
@@ -229,6 +230,7 @@ export const VALIDATION_KEYS = [
   'v.fieldSuffix',
   'v.validationFailed',
   'v.invalid',
+  'v.required',
   'v.phone',
   'v.email',
   'v.iban',

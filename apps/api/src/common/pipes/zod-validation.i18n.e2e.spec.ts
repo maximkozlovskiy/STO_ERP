@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { BadRequestException } from '@nestjs/common';
-import { goodFormSchema } from '@sto/shared';
+import { employeeCreateSchema, goodFormSchema } from '@sto/shared';
 import { ZodValidationPipe } from './zod-validation.pipe';
 import { runWithTenant } from '../tenant/tenant-context';
 
@@ -83,5 +83,39 @@ describe('locale pipeline (pipe + ALS + shared catalog)', () => {
     ]);
     expect(results.en.join(' ')).toContain('Enter the product name');
     expect(results.uk.join(' ')).toContain('Вкажіть назву товару');
+  });
+});
+
+/**
+ * Поле без власного ключа повідомлення (поле-об'єкт `rateScheme`, межі числа без тексту): zod дає свій
+ * англійський текст — «Invalid input: expected object, received undefined». Pipe підставляє ключ:
+ * поля немає → «Обов'язкове поле», не той тип чи межа → «Невірне значення» (TECH-DEBT (а), 2026-10-30).
+ */
+describe('вбудовані повідомлення zod — ключем каталогу, не англійським текстом', () => {
+  const employee = { firstName: 'Іван', lastName: 'Коваль', role: 'MECHANIC' };
+  const messages = (body: unknown, locale: 'uk' | 'en') =>
+    runWithTenant({ locale }, () => {
+      try {
+        new ZodValidationPipe(employeeCreateSchema).transform(body);
+        throw new Error('очікували BadRequestException');
+      } catch (e) {
+        if (!(e instanceof BadRequestException)) throw e;
+        return (e.getResponse() as { message: string[] }).message;
+      }
+    });
+
+  it("поля-об'єкта немає → «Обов'язкове поле» з назвою поля (uk і en)", () => {
+    expect(messages(employee, 'uk')).toEqual(['Обов\'язкове поле (поле "rateScheme")']);
+    expect(messages(employee, 'en')).toEqual(['Required field (field "rateScheme")']);
+  });
+
+  it('значення не того типу чи поза межами → «Невірне значення», без англійського тексту zod', () => {
+    const wrongType = messages({ ...employee, rateScheme: 'x' }, 'uk');
+    expect(wrongType).toEqual(['Невірне значення (поле "rateScheme")']);
+    const outOfRange = messages(
+      { ...employee, rateScheme: { type: 'percent_normo', params: { percent: 150 } } },
+      'uk',
+    );
+    expect(outOfRange).toEqual(['Невірне значення (поле "rateScheme.params.percent")']);
   });
 });
