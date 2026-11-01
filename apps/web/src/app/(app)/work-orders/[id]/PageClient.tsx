@@ -41,6 +41,7 @@ import { invoiceRemaining } from '@/lib/invoice-payment';
 import { WorkOrderPrintButtons } from './WorkOrderPrintButtons';
 import { woStatusLabel, woPriorityLabel, woCategoryLabel } from '@/i18n/enumLabel';
 import { cancelConfirmOptions } from '@/components/ui/work-order/cancel-confirm';
+import { WO_TRANSITION_ROLES } from '@/hooks/useWorkOrderActions';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Badge } from '@/components/ui/badge';
 import { WorkOrderLinesSection } from './WorkOrderLinesSection';
@@ -496,6 +497,24 @@ export default function WorkOrderCardPage() {
     }
   };
 
+  // BR-WO-037: рахунок створено з «Виконано» — наряд переводиться у «Виставлено», як у картці наряду.
+  // Бухгалтер статусу не переводить: йому лише рахунок. Збій переходу — рахунок лишається, наряд
+  // «Виконано», перевести можна кнопкою статусу в шапці.
+  const handleInvoiceCreated = async (invoiceNumber: string) => {
+    if (!wo || wo.status !== 'COMPLETED' || !WO_TRANSITION_ROLES.includes(role)) return;
+    try {
+      const updated = await apiFetch<Omit<WorkOrderDetail, 'lines' | 'parts'>>(
+        `/work-orders/${id}/transition`,
+        { method: 'POST', body: JSON.stringify({ status: 'INVOICED' }) },
+      );
+      setWo(prev => (prev ? { ...prev, ...updated } : prev));
+      invalidateWorkOrderSideEffects(queryClient);
+    } catch (e: unknown) {
+      const reason = e instanceof Error ? e.message : '';
+      setError(t('invoice.statusNotChanged', { number: invoiceNumber, reason }));
+    }
+  };
+
   // Bug #1033: синхронний гейт дій з актом — два кліки в одному такті (до перерендеру з `disabled`)
   // слали два запити, і другий («акт уже існує») лишав червону смугу поруч зі щойно створеним актом.
   const actBusyRef = useRef(false);
@@ -689,9 +708,15 @@ export default function WorkOrderCardPage() {
   const isDeleted = !!wo.deletedAt;
   const canEdit = !isDeleted && WO_EDITABLE_STATUSES.includes(wo.status);
   // Ручного переходу в «Оплачено» немає — замість нього «Оплатити» (BR-WO-016).
+  // «Виконано» без рахунку: «Виставити рахунок» — одна дія секції «Рахунок» (рахунок, потім перехід,
+  // BR-WO-037), а не голий перехід статусу з такою самою назвою в шапці. Рахунок уже є (перехід після
+  // створення не вдався) — у шапці лишається перехід, а секція кнопки створення не показує.
+  const invoiceMissing = wo.status === 'COMPLETED' && !invoiceRef;
   const allowedTransitions = isDeleted
     ? []
-    : (TRANSITIONS[wo.status] ?? []).filter(s => s !== 'PAID');
+    : (TRANSITIONS[wo.status] ?? []).filter(
+        s => s !== 'PAID' && !(s === 'INVOICED' && invoiceMissing),
+      );
   // «Оплатити» (BR-PAY-001): статуси, що приймають оплату, і ролі, яким дозволено POST /payments.
   const canPay =
     !isDeleted &&
@@ -1036,6 +1061,7 @@ export default function WorkOrderCardPage() {
           workOrderStatus={wo.status}
           invoiceRef={invoiceRef}
           onChange={setInvoiceRef}
+          onCreated={handleInvoiceCreated}
           readOnly={isDeleted}
         />
       </SectionErrorBoundary>

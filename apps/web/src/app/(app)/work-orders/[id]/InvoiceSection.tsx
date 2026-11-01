@@ -68,6 +68,8 @@ interface InvoiceSectionProps {
   invoiceRef: InvoiceRef | null | undefined;
   /** Викликається після успішного create / refresh — батьківський компонент оновлює state. */
   onChange: (next: InvoiceRef) => void;
+  /** Після створення рахунку — сторінка переводить наряд «Виконано» → «Виставлено» (BR-WO-037). */
+  onCreated?: (invoiceNumber: string) => Promise<void> | void;
   /**
    * BR-WO-012: наряд позначено на видалення — лише перегляд. Сховано «Виставити рахунок» і
    * «Оновити» (сервер видаленого наряду не знаходить); PDF самого рахунку і перехід до списку
@@ -81,6 +83,7 @@ export function InvoiceSection({
   workOrderStatus,
   invoiceRef,
   onChange,
+  onCreated,
   readOnly = false,
 }: InvoiceSectionProps) {
   const { t } = useTranslation('workOrders');
@@ -129,6 +132,7 @@ export function InvoiceSection({
       });
       onChange(toInvoiceRef(inv));
       if (features.toastEnabled) toast.success(t('invoice.createdToast', { number: inv.number }));
+      await onCreated?.(inv.number);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : t('invoice.createError');
       reportError(msg);

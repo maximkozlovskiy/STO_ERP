@@ -17,7 +17,7 @@
 //   - `{!isDeleted && <CommentsSection …/>}` → без умови     → «видалений наряд: коментарі» падає;
 //   - гейти навпаки (запит лише для «чужих» ролей)           → кейси ADMIN падають.
 
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { vi, it, expect, describe, beforeEach } from 'vitest';
 
@@ -266,6 +266,73 @@ describe('сторінка наряду — «Зберегти як послуг
 // TECH-DEBT (б) №51: наряд, сплачений до «Виставлено», стає «Оплачено» без акта — «Сформувати акт»
 // для нього є (ті самі статуси, що приймає `POST /completion-acts/from-work-order`).
 // Mutation-verify: гейт на WO_INVOICEABLE_STATUSES → червоніє PAID; без гейта → ARCHIVED.
+// TECH-DEBT (а) 2026-10-31: «Виконано» мало дві кнопки «Виставити рахунок» — голий перехід статусу в
+// шапці і створення рахунку в секції. Тепер одна дія: рахунок, потім перехід (як у картці, BR-WO-037).
+describe('сторінка наряду — одна дія «Виставити рахунок» (BR-WO-037)', () => {
+  const INVOICE = {
+    id: 'inv-1',
+    number: 'INV-1',
+    status: 'DRAFT',
+    amount: 100,
+    documentDate: null,
+  };
+  const posts = () =>
+    apiFetchMock.mock.calls
+      .filter(c => (c[1] as { method?: string } | undefined)?.method === 'POST')
+      .map(c => `${String(c[0])} ${String((c[1] as { body?: string }).body ?? '')}`);
+  const issueButtons = () => screen.queryAllByRole('button', { name: 'Виставити рахунок' });
+
+  function withInvoice(existing: unknown) {
+    const base = apiFetchMock.getMockImplementation()!;
+    apiFetchMock.mockImplementation((path: string, init?: { method?: string }) => {
+      if (path === `/invoices/from-work-order/${WO_ID}` && init?.method === 'POST')
+        return Promise.resolve(INVOICE);
+      if (path === `/work-orders/${WO_ID}/transition`)
+        return Promise.resolve({ ...wo, status: 'INVOICED' });
+      if (path.startsWith('/invoices/from-work-order/')) return Promise.resolve(existing);
+      return base(path, init);
+    });
+  }
+
+  // guards: BR-WO-037
+  it('«Виконано» без рахунку: одна кнопка — рахунок, потім перехід у «Виставлено»', async () => {
+    wo = workOrder({ status: 'COMPLETED' });
+    withInvoice(null);
+    renderPage();
+    await woShown();
+    await waitFor(() => expect(issueButtons()).toHaveLength(1));
+    fireEvent.click(issueButtons()[0]);
+    await waitFor(() => expect(posts()).toHaveLength(2));
+    expect(posts()).toEqual([
+      `/invoices/from-work-order/${WO_ID} `,
+      `/work-orders/${WO_ID}/transition {"status":"INVOICED"}`,
+    ]);
+  });
+
+  // guards: BR-WO-037
+  it('ACCOUNTANT: рахунок створюється, статус не переводиться (сервер не дозволяє)', async () => {
+    role = 'ACCOUNTANT';
+    wo = workOrder({ status: 'COMPLETED' });
+    withInvoice(null);
+    renderPage();
+    await woShown();
+    await waitFor(() => expect(issueButtons()).toHaveLength(1));
+    fireEvent.click(issueButtons()[0]);
+    await waitFor(() => expect(posts()).toHaveLength(1));
+    expect(posts()[0]).toBe(`/invoices/from-work-order/${WO_ID} `);
+  });
+
+  // guards: BR-WO-037
+  it('«Виконано» з рахунком (перехід раніше не вдався): одна кнопка — перехід у шапці', async () => {
+    wo = workOrder({ status: 'COMPLETED' });
+    withInvoice(INVOICE);
+    renderPage();
+    await woShown();
+    expect(await screen.findByText(/INV-1/)).toBeInTheDocument();
+    expect(issueButtons()).toHaveLength(1);
+  });
+});
+
 describe('сторінка наряду — «Сформувати акт» за статусом (BR-WO-037)', () => {
   // guards: BR-WO-037
   it.each(['COMPLETED', 'INVOICED', 'PAID'])('%s без акта — кнопка є', async status => {
