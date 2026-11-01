@@ -114,6 +114,7 @@ describe('SupplierReturnsService.create — Bug #778: Σ(lines.amount) === total
     service = module.get(SupplierReturnsService);
   });
 
+  // guards: BR-SRET-009
   it('сума per-line amount дорівнює збереженому totalAmount (дробові кількості)', async () => {
     const res = await service.create(ORG, {
       supplierId: SUPPLIER_ID,

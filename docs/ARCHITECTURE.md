@@ -223,6 +223,7 @@ syncVersion BigInt    @default(0)
 | [invoice.md](objects/invoice.md)                             | Invoice — FSM, lines, PDF                       |
 | [purchase-order.md](objects/purchase-order.md)               | PurchaseOrder — receive(), pricing              |
 | [stock-document.md](objects/stock-document.md)               | StockDocument — WRITEOFF/TRANSFER/RECEIPT       |
+| [supplier-return.md](objects/supplier-return.md)             | SupplierReturn — повернення постачальнику       |
 | [counterparty.md](objects/counterparty.md)                   | Counterparty — CRM, contracts, garages          |
 | [good.md](objects/good.md)                                   | Good — каталог, UoM, barcodes, pricing          |
 | [work.md](objects/work.md)                                   | Work + WorkCategory — норми-годин               |

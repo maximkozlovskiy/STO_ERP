@@ -103,7 +103,7 @@
 **M (1–2 дні):**
 
 - ~~§8 L432 — `RETURN` відновлює партії за товаром і кількістю.~~ ✅ ЗАКРИТО 2026-11-01: `restoreBatchesForReturn` — записи рядка (`documentLineId`) і товару руху, не більше кількості руху; ключ `returnToBatch` — партія + документ + рядок (BR-INVT-014).
-- §8 L502(6) + L528(11) — зворотна перевірка гейта реєстру (диск → реєстр) і дос'є `supplier-returns`.
+- ~~§8 L502(6) + L528(11) — зворотна перевірка гейта реєстру (диск → реєстр) і дос'є `supplier-returns`.~~ ✅ ЗАКРИТО 2026-11-01: `fdbf7de44` — `check-spec-registry.py` гейт C — «СПЕК ПОЗА РЕЄСТРОМ» для кожного `*.spec.ts` у теці з рядка `**Модуль:**`; з 18 спеків поза реєстром зареєстровано 17 (notifications 11 і дві схеми `forms` — `automation.md`, `purchase-orders/delivery` 3, integration-спек `purchase-lists`), а `work-orders.list-include` уже стояв у реєстрі, але байт `\x01` у рядку ховав його від регулярки; дос'є [supplier-return.md](objects/supplier-return.md) — BR-SRET-001…013, реєстр 8 спеків (81 кейс).
 - §8 L441 — шлях запису `Counterparty.iban`.
 - §8 L528(9) — `dateOfHire` / `dateOfFire` як `@db.Date` (міграція).
 - §8 L556 п. 3 / 4 / 14 — сторно оплати постачальнику з банківського рядка; проміжок «прив'язати → провести»; HTTP-статус у `apiFetch`.

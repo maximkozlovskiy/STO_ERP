@@ -117,6 +117,7 @@ describe('SupplierReturnsService — regression guards', () => {
   // confirm() — головний FSM-step
   // ──────────────────────────────────────────────────────────────────────
 
+  // guards: BR-SRET-002
   it('confirm(): WRITEOFF викликаний з НЕГАТИВНОЮ quantity + documentType=SupplierReturn (PascalCase)', async () => {
     // pre-check
     prisma.supplierReturn.findFirst.mockResolvedValueOnce({
@@ -202,6 +203,7 @@ describe('SupplierReturnsService — regression guards', () => {
     },
   );
 
+  // guards: BR-SRET-003
   it('confirm(): settlement transaction створюється з type=REFUND (НЕ PAYMENT, НЕ CHARGE)', async () => {
     prisma.supplierReturn.findFirst
       .mockResolvedValueOnce({ status: SupplierReturnStatus.DRAFT, _count: { lines: 1 } })
@@ -248,6 +250,7 @@ describe('SupplierReturnsService — regression guards', () => {
     expect(dtoArg.type).not.toBe('CHARGE');
   });
 
+  // guards: BR-SRET-004
   it('confirm() без рядків (pre-check) → BadRequestException; жодних side-effects', async () => {
     prisma.supplierReturn.findFirst.mockResolvedValueOnce({
       status: SupplierReturnStatus.DRAFT,
@@ -260,6 +263,7 @@ describe('SupplierReturnsService — regression guards', () => {
     expect(prisma.supplierReturn.update).not.toHaveBeenCalled();
   });
 
+  // guards: BR-SRET-001
   it('confirm() зі статусу CONFIRMED → BadRequestException + не запускає $tx', async () => {
     prisma.supplierReturn.findFirst.mockResolvedValueOnce({
       status: SupplierReturnStatus.CONFIRMED,
@@ -272,6 +276,7 @@ describe('SupplierReturnsService — regression guards', () => {
     expect(settlements.createTransaction).not.toHaveBeenCalled();
   });
 
+  // guards: BR-SRET-001
   it('confirm() зі статусу CANCELLED → BadRequestException', async () => {
     prisma.supplierReturn.findFirst.mockResolvedValueOnce({
       status: SupplierReturnStatus.CANCELLED,
@@ -289,6 +294,7 @@ describe('SupplierReturnsService — regression guards', () => {
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
+  // guards: BR-SRET-003
   it('confirm() з totalAmount=0 → НЕ створює settlement transaction (guard рядок 336)', async () => {
     prisma.supplierReturn.findFirst
       .mockResolvedValueOnce({ status: SupplierReturnStatus.DRAFT, _count: { lines: 1 } })
@@ -322,6 +328,7 @@ describe('SupplierReturnsService — regression guards', () => {
     expect(settlements.createTransaction).not.toHaveBeenCalled();
   });
 
+  // guards: BR-SRET-005
   it('confirm() concurrent: CAS updateMany count=0 → BadRequest, БЕЗ WRITEOFF/REFUND', async () => {
     // Race: pre-check бачить DRAFT, але CAS updateMany where status=DRAFT матчить 0 рядків
     // (паралельний confirm() уже переключив на CONFIRMED).
@@ -341,6 +348,7 @@ describe('SupplierReturnsService — regression guards', () => {
   // cancel()
   // ──────────────────────────────────────────────────────────────────────
 
+  // guards: BR-SRET-001, BR-SRET-005
   it('cancel() з DRAFT → status=CANCELLED', async () => {
     prisma.supplierReturn.findFirst
       .mockResolvedValueOnce({ id: SR_ID, status: SupplierReturnStatus.DRAFT })
@@ -374,6 +382,7 @@ describe('SupplierReturnsService — regression guards', () => {
     expect(settlements.createTransaction).not.toHaveBeenCalled();
   });
 
+  // guards: BR-SRET-001
   it('cancel() з CONFIRMED → BadRequestException (FSM правило)', async () => {
     prisma.supplierReturn.findFirst.mockResolvedValueOnce({
       id: SR_ID,
@@ -442,6 +451,7 @@ describe('SupplierReturnsService — regression guards', () => {
     expect(prisma.good.findMany.mock.calls[0]![0].where.id).toEqual({ in: [GOOD_ID] });
   });
 
+  // guards: BR-SRET-007
   it('create(): cross-tenant goodId → NotFoundException (Bug #495 guard)', async () => {
     prisma.counterparty.findFirst.mockResolvedValueOnce({ id: SUPPLIER_ID });
     prisma.warehouse.findFirst.mockResolvedValueOnce({ id: WAREHOUSE_ID });
@@ -462,6 +472,7 @@ describe('SupplierReturnsService — regression guards', () => {
     expect(prisma.supplierReturn.create).not.toHaveBeenCalled();
   });
 
+  // guards: BR-SRET-007
   it('create(): cross-tenant unitOfMeasureId → NotFoundException', async () => {
     prisma.counterparty.findFirst.mockResolvedValueOnce({ id: SUPPLIER_ID });
     prisma.warehouse.findFirst.mockResolvedValueOnce({ id: WAREHOUSE_ID });
@@ -479,6 +490,7 @@ describe('SupplierReturnsService — regression guards', () => {
     expect(prisma.supplierReturn.create).not.toHaveBeenCalled();
   });
 
+  // guards: BR-SRET-007
   it('create() з неіснуючим supplierId → NotFoundException', async () => {
     prisma.counterparty.findFirst.mockResolvedValueOnce(null);
     prisma.warehouse.findFirst.mockResolvedValueOnce({ id: WAREHOUSE_ID });
@@ -489,6 +501,7 @@ describe('SupplierReturnsService — regression guards', () => {
     expect(prisma.supplierReturn.create).not.toHaveBeenCalled();
   });
 
+  // guards: BR-SRET-007
   it('create() з неіснуючим warehouseId → NotFoundException', async () => {
     prisma.counterparty.findFirst.mockResolvedValueOnce({ id: SUPPLIER_ID });
     prisma.warehouse.findFirst.mockResolvedValueOnce(null);

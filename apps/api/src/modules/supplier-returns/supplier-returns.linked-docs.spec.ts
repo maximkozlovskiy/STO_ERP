@@ -110,7 +110,7 @@ describe('SupplierReturnsService — linked documents (Phase D3)', () => {
     expect(res.purchaseOrder[0].totalAmount).toBe(300); // Number, не Decimal/об'єкт
   });
 
-  // guards: BR-WO-012
+  // guards: BR-WO-012, BR-SRET-010
   it('getLinkedDocuments: видалене повернення (перегляд) → секції заповнені, orgId у пошуку', async () => {
     // Таблиця, що поважає фільтр: з `deletedAt: null` видаленого повернення не знайти.
     prisma.supplierReturn.findFirst.mockImplementation(
@@ -180,6 +180,7 @@ describe('SupplierReturnsService — linked documents (Phase D3)', () => {
     expect(prisma.supplierReturn.findMany.mock.lastCall![0].where).not.toHaveProperty('deletedAt');
   });
 
+  // guards: BR-SRET-010
   it('getLinkedCounts: soft-deleted PO/постачальник/склад → count=0 (count == detail, Bug #A/#641)', async () => {
     prisma.supplierReturn.findMany.mockResolvedValueOnce([
       {

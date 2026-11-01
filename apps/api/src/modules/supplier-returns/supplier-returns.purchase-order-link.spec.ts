@@ -126,6 +126,7 @@ describe('SupplierReturnsService — create() з purchaseOrderId (Phase D2)', ()
     expect(res.purchaseOrderId).toBeNull();
   });
 
+  // guards: BR-SRET-007
   it('create() з невалідним purchaseOrderId → BadRequestException; create не викликається', async () => {
     prisma.purchaseOrder.findFirst.mockResolvedValueOnce(null);
 
@@ -276,6 +277,7 @@ describe('SupplierReturnsService — update() зберігає purchaseOrderId (
     expect(updateData).toBeDefined();
   });
 
+  // guards: BR-SRET-008
   it('update() НЕ передає purchaseOrderId у data → FK зберігається; DTO повертає існуючий PO', async () => {
     const res = await service.update(ORG, SR_ID, { notes: 'нове' } as never);
 
