@@ -739,3 +739,27 @@ describe('CounterpartyEditModal - tab strip', () => {
     expect(screen.queryByTestId('counterparty-tabs')).toBeNull();
   });
 });
+
+// BR-CP-018: очищений «IBAN» (bankAccount) іде в PATCH як null — інакше форма віддає '' як
+// undefined, JSON.stringify ключ викидає, і сервер лишає і реквізит, і виведений з нього IBAN.
+// Mutation-verify: `JSON.stringify(values)` замість `counterpartyPatchBody(...)` → кейс падає.
+describe('CounterpartyEditModal — очищення реквізиту (BR-CP-018)', () => {
+  // guards: BR-CP-018
+  it('очищений IBAN шле bankAccount: null; не зачеплені порожні поля в PATCH не потрапляють', async () => {
+    const api = mountApi({});
+    api.on('PATCH /counterparties/cp-1', ({ body }) => ({ ...cp('SUPPLIER'), ...body }));
+    renderModal({
+      ...cp('SUPPLIER'),
+      bankAccount: 'UA213223130000026007233566001',
+    } as CounterpartyForModal);
+    const iban = await screen.findByLabelText('IBAN');
+    await waitFor(() => expect(iban).toHaveValue('UA213223130000026007233566001'));
+    fireEvent.change(iban, { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Оновити' }));
+
+    await waitFor(() => expect(api.mutations()).toHaveLength(1));
+    const body = api.mutations()[0]!.body!;
+    expect(body).toHaveProperty('bankAccount', null);
+    expect(body).not.toHaveProperty('bankName');
+  });
+});

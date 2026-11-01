@@ -13,6 +13,7 @@ import { useForm } from 'react-hook-form';
 import { i18nZodResolver } from '@/lib/i18nZodResolver';
 import {
   counterpartyFormSchema,
+  counterpartyPatchBody,
   type CounterpartyFormInput,
   type CounterpartyFormValues,
 } from '@sto/shared';
@@ -552,7 +553,8 @@ export default function CounterpartyCardPage() {
     try {
       const updated = await apiFetch<Counterparty>(`/counterparties/${id}`, {
         method: 'PATCH',
-        body: JSON.stringify(values),
+        // Очищене поле → null, інакше '' → undefined і PATCH його не очищає (BR-CP-018).
+        body: JSON.stringify(counterpartyPatchBody(values, cp)),
       });
       // Bug #740: PATCH-відповідь (update→toDto) НЕ включає statusLinks → updated.statuses=undefined.
       // Прямий setCp(updated) стирав би badge-мітки з шапки до перезавантаження. PATCH не чіпає

@@ -7,6 +7,8 @@
  */
 import { Test } from '@nestjs/testing';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
+import { counterpartyPatchBody, counterpartyUpdateSchema } from '@sto/shared';
+import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { CounterpartiesService } from './counterparties.service';
 import { ibanFromBankAccount } from './counterparty-iban';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -109,5 +111,53 @@ describe('CounterpartiesService — iban пишеться з bankAccount (BR-CP-
 
     await service.update('org-1', 'cp-1', { phone: '+380671234567' } as never);
     expect(prisma.counterparty.update.mock.calls[1][0].data).not.toHaveProperty('iban');
+
+    // Реквізит очищено (схема PATCH дає null) → IBAN теж очищається.
+    await service.update('org-1', 'cp-1', { bankAccount: null });
+    expect(prisma.counterparty.update.mock.calls[2][0].data).toMatchObject({
+      bankAccount: null,
+      iban: null,
+    });
+  });
+});
+
+/**
+ * Очищення реквізиту (BR-CP-018). Форма парсить '' → undefined, JSON.stringify ключ викидав, а схема
+ * PATCH перетворювала '' і null на undefined — PATCH з порожнім «Розрахунковим рахунком» відповідав 200
+ * і лишав і реквізит, і виведений із нього IBAN: виписка далі зіставлялась зі старим рахунком.
+ */
+describe('очищення реквізиту доходить до сервера (BR-CP-018)', () => {
+  const pipe = (body: unknown): Record<string, unknown> =>
+    new ZodValidationPipe<Record<string, unknown>>(counterpartyUpdateSchema).transform(body);
+
+  // guards: BR-CP-018
+  it('схема PATCH: порожнє поле → null (очистити), відсутнє → не чіпати', () => {
+    expect(pipe({ bankAccount: '' }).bankAccount).toBeNull();
+    expect(pipe({ bankAccount: null }).bankAccount).toBeNull();
+    expect(pipe({ email: '', legalForm: '' })).toMatchObject({ email: null, legalForm: null });
+    expect(pipe({ bankAccount: IBAN }).bankAccount).toBe(IBAN);
+    expect(pipe({ notes: 'x' }).bankAccount).toBeUndefined();
+  });
+
+  // guards: BR-CP-018
+  it('тіло PATCH з форми: очищене поле → null; поле, якого не було, не стирається', () => {
+    // Форма віддає '' як undefined — так виглядають values після counterpartyFormSchema.
+    const values = {
+      type: 'CLIENT',
+      firstName: 'Іван',
+      bankAccount: undefined,
+      bankName: undefined,
+    };
+    const body = counterpartyPatchBody(values, { bankAccount: `р/р ${IBAN}`, bankName: null });
+    expect(JSON.parse(JSON.stringify(body))).toEqual({
+      type: 'CLIENT',
+      firstName: 'Іван',
+      bankAccount: null,
+    });
+    // Модалку відкрито з рядка списку без реквізитів — нічого не стираємо.
+    expect(JSON.parse(JSON.stringify(counterpartyPatchBody(values, {})))).toEqual({
+      type: 'CLIENT',
+      firstName: 'Іван',
+    });
   });
 });

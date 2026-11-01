@@ -7,6 +7,7 @@ import { useForm } from 'react-hook-form';
 import { i18nZodResolver } from '@/lib/i18nZodResolver';
 import {
   counterpartyFormSchema,
+  counterpartyPatchBody,
   vehicleFormSchema,
   type CounterpartyFormInput,
   type CounterpartyFormValues,
@@ -469,7 +470,8 @@ export function CounterpartyEditModal({
     try {
       const updated = await apiFetch<CounterpartyForModal>(`/counterparties/${counterparty.id}`, {
         method: 'PATCH',
-        body: JSON.stringify(values),
+        // Очищене поле → null, інакше '' → undefined і PATCH його не очищає (BR-CP-018).
+        body: JSON.stringify(counterpartyPatchBody(values, counterparty)),
       });
       dirty.resetDirty();
       onSaved(updated, false);

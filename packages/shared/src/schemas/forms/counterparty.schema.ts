@@ -90,7 +90,72 @@ export type CounterpartyFormInput = z.input<typeof counterpartyFormSchema>;
  * Bug #1001: `.partial()` у zod 4 НЕ прибирає `.default()` — `vatPayer` без default, інакше будь-який
  * частковий PATCH (тег, згода) мовчки скидав «Платник ПДВ» на false.
  */
+export const COUNTERPARTY_CLEARABLE_FIELDS = [
+  'firstName',
+  'lastName',
+  'companyName',
+  'edrpou',
+  'phone',
+  'email',
+  'contactPerson',
+  'notes',
+  'legalForm',
+  'legalAddress',
+  'actualAddress',
+  'bankAccount',
+  'bankName',
+  'taxNumber',
+] as const;
+export type CounterpartyClearableField = (typeof COUNTERPARTY_CLEARABLE_FIELDS)[number];
+
+/** PATCH: '' / null → null (очистити поле); відсутній ключ → поле не чіпається. */
+const emptyToNull = (v: unknown): unknown => (v === '' ? null : v);
+const clearableString = () => z.preprocess(emptyToNull, z.string().nullable().optional());
+
 export const counterpartyUpdateSchema = z
-  .object({ ...counterpartyBaseShape, vatPayer: z.boolean().optional() })
+  .object({
+    ...counterpartyBaseShape,
+    vatPayer: z.boolean().optional(),
+    // Очищення поля у формі. Раніше рядкові поля брали `optionalString` форми ('' і null →
+    // undefined), тож PATCH з порожнім «Розрахунковим рахунком» відповідав 200 і нічого не
+    // очищав — ні реквізиту, ні виведеного з нього IBAN (BR-CP-018).
+    firstName: clearableString(),
+    lastName: clearableString(),
+    companyName: clearableString(),
+    edrpou: clearableString(),
+    phone: clearableString(),
+    email: z.preprocess(
+      emptyToNull,
+      z.string().email('v.counterparty.email.invalid').nullable().optional(),
+    ),
+    contactPerson: clearableString(),
+    notes: clearableString(),
+    legalForm: z.preprocess(emptyToNull, z.enum(LEGAL_FORM_VALUES).nullable().optional()),
+    legalAddress: clearableString(),
+    actualAddress: clearableString(),
+    bankAccount: clearableString(),
+    bankName: clearableString(),
+    taxNumber: clearableString(),
+  })
   .partial();
 export type CounterpartyUpdateValues = z.infer<typeof counterpartyUpdateSchema>;
+
+/**
+ * Тіло PATCH з форми контрагента. Форма парситься `counterpartyFormSchema`, де '' → undefined, і
+ * JSON.stringify такий ключ викидає — очищене поле до сервера не доходило. Тут поле, що МАЛО значення
+ * в `original` (контрагент, з якого заповнили форму) і стало порожнім, іде як `null`. Поле, якого в
+ * `original` немає, лишається відсутнім: модалку відкривають і з рядка списку без реквізитів —
+ * `null` для них стер би збережене.
+ */
+export function counterpartyPatchBody<T extends object>(
+  values: T,
+  original: Partial<Record<CounterpartyClearableField, unknown>>,
+): T & Partial<Record<CounterpartyClearableField, null>> {
+  const body = { ...values } as Record<string, unknown>;
+  for (const key of COUNTERPARTY_CLEARABLE_FIELDS) {
+    const had = original[key];
+    if (body[key] === undefined && had !== undefined && had !== null && had !== '')
+      body[key] = null;
+  }
+  return body as T & Partial<Record<CounterpartyClearableField, null>>;
+}

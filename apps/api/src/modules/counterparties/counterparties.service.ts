@@ -6,7 +6,7 @@ import {
   type NotificationChannel,
   Prisma,
 } from '@prisma/client';
-import { TRANSACTION_TIMEOUT_MS, translateError } from '@sto/shared';
+import { TRANSACTION_TIMEOUT_MS, translateError, type CounterpartyUpdateValues } from '@sto/shared';
 import { getLocale } from '../../common/tenant/tenant-context';
 import { calculatePagination } from '../../common/utils/pagination';
 import { initCountsMap } from '../../common/utils/linked-counts';
@@ -403,7 +403,8 @@ export class CounterpartiesService {
   async update(
     orgId: string,
     id: string,
-    dto: UpdateCounterpartyDto,
+    // Тіло вже пройшло counterpartyUpdateSchema: рядкове поле null = очистити, відсутнє = не чіпати.
+    dto: UpdateCounterpartyDto | CounterpartyUpdateValues,
     userId?: string,
   ): Promise<CounterpartyResponseDto> {
     // Tenant guard + before-snapshot для аудиту. Bug #719: раніше select тягнув лише
@@ -438,7 +439,7 @@ export class CounterpartiesService {
     if (!existing)
       throw new NotFoundException(translateError('err.counterparty.notFound', getLocale()));
     // Merged-стан: PATCH частковий → перевіряємо результат після застосування dto
-    // (undefined = не чіпаємо, лишається наявне; '' = очищення).
+    // (undefined = не чіпаємо, лишається наявне; null / '' = очищення).
     const merged = {
       // Bug #739: ефективний (пост-PATCH) type — інакше зміна CLIENT→SUPPLIER без companyName
       // (лишок firstName) пройшла б guard за старим типом і створила безіменного постачальника.
