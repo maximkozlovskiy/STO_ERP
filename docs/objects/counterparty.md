@@ -199,6 +199,7 @@ BR-VEH-006…013 і тести — у [vehicle.md](vehicle.md))
 - **BR-CP-014**: **Комірник читає постачальників** (рішення власника 2026-10-18). STOREKEEPER отримує читання лише контрагентів із роллю постачальника — для вибору постачальника в позиції списку купівлі, у картці замовлення й у підключенні до API: id, назва (ім'я / назва компанії), тип, ЄДРПОУ, ролі й договори закупівлі (номер, умови оплати). Клієнтів, телефонів, e-mail, балансів і розрахунків комірник не бачить; створення, зміна й видалення контрагентів — 403, як і раніше.
 - **BR-CP-016**: Частковий `PATCH /counterparties/:id` змінює лише поля, що є в тілі: поле, якого немає, лишається як було (зокрема «Платник ПДВ» — Bug #1001: `.partial()` над `.default(false)` у zod скидав `vatPayer` на кожному PATCH). Поля згоди й бажаний канал (BR-AUT-042) проходять схему контролера (`counterpartyFormSchema` / `counterpartyUpdateSchema` у `@sto/shared`), а не лише Swagger-DTO (Bug #1000); `null` у прапорцях — 400 з назвою поля.
 - **BR-CP-017**: **Пошук у списках — буквальний** (TECH-DEBT §8 L521(3), 2026-10-30). Текст пошуку `?q=` (контрагенти: ім'я, прізвище, назва, телефон, ЄДРПОУ, номер авто) шукається як є: `%` і `_` — звичайні символи, а не символи підстановки (`ILIKE` у PostgreSQL), — «50%» не знаходить «500», «050_» не знаходить «0501». Те саме в усіх пошуках api (товари, наряди, замовлення, оплати й повернення постачальникам, послуги, рухи складу, роботи й бренди за назвою): значення проходить `escapeLike` через `searchContains` / `containsInsensitive` / `equalsInsensitive` (`apps/api/src/common/utils/like-pattern.ts`); сирої умови `contains` / `equals` + `insensitive` у сервісах немає (сканер у тесті).
+- **BR-CP-018**: **IBAN для автозіставлення виписок — з реквізиту** (TECH-DEBT (а) §8 L441, 2026-11-01). `Counterparty.iban` — ключ зіставлення рядка виписки з контрагентом (`payerIban`, BR-BANK). Окремого поля у формі немає: при створенні й зміні реквізиту «Розрахунковий рахунок» (`bankAccount`) сервер записує в `iban` перший український IBAN із тексту (UA + 27 цифр, без пробілів, великими літерами) або `null`; PATCH без `bankAccount` `iban` не змінює (`ibanFromBankAccount`, `counterparty-iban.ts`).
 
 → [docs/BUSINESS-RULES.md](../BUSINESS-RULES.md)
 → [docs/PATTERNS.md](../PATTERNS.md) (EntityPickerField для вибору в формах)
@@ -229,9 +230,10 @@ cd apps/api && npx vitest run src/modules/counterparties/<файл>.spec.ts
 | статуси-мітки (assign / unassign)                                                                                                                                            | `counterparties.status-labels.spec.ts`          | 9      |
 | комірник читає постачальників (BR-CP-014)                                                                                                                                    | `counterparties.storekeeper-suppliers.spec.ts`  | 22     |
 | supplier naming (+ назва обов'язкова)                                                                                                                                        | `counterparties.supplier-naming.spec.ts`        | 6      |
+| IBAN з реквізиту для автозіставлення виписок (BR-CP-018)                                                                                                                     | `counterparties.iban.spec.ts`                   | 10     |
 | згода на повідомлення й підписка на бот; тіло через схему контролера — поля згоди не губляться, `vatPayer` не скидається частковим PATCH (BR-AUT-041, 042; Bug #1000, #1001) | `counterparties.consent.spec.ts`                | 6      |
 
-Разом: **133** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **143** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
 Поза модулем правила цього агрегату стережуть ще три файли:
 

@@ -15,6 +15,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { telegramSubscriptionStatus } from '../notifications/telegram-recipients.service';
 import { DocumentNumberService } from '../document-number/document-number.service';
 import { AuditService } from '../audit/audit.service';
+import { ibanFromBankAccount } from './counterparty-iban';
 import { CounterpartyStatusesService } from '../counterparty-statuses/counterparty-statuses.service';
 import {
   ContractResponseDto,
@@ -340,7 +341,12 @@ export class CounterpartiesService {
     const item = await this.prisma.$transaction(
       async tx => {
         const cp = await tx.counterparty.create({
-          data: { ...dto, orgId, ...this.consentStamp(dto.marketingConsent, false, userId) },
+          data: {
+            ...dto,
+            iban: ibanFromBankAccount(dto.bankAccount),
+            orgId,
+            ...this.consentStamp(dto.marketingConsent, false, userId),
+          },
         });
         // Auto-create settlement account
         await tx.settlementAccount.create({
@@ -448,6 +454,8 @@ export class CounterpartiesService {
       where: { id, orgId },
       data: {
         ...dto,
+        // BR-CP-018: IBAN для автозіставлення виписок — з реквізиту, лише коли його змінюють.
+        ...(dto.bankAccount !== undefined ? { iban: ibanFromBankAccount(dto.bankAccount) } : {}),
         ...this.consentStamp(dto.marketingConsent, existing.marketingConsent, userId),
       },
       include: { settlementAccount: { select: { balance: true } } },
