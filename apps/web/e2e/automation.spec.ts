@@ -217,6 +217,9 @@ test.describe('Автоматизація — правила, журнал, дз
     await card.getByRole('tab', { name: /^Дії/ }).click();
     await card.locator('[data-add-action="create_task"]').click();
     await card.getByLabel(/^Назва задачі/).fill('{{documentNumber}}: підготувати пост');
+    // Термін «через 0 год» — задача на сьогодні. Типові 2 год після 22:00 за Києвом дають завтра, а
+    // «Мої задачі» за замовчуванням показують сьогоднішні: крок 3 падав увечері (CI 2026-11-01, 22:54).
+    await card.getByLabel(/^Термін, год/).fill('0');
     await card.getByLabel('Конкретний працівник').check();
     const assignee = card.getByRole('combobox', { name: 'Конкретний працівник' });
     await expect(assignee.locator('option', { hasText: MECH_NAME })).toHaveCount(1, {
