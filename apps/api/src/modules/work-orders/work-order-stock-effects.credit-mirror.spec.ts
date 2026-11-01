@@ -29,6 +29,7 @@ function makeSvc(charge: Record<string, unknown> | null) {
     },
     settlementTransaction: { findFirst: findCharge },
     goodUoM: { findMany: vi.fn().mockResolvedValue([]) },
+    batchConsumption: { groupBy: vi.fn().mockResolvedValue([]) },
   } as unknown as PrismaService;
   const svc = new WorkOrderStockEffectsService(
     prisma,

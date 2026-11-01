@@ -345,11 +345,30 @@ export class WorkOrderStockEffectsService {
       take: 1000,
     });
     const coeffMap = await fetchPartCoefficients(db, orgId, parts);
+    // BR-WO-039: повертаємо стільки, скільки рядок РЕАЛЬНО списав (його BatchConsumption), а не
+    // перерахунок за поточним коефіцієнтом одиниці — коефіцієнт товару можна змінити між «Виконано»
+    // і «Скасувати» (12 замість 10 → +4 одиниці без партій, Σ-інваріант зламано; 1 замість 10 → 18
+    // одиниць не повернулись). Записів рядка немає (списання до появи documentLineId) — як раніше.
+    const writtenOff = await db.batchConsumption.groupBy({
+      by: ['documentLineId'],
+      where: {
+        orgId,
+        documentType: 'WorkOrder',
+        documentId: wo.id,
+        documentLineId: { in: parts.map(p => p.id) },
+        quantity: { lt: 0 },
+      },
+      _sum: { quantity: true },
+    });
+    const writtenOffByLine = new Map(
+      writtenOff.map(w => [w.documentLineId, -(w._sum.quantity ?? 0)] as const),
+    );
 
     for (const part of parts) {
       const coeff = coeffMap[part.id] ?? 1;
-      const baseQty = part.quantity * coeff;
-      // RETURN дзеркалить WRITEOFF: та сама baseQty, той самий (documentType, documentId,
+      const written = writtenOffByLine.get(part.id) ?? 0;
+      const baseQty = written > 0 ? written : part.quantity * coeff;
+      // RETURN дзеркалить WRITEOFF: та сама кількість, той самий (documentType, documentId,
       // documentLineId). InventoryService інкрементує StockItem і повертає в партії те, що списав
       // САМЕ цей рядок, не більше baseQty (BR-INVT-014). batchCostPrice/batchId у WorkOrderPart НЕ
       // чистимо — історичний COGS-запис.

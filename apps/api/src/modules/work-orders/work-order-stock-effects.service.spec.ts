@@ -607,6 +607,8 @@ function makeLedgerService(opts: {
     workOrder: { findFirst: vi.fn().mockResolvedValue({ totalAmount: 500 }) },
     settlementTransaction: { findFirst: vi.fn().mockResolvedValue(null) },
     goodUoM: { findMany: vi.fn().mockResolvedValue([]) },
+    // BR-WO-039: записів списання рядків немає → RETURN за part.quantity × coeff.
+    batchConsumption: { groupBy: vi.fn().mockResolvedValue([]) },
     // Вільний залишок (дорезервування) і агрегат резерву (зняття) — з того самого журналу.
     stockItem: {
       findMany: vi
