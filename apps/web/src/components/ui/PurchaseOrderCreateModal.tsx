@@ -1474,12 +1474,14 @@ export function PurchaseOrderCreateModal({
                       {t('card.colSum', { currency: currencySymbol })}
                     </th>
                     {canPrice && (
-                      <th className="text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-primary whitespace-nowrap">
+                      // Два рядки, а не обрізання: «Ціна розцінки» й «Правило розцінки» не вміщались у
+                      // свої колонки навіть на 960 px (TECH-DEBT (а), 2026-10-31).
+                      <th className="text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-primary leading-tight">
                         {t('card.colPricedPrice', { currency: currencySymbol })}
                       </th>
                     )}
                     {canPrice && (
-                      <th className="text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
+                      <th className="text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted leading-tight">
                         {t('card.colPricingRule')}
                       </th>
                     )}
