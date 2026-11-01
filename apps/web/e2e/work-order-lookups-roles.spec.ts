@@ -27,7 +27,9 @@ test.describe.configure({ mode: 'serial' });
  * такого виконавця обрати вже не дає (це й перевіряється), а такі рядки лишились у старих нарядах.
  */
 
-const uid = Date.now().toString().slice(-6);
+// + номер паралельного воркера: копії `--repeat-each` стартують в одну мілісекунду, і з самим часом
+// дві отримали той самий uid → 409 на номері договору (2026-11-01).
+const uid = `${Date.now().toString().slice(-6)}${process.env.TEST_PARALLEL_INDEX ?? '0'}`;
 const TAG = `000 TST ${uid}`;
 const CLIENT = `${TAG} Клієнт картки`;
 const MECH = { first: 'Механік', last: `${TAG} Відпустка` };
@@ -41,11 +43,18 @@ const MECH_LOGIN = { email: `e2e-tst-mech-${uid}@sto.local`, password: pwd() };
 const RECEPTION_LOGIN = { email: `e2e-tst-rec-${uid}@sto.local`, password: pwd() };
 
 const pad = (n: number) => String(n).padStart(2, '0');
+/**
+ * 13-те число наступного місяця; копія `--repeat-each` N — на N днів пізніше (13…17, дні інших
+ * календарних спеків — 12, 19, 23–25, 27). Копії йдуть паралельно, а сітка дня перебудовується на
+ * чужі записи тієї самої дати: прибраний сусідом запис зменшував висоту його рядка, і перетягування
+ * опускалось на рядок нижче — на зайнятий підйомник (2026-11-01).
+ */
 function targetDate(): string {
   const today = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' }).format(new Date());
   const [y, m] = today.split('-').map(Number);
-  const next = new Date(Date.UTC(y, m, 13)); // 13-те число наступного місяця
-  return `${next.getUTCFullYear()}-${pad(next.getUTCMonth() + 1)}-13`;
+  const day = 13 + (test.info().repeatEachIndex % 5);
+  const next = new Date(Date.UTC(y, m, day)); // m — 1-based, тож це наступний місяць
+  return `${next.getUTCFullYear()}-${pad(next.getUTCMonth() + 1)}-${pad(day)}`;
 }
 
 async function getToken(page: Page): Promise<string> {
@@ -230,7 +239,7 @@ test.describe('Картка наряду — довідники за ролям�
     );
     expect(garage.status).toBe(201);
     state.garageId = garage.body.id;
-    state.plate = `TST${uid.slice(-5)}`;
+    state.plate = `TST${uid.slice(-6)}`;
     const vehicle = await api<{ id: string }>(page, 'POST', '/vehicles', {
       customerGarageId: garage.body.id,
       ...(await ensureVehicleModel(
@@ -259,9 +268,15 @@ test.describe('Картка наряду — довідники за ролям�
     // Підйомники довідника, а не тимчасові інших спеків («000 E2E …»): паралельний
     // work-order-line-executor ставив свій першим, цей спек закріплював за ним свого механіка —
     // і обидва падали (там «єдиний механік» ставав другим, тут підйомник зникав посеред тесту).
+    // І лише вільні на дату тесту: запис 1 перетягується на B о 10:00, і чужий запис там (2026-11-01
+    // — залишок перерваного прогону цього ж спеку, afterAll не відпрацював) давав 400 «підйомник
+    // зайнятий» замість тосту «Механіка знято» — тест падав стабільно, поки залишок лежав у базі.
     const lifts = await api<{ id: string; name: string }[]>(page, 'GET', '/lifts');
-    const own = lifts.body.filter(l => !l.name.startsWith('000 E2E'));
-    expect(own.length, 'потрібні два підйомники довідника').toBeGreaterThanOrEqual(2);
+    const busy = new Set((await daySlots(page, targetDate())).map(s => s.liftId));
+    const own = lifts.body.filter(l => !l.name.startsWith('000 E2E') && !busy.has(l.id));
+    expect(own.length, 'потрібні два вільні на дату підйомники довідника').toBeGreaterThanOrEqual(
+      2,
+    );
     [state.liftA, state.liftB] = own;
     // ── Працівники — сторінкою «Співробітники» ───────────────────────────
     await createEmployeeViaUi(page, {
