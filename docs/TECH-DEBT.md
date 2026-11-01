@@ -95,6 +95,10 @@
   `optionalString()` у PATCH-схемах `packages/shared/src/schemas/forms/*` перетворює `''` і `null` на «не змінювати».
   Для контрагента виправлено (`counterpartyUpdateSchema` + `counterpartyPatchBody`, 9afce727b) — той самий підхід на решту.
 
+- (2026-11-01, fixer) `crud-infrastructure.spec.ts` не прибирає свої підйомники: видалення підтверджується лише
+  `if (await confirmBtn.isVisible(...))`, і в dev-базі 52 живі «E2E-Пост-…». Календарні спеки беруть першу пару
+  підйомників за назвою — це E2E-Пости, тож залишок будь-якого перерваного прогону ламає сусідній спек.
+
 **S/M:**
 
 - ~~§8 L521(3) — екранування `%`/`_` у 21 пошуку (через `searchContains`).~~ ✅ ЗАКРИТО 2026-10-30: `1cf529469` — `containsInsensitive` / `equalsInsensitive` (`common/utils/like-pattern.ts`) в 11 сервісах і брендах; BR-CP-017, BR-EMP-003, тест `like-pattern.sites.spec.ts` (емулятор `ILIKE` виконує `where`, сканер сирих умов). Конструктор звітів екранував і раніше (BR-RPT-003).
