@@ -233,7 +233,7 @@ cd apps/api && npx vitest run src/modules/counterparties/<файл>.spec.ts
 | IBAN з реквізиту для автозіставлення виписок (BR-CP-018)                                                                                                                     | `counterparties.iban.spec.ts`                   | 12     |
 | згода на повідомлення й підписка на бот; тіло через схему контролера — поля згоди не губляться, `vatPayer` не скидається частковим PATCH (BR-AUT-041, 042; Bug #1000, #1001) | `counterparties.consent.spec.ts`                | 6      |
 
-Разом: **143** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **145** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
 Поза модулем правила цього агрегату стережуть ще три файли:
 

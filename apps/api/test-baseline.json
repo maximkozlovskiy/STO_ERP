@@ -2801,6 +2801,20 @@
    "CounterpartiesService — гаражі (isDefault) removeGarage: рядок гаража блокується FOR UPDATE до лічильника авто (TECH-DEBT §17.2)",
    "CounterpartiesService — гаражі (isDefault) removeGarage: у гаражі живе авто → 400, гараж не видаляється (рішення власника 2026-10-22)"
   ],
+  "apps/api/src/modules/counterparties/counterparties.iban.spec.ts": [
+   "CounterpartiesService — iban пишеться з bankAccount (BR-CP-018) зміна реквізиту оновлює iban; PATCH без реквізиту iban не чіпає",
+   "CounterpartiesService — iban пишеться з bankAccount (BR-CP-018) створення з реквізитом → iban нормалізований; без реквізиту → null",
+   "ibanFromBankAccount — IBAN з реквізиту (BR-CP-018) IBAN іншої країни → DE89370400440532013000",
+   "ibanFromBankAccount — IBAN з реквізиту (BR-CP-018) null → null",
+   "ibanFromBankAccount — IBAN з реквізиту (BR-CP-018) з пробілами й малими літерами → ua21 3223 1300 0002 6007 2335 66001",
+   "ibanFromBankAccount — IBAN з реквізиту (BR-CP-018) коротший за 29 знаків → UA2132231300000260072335660",
+   "ibanFromBankAccount — IBAN з реквізиту (BR-CP-018) не IBAN (номер картки) → 4149 4393 1234 5678",
+   "ibanFromBankAccount — IBAN з реквізиту (BR-CP-018) порожньо → ",
+   "ibanFromBankAccount — IBAN з реквізиту (BR-CP-018) у тексті реквізиту → р/р UA213223130000026007233566001 в АТ «Банк»",
+   "ibanFromBankAccount — IBAN з реквізиту (BR-CP-018) чистий IBAN → UA213223130000026007233566001",
+   "очищення реквізиту доходить до сервера (BR-CP-018) схема PATCH: порожнє поле → null (очистити), відсутнє → не чіпати",
+   "очищення реквізиту доходить до сервера (BR-CP-018) тіло PATCH з форми: очищене поле → null; поле, якого не було, не стирається"
+  ],
   "apps/api/src/modules/counterparties/counterparties.linked-docs.spec.ts": [
    "CounterpartiesService — linked documents (Phase C) getLinkedCounts: groupBy фільтрує deletedAt:null (count == detail, урок Bug #641)",
    "CounterpartiesService — linked documents (Phase C) getLinkedCounts: zero-init для КОЖНОГО id + порожній вхід → {}",
