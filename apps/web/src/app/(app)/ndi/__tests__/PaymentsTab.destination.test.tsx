@@ -296,6 +296,21 @@ describe('НДІ → способи оплати: куди надходять к
     expect(add()).toBeDisabled();
   });
 
+  // Review 2026-11-01: картка наявного способу — «Зберегти» вимкнена, коли суперечність вносить сама
+  // правка (сервер відмовляє 400); рядок, збережений до правила, зберігається (тест вище).
+  // Мутація: прибрати `editIntroducesConflict` з `disabled` → «Зберегти» активна, червоніє.
+  // guards: BR-PAY-019
+  it('картка способу з банківським рахунком: увімкнули «Готівку» — «Зберегти» вимкнена', async () => {
+    const dialog = await openEdit('Картка');
+    const cashFlag = within(dialog).getByRole('checkbox', { name: /^Готівка/ });
+    expect(saveButton(dialog)).toBeEnabled();
+
+    fireEvent.click(cashFlag);
+    expect(saveButton(dialog)).toBeDisabled();
+    fireEvent.click(cashFlag);
+    expect(saveButton(dialog)).toBeEnabled();
+  });
+
   // Bug #1010: відмова сервера («лише в касу») лишалась над списком і після успішного збереження.
   // Мутація: прибрати `setError('')` на початку `createPaymentMethod` — текст лишається, червоний.
   it('помилка попередньої спроби зникає після успішного додавання', async () => {

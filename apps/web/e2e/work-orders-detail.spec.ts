@@ -292,10 +292,16 @@ test.describe('Наряд — повний FSM цикл DRAFT→PAID', () => {
     if (!woId) return; // type-narrow для TS
     await page.goto(`/work-orders/${woId}`);
     await expect(page.locator('text=Виконано').first()).toBeVisible({ timeout: 20_000 });
+    // BR-WO-037: «Виставити рахунок» на сторінці — дія секції «Рахунок»: рахунок, потім перехід.
+    // Чекаємо саме перехід: `text=Виставлено` (без лапок — підрядок без регістру) збігається й із
+    // «Рахунок не виставлено» ще до кліку, і тест закінчувався, обриваючи перехід у дорозі —
+    // наступна сходинка бачила наряд «Виконано» (flaky, review 2026-11-01).
+    const transitioned = page.waitForResponse(
+      r => r.url().includes(`/work-orders/${woId}/transition`) && r.request().method() === 'POST',
+    );
     await page.locator('button:has-text("Виставити рахунок")').first().click();
-    const confirm = page.locator('button:has-text("Підтвердити"), button:has-text("Так")').first();
-    if (await confirm.isVisible({ timeout: 3_000 })) await confirm.click();
-    await expect(page.locator('text=Виставлено').first()).toBeVisible({ timeout: 10_000 });
+    expect((await transitioned).ok()).toBe(true);
+    await expect(page.locator('text="Виставлено"').first()).toBeVisible({ timeout: 10_000 });
   });
 
   // BR-WO-016 (рішення власника 2026-10-15): ручного переходу «Оплачено» немає — наряд стає

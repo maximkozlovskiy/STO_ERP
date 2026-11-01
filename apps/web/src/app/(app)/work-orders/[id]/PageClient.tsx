@@ -41,7 +41,7 @@ import { invoiceRemaining } from '@/lib/invoice-payment';
 import { WorkOrderPrintButtons } from './WorkOrderPrintButtons';
 import { woStatusLabel, woPriorityLabel, woCategoryLabel } from '@/i18n/enumLabel';
 import { cancelConfirmOptions } from '@/components/ui/work-order/cancel-confirm';
-import { WO_TRANSITION_ROLES } from '@/hooks/useWorkOrderActions';
+import { INVOICE_PRINT_ROLES, WO_TRANSITION_ROLES } from '@/hooks/useWorkOrderActions';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Badge } from '@/components/ui/badge';
 import { WorkOrderLinesSection } from './WorkOrderLinesSection';
@@ -502,6 +502,9 @@ export default function WorkOrderCardPage() {
   // «Виконано», перевести можна кнопкою статусу в шапці.
   const handleInvoiceCreated = async (invoiceNumber: string) => {
     if (!wo || wo.status !== 'COMPLETED' || !WO_TRANSITION_ROLES.includes(role)) return;
+    // Рахунок уже в стані — шапка показує перехід у «Виставлено»; поки цей перехід у дорозі, кнопки
+    // шапки неактивні, інакше другий клік слав би той самий перехід і отримував 400.
+    setTransitioning(true);
     try {
       const updated = await apiFetch<Omit<WorkOrderDetail, 'lines' | 'parts'>>(
         `/work-orders/${id}/transition`,
@@ -512,6 +515,8 @@ export default function WorkOrderCardPage() {
     } catch (e: unknown) {
       const reason = e instanceof Error ? e.message : '';
       setError(t('invoice.statusNotChanged', { number: invoiceNumber, reason }));
+    } finally {
+      setTransitioning(false);
     }
   };
 
@@ -711,7 +716,11 @@ export default function WorkOrderCardPage() {
   // «Виконано» без рахунку: «Виставити рахунок» — одна дія секції «Рахунок» (рахунок, потім перехід,
   // BR-WO-037), а не голий перехід статусу з такою самою назвою в шапці. Рахунок уже є (перехід після
   // створення не вдався) — у шапці лишається перехід, а секція кнопки створення не показує.
-  const invoiceMissing = wo.status === 'COMPLETED' && !invoiceRef;
+  // Лише для ролей, яким секція дає створити рахунок (INVOICE_PRINT_ROLES = @Roles
+  // `POST /invoices/from-work-order`): механік рахунку не створює, тож перехід у шапці лишається йому
+  // єдиним шляхом у «Виставлено».
+  const invoiceMissing =
+    wo.status === 'COMPLETED' && !invoiceRef && INVOICE_PRINT_ROLES.includes(role);
   const allowedTransitions = isDeleted
     ? []
     : (TRANSITIONS[wo.status] ?? []).filter(

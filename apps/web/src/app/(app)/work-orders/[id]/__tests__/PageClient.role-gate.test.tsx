@@ -322,6 +322,20 @@ describe('сторінка наряду — одна дія «Виставити
     expect(posts()[0]).toBe(`/invoices/from-work-order/${WO_ID} `);
   });
 
+  // Review 2026-11-01: механік рахунку не створює (ні `/find`, ні POST) — перехід у шапці лишається
+  // йому єдиним шляхом у «Виставлено». Мутація: прибрати роль з `invoiceMissing` → кнопок 0, червоніє.
+  // guards: BR-WO-037
+  it('MECHANIC, «Виконано»: одна кнопка — перехід у шапці, без створення рахунку', async () => {
+    role = 'MECHANIC';
+    wo = workOrder({ status: 'COMPLETED' });
+    withInvoice(null);
+    renderPage();
+    await woShown();
+    await waitFor(() => expect(issueButtons()).toHaveLength(1));
+    // Рахунку механік не запитує й не створює.
+    expect(apiFetchMock.mock.calls.some(c => String(c[0]).startsWith('/invoices/'))).toBe(false);
+  });
+
   // guards: BR-WO-037
   it('«Виконано» з рахунком (перехід раніше не вдався): одна кнопка — перехід у шапці', async () => {
     wo = workOrder({ status: 'COMPLETED' });

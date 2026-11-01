@@ -516,6 +516,25 @@ describe('InvoiceSection — «Друк рахунку»', () => {
     expect(screen.queryByRole('button', { name: 'Друк рахунку' })).not.toBeInTheDocument();
   });
 
+  // Review 2026-11-01: `POST /invoices/from-work-order` — ті самі ролі, що друк; механіку кнопка
+  // давала лише 403. Мутація: прибрати `canPrint` з `canCreate` → MECHANIC бачить кнопку, червоніє.
+  // guards: BR-WO-037
+  it.each([['MECHANIC'], [undefined]])(
+    'роль %s → «Виставити рахунок» немає (сервер відмовив би 403)',
+    r => {
+      role = r;
+      render(
+        <InvoiceSection
+          workOrderId={WO_ID}
+          workOrderStatus="COMPLETED"
+          invoiceRef={null}
+          onChange={vi.fn()}
+        />,
+      );
+      expect(screen.queryByRole('button', { name: 'Виставити рахунок' })).not.toBeInTheDocument();
+    },
+  );
+
   it('наряд видалено (readOnly) → «Друк рахунку» лишається: рахунок окремий документ', () => {
     render(
       <InvoiceSection

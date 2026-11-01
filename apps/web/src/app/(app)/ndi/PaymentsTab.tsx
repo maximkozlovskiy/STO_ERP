@@ -40,10 +40,11 @@ const destinationIncomplete = (d: DestinationForm) =>
 /**
  * Призначення суперечить способу (BR-PAY-019 / BR-PAY-031): готівка — лише в касу, онлайн-спосіб — лише
  * на банківський рахунок. Поле вже пояснює це текстом; новий спосіб із таким поєднанням сервер відхилить
- * (400), тож «Додати» вимкнено. Картку наявного способу не блокуємо: старі рядки лишаються як є.
+ * (400), тож «Додати» вимкнено. Код — після trim, як його отримає сервер.
  */
 const destinationConflicts = (isCash: boolean, code: string, d: DestinationForm) =>
-  (isCash && d.type === 'BANK_ACCOUNT') || (isOnlineMethodCode(code) && d.type === 'CASH_REGISTER');
+  (isCash && d.type === 'BANK_ACCOUNT') ||
+  (isOnlineMethodCode(code.trim()) && d.type === 'CASH_REGISTER');
 
 /** Тіло запиту: три поля разом; id іншого типу сервер обнулить сам. */
 const destinationBody = (d: DestinationForm) =>
@@ -57,6 +58,25 @@ const sameDestination = (a: DestinationForm, b: DestinationForm) =>
   a.type === b.type &&
   (a.type !== 'CASH_REGISTER' || a.cashRegisterId === b.cashRegisterId) &&
   (a.type !== 'BANK_ACCOUNT' || a.bankAccountId === b.bankAccountId);
+
+/**
+ * Картка наявного способу: суперечність блокує «Зберегти» лише тоді, коли її вносить ця правка — так
+ * само відмовляє сервер (`payment-methods.service` update). Рядок, збережений до правила, лишається як є
+ * і зберігається з іншими правками; а увімкнути «Готівку» способу з банківським рахунком чи змінити
+ * призначення на суперечливе — 400, тож кнопку вимкнено.
+ */
+const editIntroducesConflict = (
+  pm: PaymentMethod,
+  form: { isCash: boolean; destination: DestinationForm },
+) => {
+  const destinationChanged = !sameDestination(form.destination, destinationOf(pm));
+  return (
+    (form.isCash &&
+      form.destination.type === 'BANK_ACCOUNT' &&
+      (destinationChanged || !pm.isCash)) ||
+    (isOnlineMethodCode(pm.code) && form.destination.type === 'CASH_REGISTER' && destinationChanged)
+  );
+};
 
 /**
  * Поле «Куди надходять кошти» картки способу оплати. Каси й рахунки читаються, лише коли картка
@@ -474,7 +494,10 @@ export default function PaymentsTab() {
             <Button
               onClick={() => void saveEditPayment()}
               loading={savingPayment}
-              disabled={destinationIncomplete(editPaymentForm.destination)}
+              disabled={
+                destinationIncomplete(editPaymentForm.destination) ||
+                editIntroducesConflict(editPayment, editPaymentForm)
+              }
               className="w-full"
             >
               {t('common.save')}

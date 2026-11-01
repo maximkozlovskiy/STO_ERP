@@ -118,7 +118,10 @@ export function InvoiceSection({
   // «Виставити рахунок» — як `createFromWorkOrder` (BR-INV-020, BR-WO-037): «Оплачено» теж (наряд,
   // сплачений до рахунку), «Архів» — ні (сервер відхиляє). «Оновити з наряду» — як
   // `refreshFromWorkOrder`: лише «Виконано» / «Виставлено».
-  const canCreate = !readOnly && WO_INVOICE_CREATABLE_STATUSES.includes(workOrderStatus);
+  // Роль — ті самі, що друкують рахунок (`POST /invoices/from-work-order` має той самий @Roles):
+  // механіку кнопка давала лише 403, а сторінка наряду за нею ховала його перехід у «Виставлено».
+  const canCreate =
+    !readOnly && canPrint && WO_INVOICE_CREATABLE_STATUSES.includes(workOrderStatus);
   const canRefresh = !readOnly && WO_INVOICEABLE_STATUSES.includes(workOrderStatus);
 
   const createInvoice = async () => {
