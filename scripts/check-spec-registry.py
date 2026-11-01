@@ -16,9 +16,15 @@ slug `contract` збігся з іменем, яке вже існувало. В
 Файл довший за поріг І з >=2 top-level `describe`. Дві умови разом свідомо: довгий файл з
 ОДНИМ describe не має шва, по якому його ріжуть, — це велика тема, а не моноліт.
 
-ГЕЙТ C — ЦІЛІСНІСТЬ ДОС'Є.
-Файли, названі у реєстрах `docs/objects/*.md`, мусять існувати. `check-doc-links.py` цього
-не ловить за конструкцією: він перевіряє лише `.md`-цілі (так у його докстрингу й написано).
+ГЕЙТ C — ЦІЛІСНІСТЬ ДОС'Є, в обидва боки.
+Реєстр -> диск: файли, названі у реєстрах `docs/objects/*.md`, мусять існувати.
+`check-doc-links.py` цього не ловить за конструкцією: він перевіряє лише `.md`-цілі (так у
+його докстрингу й написано).
+Диск -> реєстр: кожен `*.spec.ts` у теці модуля з рядка `**Модуль:**` (рекурсивно) записаний
+у реєстрі хоч одного дос'є. До 2026-11-01 перевірявся лише перший напрям, і поза реєстром
+лежали 18 спеків у модулях із дос'є (3 — у `purchase-orders/delivery/`, один — через байт
+0x01 у рядку реєстру, який регулярка не впізнавала) плюс 8 спеків `supplier-returns` без
+дос'є взагалі. Модулі без дос'є (common, prisma, auth…) цей напрям не перевіряє.
 
 ГЕЙТ D — ПРОСТЕЖУВАНІСТЬ «ПРАВИЛО -> ТЕСТ».
 Кожне правило `BR-XXX-NNN` із дос'є мусить або мати тест із міткою `// guards: BR-XXX-NNN`
@@ -201,18 +207,23 @@ def gate_c_routes(doc, src, problems, visited):
 
 
 def gate_c(problems):
-    """Файли й маршрути, названі у реєстрах дос'є, існують."""
+    """Файли й маршрути, названі у реєстрах дос'є, існують; спеки модулів є в реєстрах."""
     checked = 0
     visited = e2e_routes()
+    registered = set()  # абсолютні шляхи спеків, знайдених через рядки реєстрів
+    module_docs = {}  # база модуля -> [дос'є, що її оголошують]
     for doc in sorted(glob.glob(os.path.join(REPO, "docs", "objects", "*.md"))):
         if "_TEMPLATE" in doc:
             continue
         src = io.open(doc, encoding="utf-8", errors="replace").read()
         checked += gate_c_routes(doc, src, problems, visited)
         rows = REG_ROW.findall(src)
+        mods = REG_MODULE.search(src)
+        if mods:
+            for b in mods.group(1).split(","):
+                module_docs.setdefault(b.strip().strip("`"), []).append(os.path.basename(doc))
         if not rows:
             continue
-        mods = REG_MODULE.search(src)
         if not mods:
             problems.append("РЕЄСТР БЕЗ **Модуль:** %s — не знаю, де шукати %d файлів"
                             % (rel(doc), len(rows)))
@@ -220,13 +231,44 @@ def gate_c(problems):
         bases = [m.strip().strip("`") for m in mods.group(1).split(",")]
         for fname in rows:
             checked += 1
-            if any(os.path.isfile(os.path.join(REPO, b, fname)) for b in bases):
-                continue
-            # дозволяємо шлях із підтекою, записаний у самому рядку
-            if any(os.path.isfile(os.path.join(REPO, b, *fname.split("/"))) for b in bases):
+            # шлях відносно бази модуля: з підтекою (`delivery/…`) чи з `../` у сусідній модуль
+            hits = [os.path.normcase(os.path.normpath(os.path.join(REPO, b, *fname.split("/"))))
+                    for b in bases]
+            hits = [h for h in hits if os.path.isfile(h)]
+            if hits:
+                registered.update(hits)
                 continue
             problems.append("НЕМА ФАЙЛУ з реєстру %s -> %s (база: %s)"
                             % (rel(doc), fname, ", ".join(bases)))
+    checked += gate_c_unregistered(module_docs, registered, problems)
+    return checked
+
+
+def gate_c_unregistered(module_docs, registered, problems):
+    """Диск -> реєстр: спек у теці модуля з дос'є, якого немає в жодному реєстрі.
+
+    Без цього напряму гейт мовчав на спеку, який ніхто не записав: реєстр «аспект -> тест»
+    виглядав повним, а `Разом:` — точним, хоча частина модуля в ньому не існувала.
+    """
+    checked, seen = 0, set()
+    for base, docs in sorted(module_docs.items()):
+        root = os.path.join(REPO, base)
+        for path in sorted(glob.glob(os.path.join(root, "**", "*.spec.ts"), recursive=True)):
+            if "node_modules" in path:
+                continue
+            key = os.path.normcase(os.path.normpath(path))
+            if key in seen:
+                continue
+            seen.add(key)
+            checked += 1
+            if key in registered:
+                continue
+            owners = sorted({d for b, ds in module_docs.items()
+                             if key.startswith(os.path.normcase(os.path.normpath(
+                                 os.path.join(REPO, b))) + os.sep) for d in ds})
+            problems.append("СПЕК ПОЗА РЕЄСТРОМ %s (модуль %s, дос'є %s)"
+                            % (os.path.relpath(path, root).replace(os.sep, "/"), base,
+                               ", ".join(owners)))
     return checked
 
 

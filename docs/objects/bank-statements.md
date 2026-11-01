@@ -304,7 +304,8 @@ cd apps/api && npx vitest run src/modules/bank-statements/<файл>.spec.ts
 Разом: **634** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
 Спільні zod-схеми рознесення при внесенні (види за напрямом, обов'язкові поля виду) —
-`packages/shared/src/schemas/forms/bank-transaction.schema.spec.ts` (поза модулем api).
+`packages/shared/src/schemas/forms/bank-transaction.schema.spec.ts` (поза модулем api; рядок реєстру —
+у [automation.md](automation.md), бо теку `forms` оголошує лише його рядок **Модуль:**).
 
 **Чого тут НЕМА.** HTTP-контракту (`*.contract.spec.ts`) немає: що `ValidationPipe` і `RolesGuard` справді спрацьовують на маршрутах (статуси 400/403), покриває лише E2E — unit-спеки перевіряють самі декоратори DTO та metadata ролей. Те саме з ідемпотентністю ручного внесення: unit стереже лише наявність `RequiredIdempotencyInterceptor` на маршруті (без ключа — 400, 2026-10-23), а не те, що повтор із тим самим `Idempotency-Key` справді не створює другий рядок.
 Integration-спеку (`*.integration.spec.ts`) немає, тому лише на моках, без справжньої БД, лишаються: унікальний індекс `orgId + bankAccountId + externalId` і `paymentId @unique` (unit стереже прапорець `skipDuplicates`, а не сам індекс); унікальні індекси `supplierPaymentId` і `cashOperationId` (unit стереже лише переклад `P2002` у 409); гонка двох одночасних рознесень або скасувань одного рядка (CAS перевірено формою `where` і підробленим `count: 0`, не конкурентно); відкат транзакції БД при збої проведення чи каси (відкочує підробка, а не PostgreSQL); сирітський `Payment`, якщо платіж створено, а запис `paymentId` у рядок упав.
