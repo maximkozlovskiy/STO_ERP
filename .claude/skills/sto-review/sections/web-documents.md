@@ -223,3 +223,18 @@ cd apps/web && npx eslint "src/app/(app)/<сторінка>/page.tsx" | grep "'s
       без лапок — підрядок без регістру: збігся з «Рахунок не виставлено» ще до кліку, тест закінчився,
       обірвавши перехід у дорозі, і наступна сходинка serial-набору впала як flaky
       (`work-orders-detail.spec.ts`, 2026-11-01). Точний текст — `text="Виставлено"`.
+
+## Форма редагування: очищене поле має дійти до сервера (2026-11-01)
+
+```bash
+# PATCH-тіло з форми, що парсилась схемою з '' → undefined (optionalString): JSON.stringify ключ викидає
+grep -rnE "method: 'PATCH'" -A2 apps/web/src --include=*.tsx | grep -E "JSON.stringify\(values\)"
+# Схема PATCH, побудована з полів форми: '' і null → undefined, очистити поле неможливо
+grep -rnE "UpdateSchema = z" -A3 packages/shared/src/schemas/forms/*.ts
+```
+
+- [ ] Форма редагування шле `JSON.stringify(values)`, а схема форми робить '' → `undefined` → очищене
+      поле до сервера не доходить, PATCH відповідає 200 і нічого не змінює. Схема PATCH має давати
+      `null` для порожнього рядка, а форма — слати `null` лише для поля, що МАЛО значення (модалку
+      відкривають і з рядка списку без цих полів: `null` для них стер би збережене). Взірець —
+      `counterpartyUpdateSchema` + `counterpartyPatchBody` (`journal/web.md`, 2026-11-01)

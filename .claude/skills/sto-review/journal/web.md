@@ -3,6 +3,18 @@
 > Архів реальних випадків (дата — назва — §N + Сигнал / Grep / Фікс / Severity).
 > Не читати цілком — шукати за ключовим словом. Чекліст секції: `../sections/web.md`.
 
+### 2026-11-01 — очищене поле форми контрагента не доходило до сервера — §8 (web-documents)
+
+**Сигнал:** BR-CP-018 виводить `Counterparty.iban` з реквізиту; review питав, що буде, коли реквізит
+очистити. Форма парсилась `counterpartyFormSchema` (`optionalString`: '' → undefined), модалка й картка
+слали `JSON.stringify(values)` — ключ зникав; а `counterpartyUpdateSchema` з тих самих полів ще й `null`
+перетворювала на undefined. PATCH 200, у БД — старий рахунок і старий IBAN; те саме для email, адрес,
+ЄДРПОУ. Сервіс при цьому мав коментар «'' = очищення» і unit-тести, що кличуть сервіс напряму в обхід
+схеми, — тому баг не видно. **Grep:** `grep -rnE "method: 'PATCH'" -A2 apps/web/src --include=*.tsx |
+grep "JSON.stringify(values)"`. **Фікс:** схема PATCH — `'' → null`, `.nullable()`; web —
+`counterpartyPatchBody(values, original)`: `null` лише для поля, яке мало значення. Тест — через
+`ZodValidationPipe`, а не прямий виклик сервісу. **Severity:** IMPORTANT
+
 ### 2026-11-01 — «одна дія» сховала перехід статусу ролі, якій нова дія недоступна — §8 (web-documents)
 
 **Сигнал:** сторінка наряду, «Виконано» без рахунку: перехід у «Виставлено» в шапці сховано, бо його
