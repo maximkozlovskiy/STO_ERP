@@ -350,9 +350,9 @@ export class WorkOrderStockEffectsService {
       const coeff = coeffMap[part.id] ?? 1;
       const baseQty = part.quantity * coeff;
       // RETURN дзеркалить WRITEOFF: та сама baseQty, той самий (documentType, documentId,
-      // documentLineId). InventoryService інкрементує StockItem і повертає партії (агрегує по
-      // batchId у межах документа). batchCostPrice/batchId у WorkOrderPart НЕ чистимо —
-      // історичний COGS-запис.
+      // documentLineId). InventoryService інкрементує StockItem і повертає в партії те, що списав
+      // САМЕ цей рядок, не більше baseQty (BR-INVT-014). batchCostPrice/batchId у WorkOrderPart НЕ
+      // чистимо — історичний COGS-запис.
       await this.inventory.createMovement(
         orgId,
         {

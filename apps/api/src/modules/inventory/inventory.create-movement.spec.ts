@@ -590,7 +590,7 @@ describe('InventoryService.createMovement guards', () => {
     });
 
     // guards: BR-INVT-014
-    it('шукає негативні BatchConsumption товару руху в документі й повертає у КОЖНУ партію', async () => {
+    it('шукає BatchConsumption товару руху в документі й повертає у КОЖНУ партію', async () => {
       prisma.batchConsumption.findMany.mockResolvedValue([
         { batchId: 'b1', quantity: -2 },
         { batchId: 'b2', quantity: -1 },
@@ -602,7 +602,8 @@ describe('InventoryService.createMovement guards', () => {
         documentType: 'WorkOrder',
         documentId: 'wo-1',
         goodId: 'good-1',
-        quantity: { lt: 0 },
+        // Партії складу руху: StockItem інкрементовано саме тут.
+        batch: { warehouseId: 'wh-1' },
       });
       expect(batchService.returnToBatch).toHaveBeenCalledTimes(2);
       expect(batchService.returnToBatch).toHaveBeenCalledWith(
@@ -682,15 +683,16 @@ describe('InventoryService.createMovement guards', () => {
     });
 
     // guards: BR-INVT-014
-    it('записів рядка немає (списання до documentLineId) → записи документа без рядка, ключ без рядка', async () => {
+    it('записів рядка немає (списання до documentLineId) → пул записів без рядка, ключ — рядок руху', async () => {
       prisma.batchConsumption.findMany
         .mockResolvedValueOnce([])
-        .mockResolvedValueOnce([{ batchId: 'b1', quantity: -3 }]);
+        .mockResolvedValueOnce([{ batchId: 'b1', quantity: -3, documentLineId: null }]);
       await service.createMovement('org-1', retDto({ quantity: 3, documentLineId: 'line-1' }));
       expect(prisma.batchConsumption.findMany.mock.calls[1][0].where).toMatchObject({
         goodId: 'good-1',
-        documentLineId: null,
+        batch: { warehouseId: 'wh-1' },
       });
+      // Ключ із рядком: другий рядок того самого товару з тієї ж партії не впирається в ключ першого.
       expect(batchService.returnToBatch).toHaveBeenCalledWith(
         'org-1',
         'b1',
@@ -698,8 +700,28 @@ describe('InventoryService.createMovement guards', () => {
         'WorkOrder',
         'wo-1',
         expect.anything(),
-        null,
+        'line-1',
       );
+    });
+
+    // Старі списання без рядка, два рядки одного товару: пул спільний, тож уже повернене іншим
+    // рядком вираховується; записи рядків із власними списаннями до пулу не належать.
+    // guards: BR-INVT-014
+    it('пул без рядка: вираховує вже повернене з нього, не бере записів рядків із власними списаннями', async () => {
+      prisma.batchConsumption.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([
+        { batchId: 'b1', quantity: -5, documentLineId: null },
+        { batchId: 'b2', quantity: -2, documentLineId: null },
+        { batchId: 'b1', quantity: 3, documentLineId: 'line-A' }, // повернув інший рядок із пулу
+        { batchId: 'b3', quantity: -4, documentLineId: 'line-X' }, // власне списання рядка X
+        { batchId: 'b3', quantity: 4, documentLineId: 'line-X' },
+      ]);
+      await service.createMovement('org-1', retDto({ quantity: 4, documentLineId: 'line-B' }));
+      expect(
+        batchService.returnToBatch.mock.calls.map((c: unknown[]) => [c[1], c[2], c[6]]),
+      ).toEqual([
+        ['b1', 2, 'line-B'],
+        ['b2', 2, 'line-B'],
+      ]);
     });
 
     it('0 негативних consumption (AVG_COST / без партій) → StockItem++, returnToBatch НЕ викликається, без throw', async () => {

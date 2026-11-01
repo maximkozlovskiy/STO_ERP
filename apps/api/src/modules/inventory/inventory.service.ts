@@ -390,58 +390,72 @@ export class InventoryService {
   /**
    * Повертає в партії те, що списав САМЕ цей рядок документа (реверс WRITEOFF), і не більше кількості
    * руху (TECH-DEBT (а) §8 L432: раніше рух одного товару відновлював партії всього документа).
-   * Джерело — негативні BatchConsumption товару руху: рядок руху (`documentLineId`) → його записи;
-   * записів рядка немає (списання до появи `documentLineId`) → записи документа без рядка; рух без
-   * рядка → усі записи товару в документі. Агрегація по batchId — один returnToBatch на партію,
-   * ключ ідемпотентності — партія + документ + рядок. Найсвіжіше списання повертається першим.
-   * 0 рядків (списання без реальних партій, AVG_COST) → нічого не робимо (StockItem уже інкрементовано).
+   * Джерело — BatchConsumption товару руху в партіях складу руху: рядок руху (`documentLineId`) →
+   * його від'ємні записи; записів рядка немає (списання до появи `documentLineId`) → спільний пул
+   * записів документа без рядка МІНУС те, що з нього вже повернули (інакше другий рядок того самого
+   * товару повернув би пул ще раз або, з ключем без рядка, нічого); рух без рядка → усі записи товару.
+   * Агрегація по batchId — один returnToBatch на партію, ключ ідемпотентності — партія + документ +
+   * рядок руху. Найсвіжіше списання повертається першим.
+   * 0 записів (списання без реальних партій) → нічого не робимо (StockItem уже інкрементовано).
    */
   private async restoreBatchesForReturn(
     orgId: string,
     dto: Pick<
       CreateMovementDto,
-      'goodId' | 'quantity' | 'documentType' | 'documentId' | 'documentLineId'
+      'goodId' | 'warehouseId' | 'quantity' | 'documentType' | 'documentId' | 'documentLineId'
     >,
     db: Prisma.TransactionClient,
   ): Promise<void> {
     const documentType = dto.documentType!;
     const documentId = dto.documentId!;
-    const find = (line: { documentLineId: string | null } | Record<string, never>) =>
+    const lineId = dto.documentLineId ?? null;
+    const find = (extra: Prisma.BatchConsumptionWhereInput) =>
       db.batchConsumption.findMany({
         where: {
           orgId,
           documentType,
           documentId,
           goodId: dto.goodId,
-          quantity: { lt: 0 },
-          ...line,
+          // Партії складу руху: StockItem інкрементовано саме на цьому складі.
+          batch: { warehouseId: dto.warehouseId },
+          ...extra,
         },
-        select: { batchId: true, quantity: true },
+        select: { batchId: true, quantity: true, documentLineId: true },
         orderBy: { createdAt: 'desc' },
-        // Defensive cap: consumptions per рядок обмежені невеликим FEFO-span, але явний take
+        // Defensive cap: consumptions per документ обмежені невеликим FEFO-span, але явний take
         // дзеркалить решту findMany у сервісі й унеможливлює OOM на аномалії.
         take: 5000,
       });
 
-    let lineId: string | null = null;
-    let consumptions = dto.documentLineId
-      ? await find({ documentLineId: dto.documentLineId })
-      : await find({});
-    if (dto.documentLineId && consumptions.length > 0) lineId = dto.documentLineId;
-    if (dto.documentLineId && consumptions.length === 0) {
-      consumptions = await find({ documentLineId: null });
-    }
-    if (consumptions.length === 0) return;
+    // Основний шлях: записи самого рядка. Повторний виклик тримає ключ (партія, документ, рядок).
+    const own = lineId ? await find({ documentLineId: lineId, quantity: { lt: 0 } }) : [];
+    const netByBatch = new Map<string, number>();
+    const add = (batchId: string, qty: number) =>
+      netByBatch.set(batchId, (netByBatch.get(batchId) ?? 0) + qty);
 
-    const qtyByBatch = new Map<string, number>();
-    for (const c of consumptions) {
-      qtyByBatch.set(c.batchId, (qtyByBatch.get(c.batchId) ?? 0) + Math.abs(c.quantity));
+    if (own.length > 0) {
+      for (const c of own) add(c.batchId, -c.quantity);
+    } else {
+      // Запасний шлях: пул записів без рядка (або всі записи товару, коли рух без рядка) за
+      // вирахуванням уже поверненого з нього. Повернення рядків, що мають власні списання, пул
+      // не зменшують — вони повертали своє.
+      const rows = await find({});
+      const linesWithOwn = new Set(
+        rows.filter(r => r.quantity < 0 && r.documentLineId).map(r => r.documentLineId),
+      );
+      for (const r of rows) {
+        const fromPool =
+          !lineId || r.documentLineId === null || !linesWithOwn.has(r.documentLineId);
+        if (!fromPool) continue;
+        add(r.batchId, -r.quantity); // списання (−q) додає в пул, повернення (+q) — віднімає
+      }
     }
 
     let left = dto.quantity;
-    for (const [batchId, qty] of qtyByBatch) {
+    for (const [batchId, net] of netByBatch) {
       if (left <= QTY_EPSILON) break;
-      const back = Math.min(qty, left);
+      if (net <= QTY_EPSILON) continue;
+      const back = Math.min(net, left);
       await this.batchService.returnToBatch(
         orgId,
         batchId,

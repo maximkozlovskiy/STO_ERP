@@ -14,9 +14,9 @@ import { PrismaService } from '../../prisma/prisma.service';
  *   Σ remainingQty(active batches) == StockItem.quantity   — ПІСЛЯ повного реверсу.
  *
  * Ключова перевірка ревʼю (shared-batch): дві WO-частини списують з ОДНІЄЇ партії →
- * restoreBatchesForReturn мусить агрегувати по batchId і повернути РАЗ. Ці тести
- * падають, якщо агрегацію прибрати (по-рядковий виклик → idempotency-guard у returnToBatch
- * ігнорує documentLineId → 2-й рядок no-op → недоповернення → Σ-інваріант ламається).
+ * кожен рядок повертає своє під власним ключем ідемпотентності (партія + документ + рядок).
+ * Ключ без рядка тихо пропустив би повернення 2-го рядка (бачить return-consumption 1-го)
+ * → недоповернення → Σ-інваріант ламається. Те саме для старих списань без documentLineId.
  *
  * In-memory store імітує Postgres-семантику, важливу для інваріанту: CAS updateMany з
  * where-предикатом (remainingQty gte/lte), increment/decrement, batchConsumption вибірка
@@ -143,7 +143,14 @@ function makeStore() {
         async ({ where }: any) => consumptions.find(c => matches(c as any, where)) ?? null,
       ),
       findMany: vi.fn(async ({ where, take }: any) => {
-        const rows = consumptions.filter(c => matches(c as any, where));
+        // Relation-фільтр `batch: { warehouseId }` — через партію запису (як JOIN у Postgres).
+        const { batch: batchWhere, ...own } = where;
+        const rows = consumptions.filter(
+          c =>
+            matches(c as any, own) &&
+            (!batchWhere ||
+              matches((batches.find(b => b.id === c.batchId) ?? {}) as any, batchWhere)),
+        );
         return take ? rows.slice(0, take) : rows;
       }),
     },
@@ -262,7 +269,8 @@ describe('C2 round-trip WRITEOFF→RETURN — реальний BatchService, Σ-
     }
   }
 
-  async function writeoff(lineId: string, qty: number) {
+  /** `lineId: null` — старе списання, записане без documentLineId. */
+  async function writeoff(lineId: string | null, qty: number) {
     await inventory.createMovement(
       ORG,
       {
@@ -272,7 +280,7 @@ describe('C2 round-trip WRITEOFF→RETURN — реальний BatchService, Σ-
         quantity: -qty,
         documentType: 'WorkOrder',
         documentId: 'wo-1',
-        documentLineId: lineId,
+        ...(lineId ? { documentLineId: lineId } : {}),
       },
       db as any,
     );
@@ -379,6 +387,25 @@ describe('C2 round-trip WRITEOFF→RETURN — реальний BatchService, Σ-
     expect(db._batches.find(b => b.id === 'b1')!.remainingQty).toBe(5);
     expect(sumRemaining(db)).toBe(10);
     expect(stockQty(db)).toBe(10);
+  });
+
+  // Старі списання без documentLineId, два рядки одного товару: ключ без рядка пропускав повернення
+  // 2-го рядка (бачив return 1-го) → недоповернення; пул без рядка без вирахування поверненого —
+  // 2-й рядок повертав би вже повернене (понад receivedQty → 400).
+  // guards: BR-INVT-014, BR-INVT-015
+  it('старі списання без рядка, два рядки одного товару → кожен повертає своє, Σ-інваріант тримається', async () => {
+    seedBatch('b1', 5, 0);
+    seedBatch('b2', 5, 1);
+    await writeoff(null, 3); // рядок A (старий запис): b1 5→2
+    await writeoff(null, 4); // рядок B (старий запис): b1 2→0, b2 5→3
+    expect(stockQty(db)).toBe(3);
+
+    await ret('part-A', 3);
+    await ret('part-B', 4);
+    expect(db._batches.find(b => b.id === 'b1')!.remainingQty).toBe(5);
+    expect(db._batches.find(b => b.id === 'b2')!.remainingQty).toBe(5);
+    expect(stockQty(db)).toBe(10);
+    expect(sumRemaining(db)).toBe(10);
   });
 
   it('AVG_COST org: фізичний декремент FIFO пише реальні consumption → RETURN відновлює', async () => {
