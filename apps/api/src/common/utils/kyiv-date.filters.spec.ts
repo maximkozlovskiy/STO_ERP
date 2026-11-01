@@ -6,7 +6,12 @@
  * часу і міткою часу; тому дві функції, і різницю між ними тримають тести.
  */
 import { describe, it, expect } from 'vitest';
-import { dateOnlyRangeFilter, isCalendarDate, kyivDayRangeFilter } from './kyiv-date';
+import {
+  dateOnlyRangeFilter,
+  isCalendarDate,
+  kyivDayRangeFilter,
+  kyivWallTimeToUtc,
+} from './kyiv-date';
 
 describe('kyivDayRangeFilter — межі київської доби для DateTime', () => {
   it('літо (UTC+3): 09.07 — це 08.07 21:00Z … 09.07 20:59:59.999Z', () => {
@@ -139,4 +144,25 @@ describe('isCalendarDate', () => {
       expect(isCalendarDate(v)).toBe(false);
     },
   );
+});
+
+/**
+ * Ніч переведення годинника: зсув — для самої миті, а не для настінного часу як UTC (TECH-DEBT (а),
+ * 2026-10-30). 2026: весна 29.03 (03:00 EET → 04:00 EEST), осінь 25.10 (04:00 EEST → 03:00 EET),
+ * обидві о 01:00 UTC. Раніше 02:30 у ці ночі давало мить на годину не ту.
+ */
+describe('kyivWallTimeToUtc — ніч переведення годинника', () => {
+  const at = (wall: string) => kyivWallTimeToUtc(wall).toISOString();
+
+  it.each([
+    ['весна, до переходу (EET)', '2026-03-29T02:30:00', '2026-03-29T00:30:00.000Z'],
+    ['весна, після переходу (EEST)', '2026-03-29T04:30:00', '2026-03-29T01:30:00.000Z'],
+    ['весна, неіснуючий 03:30 — вперед', '2026-03-29T03:30:00', '2026-03-29T01:30:00.000Z'],
+    ['осінь, до переходу (EEST)', '2026-10-25T02:30:00', '2026-10-24T23:30:00.000Z'],
+    ['осінь, після переходу (EET)', '2026-10-25T04:30:00', '2026-10-25T02:30:00.000Z'],
+    ['осінь, неоднозначний 03:30 — зимова мить', '2026-10-25T03:30:00', '2026-10-25T01:30:00.000Z'],
+    ['звичайний день літа', '2026-07-09T12:00:00', '2026-07-09T09:00:00.000Z'],
+  ])('%s: %s → %s', (_label, wall, utc) => {
+    expect(at(wall)).toBe(utc);
+  });
 });

@@ -55,12 +55,20 @@ export const kyivOffsetMs = (d: Date): number => {
 /** Earliest instant Postgres accepts in an ISO timestamp: 0001-01-01T00:00:00Z. */
 export const EARLIEST_DB_INSTANT_MS = new Date('0001-01-01T00:00:00.000Z').getTime();
 
-/** Настінний час `YYYY-MM-DDTHH:mm:ss[.sss]` київського дня → мить UTC (DST-aware). */
+/**
+ * Настінний час `YYYY-MM-DDTHH:mm:ss[.sss]` київського дня → мить UTC (DST-aware).
+ *
+ * Зсув береться для САМОЇ миті, а не для настінного часу, прочитаного як UTC: у ніч переведення
+ * годинника вони по різні боки межі (зміна о 01:00 UTC), і 02:30 у неділю переходу давало миттю
+ * на годину раніше чи пізніше. Тому два кроки: приблизна мить → зсув у ній. Неіснуючий настінний
+ * час весни (03:00–03:59) зсувається вперед, неоднозначний осені (03:00–03:59) — друга (зимова) мить.
+ */
 export const kyivWallTimeToUtc = (wallTime: string): Date => {
-  const d = new Date(`${wallTime}Z`);
+  const wall = new Date(`${wallTime}Z`).getTime();
+  const guess = new Date(wall - kyivOffsetMs(new Date(wall)));
   // Bug #818: the start of Kyiv day 0001-01-01 is 31.12 of year 0 in UTC, and Postgres has no
   // year 0 - the query failed with 500. Nothing is stored that early, so the floor is harmless.
-  return new Date(Math.max(d.getTime() - kyivOffsetMs(d), EARLIEST_DB_INSTANT_MS));
+  return new Date(Math.max(wall - kyivOffsetMs(guess), EARLIEST_DB_INSTANT_MS));
 };
 
 /** Початок київського дня `YYYY-MM-DD` (00:00:00.000) як мить UTC. */
