@@ -120,6 +120,10 @@ it('invoiceDueDays=0 → dueDate === documentDate', async () => {
 
 Мітку на наявний тест став лише коли він справді впав би від порушення правила; тест, який
 лише зачіпає той самий метод, — «фальшивий сторож» (у вибірці 2026-10-07 — одна з 15).
+Окремий вид — порожнє заперечення: `expect(prisma.x.update).not.toHaveBeenCalled()`, коли код
+пише через `updateMany` (CAS) і `update` не викликає ніколи. Така перевірка зелена за будь-якого
+коду; перед міткою звір, що метод із `not.toHaveBeenCalled` взагалі є на шляху сервісу
+(2026-11-01, `supplier-returns.confirm-fsm.spec.ts` — BR-SRET-001/004).
 Розмітити агрегат цілком — `Agent(subagent_type="sto-br-trace-agent")`.
 
 Baseline оновлюється лише скриптом:
