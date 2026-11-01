@@ -260,7 +260,9 @@ describe('SupplierReturnsService — regression guards', () => {
     await expect(service.confirm(ORG, SR_ID, USER_ID)).rejects.toThrow(BadRequestException);
     expect(inventory.createMovement).not.toHaveBeenCalled();
     expect(settlements.createTransaction).not.toHaveBeenCalled();
-    expect(prisma.supplierReturn.update).not.toHaveBeenCalled();
+    // Статус пише CAS `updateMany` у транзакції — до неї відмова й має статися.
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(prisma.supplierReturn.updateMany).not.toHaveBeenCalled();
   });
 
   // guards: BR-SRET-001
@@ -390,7 +392,9 @@ describe('SupplierReturnsService — regression guards', () => {
     });
 
     await expect(service.cancel(ORG, SR_ID)).rejects.toThrow(BadRequestException);
-    expect(prisma.supplierReturn.update).not.toHaveBeenCalled();
+    // Статус пише CAS `updateMany` у транзакції — з фінального статусу до неї не доходить.
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(prisma.supplierReturn.updateMany).not.toHaveBeenCalled();
   });
 
   // ──────────────────────────────────────────────────────────────────────

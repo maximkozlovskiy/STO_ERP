@@ -253,6 +253,11 @@ def gate_c_unregistered(module_docs, registered, problems):
     checked, seen = 0, set()
     for base, docs in sorted(module_docs.items()):
         root = os.path.join(REPO, base)
+        # Тека, якої немає (друкарська помилка, хвіст «(…)» після шляху в рядку **Модуль:**), дає
+        # порожній glob — і цей напрям мовчки нічого не перевіряв би для всього модуля.
+        if not os.path.isdir(root):
+            problems.append("МОДУЛЬ НЕ ІСНУЄ %s (дос'є %s)" % (base, ", ".join(sorted(docs))))
+            continue
         for path in sorted(glob.glob(os.path.join(root, "**", "*.spec.ts"), recursive=True)):
             if "node_modules" in path:
                 continue
