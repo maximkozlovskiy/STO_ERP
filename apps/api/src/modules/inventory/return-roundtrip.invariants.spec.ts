@@ -359,6 +359,28 @@ describe('C2 round-trip WRITEOFF→RETURN — реальний BatchService, Σ-
     expect(db._batches.find(b => b.id === 'b2')!.remainingQty).toBe(5);
   });
 
+  // TECH-DEBT (а) §8 L432: рух одного рядка відновлював партії всього документа — повернення лише
+  // рядка A піднімало й списане рядком B, і Σ remaining розходилась зі StockItem.
+  // guards: BR-INVT-013, BR-INVT-014
+  it('повернення ОДНОГО рядка з двох: відновлено лише його партії, Σ-інваріант тримається', async () => {
+    seedBatch('b1', 5, 0);
+    seedBatch('b2', 5, 1);
+    await writeoff('part-A', 3); // b1: 5→2
+    await writeoff('part-B', 4); // b1: 2→0, b2: 5→3 — рядок B списав b1 −2, b2 −2
+
+    await ret('part-B', 4);
+    // Рядок B повертає своє: b1 +2, b2 +2. Списане рядком A (b1 −3) лишається списаним.
+    expect(db._batches.find(b => b.id === 'b1')!.remainingQty).toBe(2);
+    expect(db._batches.find(b => b.id === 'b2')!.remainingQty).toBe(5);
+    expect(stockQty(db)).toBe(7);
+    expect(sumRemaining(db)).toBe(7);
+
+    await ret('part-A', 3);
+    expect(db._batches.find(b => b.id === 'b1')!.remainingQty).toBe(5);
+    expect(sumRemaining(db)).toBe(10);
+    expect(stockQty(db)).toBe(10);
+  });
+
   it('AVG_COST org: фізичний декремент FIFO пише реальні consumption → RETURN відновлює', async () => {
     // AVG_COST-орг: consumeBatch викликається з FIFO (фізичний декремент), тож BatchConsumption
     // рядки РЕАЛЬНІ (не пропущені) → restoreBatchesForReturn знаходить і повертає.

@@ -9,7 +9,7 @@ import { Prisma, StockMovementType, BatchCostMethod } from '@prisma/client';
 import { translateError } from '@sto/shared';
 import { getLocale } from '../../common/tenant/tenant-context';
 import { PrismaService } from '../../prisma/prisma.service';
-import { BatchService, BatchConsumeResult } from './batch.service';
+import { BatchService, BatchConsumeResult, QTY_EPSILON } from './batch.service';
 import { SettingsService } from '../settings/settings.service';
 import { kyivDayRangeFilter } from '../../common/utils/kyiv-date';
 import { containsInsensitive, searchContains } from '../../common/utils/like-pattern';
@@ -381,45 +381,77 @@ export class InventoryService {
     // quantityDelta). Тут відновлюємо самі партії, з яких документ-джерело списував,
     // щоб інваріант Σ remainingQty(active) == StockItem.quantity тримався за конструкцією.
     if (dto.type === 'RETURN') {
-      await this.restoreBatchesForReturn(orgId, dto.documentType!, dto.documentId!, db);
+      await this.restoreBatchesForReturn(orgId, dto, db);
     }
 
     return { movementId: movement.id, consumed, weightedCostPrice };
   }
 
   /**
-   * Повертає списані партії документа назад (реверс WRITEOFF). Знаходить негативні
-   * BatchConsumption документа (documentType+documentId), АГРЕГУЄ по batchId у межах усього
-   * документа й викликає returnToBatch РАЗ на партію. Агрегація критична: idempotency-guard
-   * у returnToBatch ігнорує documentLineId — по-рядкові виклики на спільну партію тихо
-   * пропустились би (2-й бачить return-consumption 1-го) → недоповернення → злам Σ-інваріанту.
-   * 0 рядків (списання без реальних партій) → нічого не робимо (StockItem уже інкрементовано).
+   * Повертає в партії те, що списав САМЕ цей рядок документа (реверс WRITEOFF), і не більше кількості
+   * руху (TECH-DEBT (а) §8 L432: раніше рух одного товару відновлював партії всього документа).
+   * Джерело — негативні BatchConsumption товару руху: рядок руху (`documentLineId`) → його записи;
+   * записів рядка немає (списання до появи `documentLineId`) → записи документа без рядка; рух без
+   * рядка → усі записи товару в документі. Агрегація по batchId — один returnToBatch на партію,
+   * ключ ідемпотентності — партія + документ + рядок. Найсвіжіше списання повертається першим.
+   * 0 рядків (списання без реальних партій, AVG_COST) → нічого не робимо (StockItem уже інкрементовано).
    */
   private async restoreBatchesForReturn(
     orgId: string,
-    documentType: string,
-    documentId: string,
+    dto: Pick<
+      CreateMovementDto,
+      'goodId' | 'quantity' | 'documentType' | 'documentId' | 'documentLineId'
+    >,
     db: Prisma.TransactionClient,
   ): Promise<void> {
-    // batchId у BatchConsumption non-nullable → AVG_COST-агрегат рядків НЕ пише (early-return
-    // у consumeBatch), тож 0 рядків = списання без реальних партій → нічого відновлювати.
-    const consumptions = await db.batchConsumption.findMany({
-      where: { orgId, documentType, documentId, quantity: { lt: 0 } },
-      select: { batchId: true, quantity: true },
-      // Defensive cap: consumptions per документ обмежені (≤1000 parts × невеликий FEFO-span),
-      // але явний take дзеркалить решту findMany у сервісі й унеможливлює OOM на аномалії.
-      take: 5000,
-    });
+    const documentType = dto.documentType!;
+    const documentId = dto.documentId!;
+    const find = (line: { documentLineId: string | null } | Record<string, never>) =>
+      db.batchConsumption.findMany({
+        where: {
+          orgId,
+          documentType,
+          documentId,
+          goodId: dto.goodId,
+          quantity: { lt: 0 },
+          ...line,
+        },
+        select: { batchId: true, quantity: true },
+        orderBy: { createdAt: 'desc' },
+        // Defensive cap: consumptions per рядок обмежені невеликим FEFO-span, але явний take
+        // дзеркалить решту findMany у сервісі й унеможливлює OOM на аномалії.
+        take: 5000,
+      });
+
+    let lineId: string | null = null;
+    let consumptions = dto.documentLineId
+      ? await find({ documentLineId: dto.documentLineId })
+      : await find({});
+    if (dto.documentLineId && consumptions.length > 0) lineId = dto.documentLineId;
+    if (dto.documentLineId && consumptions.length === 0) {
+      consumptions = await find({ documentLineId: null });
+    }
     if (consumptions.length === 0) return;
 
-    // group by batchId → Σ|quantity|
     const qtyByBatch = new Map<string, number>();
     for (const c of consumptions) {
       qtyByBatch.set(c.batchId, (qtyByBatch.get(c.batchId) ?? 0) + Math.abs(c.quantity));
     }
 
+    let left = dto.quantity;
     for (const [batchId, qty] of qtyByBatch) {
-      await this.batchService.returnToBatch(orgId, batchId, qty, documentType, documentId, db);
+      if (left <= QTY_EPSILON) break;
+      const back = Math.min(qty, left);
+      await this.batchService.returnToBatch(
+        orgId,
+        batchId,
+        back,
+        documentType,
+        documentId,
+        db,
+        lineId,
+      );
+      left -= back;
     }
   }
 

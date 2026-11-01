@@ -590,21 +590,20 @@ describe('InventoryService.createMovement guards', () => {
     });
 
     // guards: BR-INVT-014
-    it('шукає негативні BatchConsumption документа й повертає у КОЖНУ партію', async () => {
+    it('шукає негативні BatchConsumption товару руху в документі й повертає у КОЖНУ партію', async () => {
       prisma.batchConsumption.findMany.mockResolvedValue([
         { batchId: 'b1', quantity: -2 },
         { batchId: 'b2', quantity: -1 },
       ]);
       await service.createMovement('org-1', retDto({ quantity: 3 }));
-      // findMany фільтрує по (documentType, documentId, quantity<0)
       const where = prisma.batchConsumption.findMany.mock.calls[0][0].where;
       expect(where).toMatchObject({
         orgId: 'org-1',
         documentType: 'WorkOrder',
         documentId: 'wo-1',
+        goodId: 'good-1',
         quantity: { lt: 0 },
       });
-      // returnToBatch на кожну партію з abs(quantity)
       expect(batchService.returnToBatch).toHaveBeenCalledTimes(2);
       expect(batchService.returnToBatch).toHaveBeenCalledWith(
         'org-1',
@@ -613,6 +612,7 @@ describe('InventoryService.createMovement guards', () => {
         'WorkOrder',
         'wo-1',
         expect.anything(),
+        null,
       );
       expect(batchService.returnToBatch).toHaveBeenCalledWith(
         'org-1',
@@ -621,12 +621,12 @@ describe('InventoryService.createMovement guards', () => {
         'WorkOrder',
         'wo-1',
         expect.anything(),
+        null,
       );
     });
 
     // guards: BR-INVT-014
-    it('shared-batch: дві частини з ОДНІЄЇ партії → ОДИН агрегований returnToBatch (per-line hazard)', async () => {
-      // Дві негативні consumption на b1 (різні documentLineId) → агрегуються у 2+3=5.
+    it('дві consumption рядка з ОДНІЄЇ партії → ОДИН агрегований returnToBatch', async () => {
       prisma.batchConsumption.findMany.mockResolvedValue([
         { batchId: 'b1', quantity: -2 },
         { batchId: 'b1', quantity: -3 },
@@ -636,10 +636,69 @@ describe('InventoryService.createMovement guards', () => {
       expect(batchService.returnToBatch).toHaveBeenCalledWith(
         'org-1',
         'b1',
-        5, // 2+3 агреговано — інакше 2-й виклик тихо пропустив би idempotency-guard
+        5,
         'WorkOrder',
         'wo-1',
         expect.anything(),
+        null,
+      );
+    });
+
+    // TECH-DEBT (а) §8 L432: рух одного рядка відновлював партії всього документа.
+    // guards: BR-INVT-014
+    it('рух рядка → лише записи цього рядка; рядок — у ключі ідемпотентності returnToBatch', async () => {
+      prisma.batchConsumption.findMany.mockResolvedValue([{ batchId: 'b1', quantity: -3 }]);
+      await service.createMovement('org-1', retDto({ quantity: 3, documentLineId: 'line-1' }));
+      expect(prisma.batchConsumption.findMany).toHaveBeenCalledTimes(1);
+      expect(prisma.batchConsumption.findMany.mock.calls[0][0].where).toMatchObject({
+        goodId: 'good-1',
+        documentLineId: 'line-1',
+      });
+      expect(batchService.returnToBatch).toHaveBeenCalledWith(
+        'org-1',
+        'b1',
+        3,
+        'WorkOrder',
+        'wo-1',
+        expect.anything(),
+        'line-1',
+      );
+    });
+
+    // guards: BR-INVT-014
+    it('повертається не більше кількості руху: найсвіжіше списання — першим', async () => {
+      prisma.batchConsumption.findMany.mockResolvedValue([
+        { batchId: 'b2', quantity: -3 },
+        { batchId: 'b1', quantity: -2 },
+      ]);
+      await service.createMovement('org-1', retDto({ quantity: 4, documentLineId: 'line-1' }));
+      expect(prisma.batchConsumption.findMany.mock.calls[0][0].orderBy).toEqual({
+        createdAt: 'desc',
+      });
+      expect(batchService.returnToBatch.mock.calls.map((c: unknown[]) => [c[1], c[2]])).toEqual([
+        ['b2', 3],
+        ['b1', 1],
+      ]);
+    });
+
+    // guards: BR-INVT-014
+    it('записів рядка немає (списання до documentLineId) → записи документа без рядка, ключ без рядка', async () => {
+      prisma.batchConsumption.findMany
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ batchId: 'b1', quantity: -3 }]);
+      await service.createMovement('org-1', retDto({ quantity: 3, documentLineId: 'line-1' }));
+      expect(prisma.batchConsumption.findMany.mock.calls[1][0].where).toMatchObject({
+        goodId: 'good-1',
+        documentLineId: null,
+      });
+      expect(batchService.returnToBatch).toHaveBeenCalledWith(
+        'org-1',
+        'b1',
+        3,
+        'WorkOrder',
+        'wo-1',
+        expect.anything(),
+        null,
       );
     });
 

@@ -12,7 +12,7 @@ import { toPriceHistoryRow } from './price-history.mapper';
  * Через IEEE-754 `remainingQty - take` дає залишок ~1e-14 замість 0 → партія-«привид»
  * лишалась isActive з мікрозалишком, забруднюючи FEFO-обхід. EPSILON квантизує «майже нуль».
  */
-const QTY_EPSILON = 1e-9;
+export const QTY_EPSILON = 1e-9;
 
 export interface CreateBatchDto {
   goodId: string;
@@ -428,10 +428,20 @@ export class BatchService {
     documentType: string,
     documentId: string,
     tx?: Prisma.TransactionClient,
+    documentLineId: string | null = null,
   ): Promise<void> {
     if (!tx) {
       await this.prisma.$transaction(
-        innerTx => this.returnToBatch(orgId, batchId, qty, documentType, documentId, innerTx),
+        innerTx =>
+          this.returnToBatch(
+            orgId,
+            batchId,
+            qty,
+            documentType,
+            documentId,
+            innerTx,
+            documentLineId,
+          ),
         { timeout: TRANSACTION_TIMEOUT_MS },
       );
       return;
@@ -445,10 +455,11 @@ export class BatchService {
     if (!batch)
       throw new BadRequestException(translateError('err.inventory.batchNotFound', getLocale()));
 
-    // Ідемпотентність: повторний виклик на той самий (батч, документ) не подвоює повернення
-    // (BullMQ retry / double-click). Return-consumption має quantity > 0 (споживання — < 0).
+    // Ідемпотентність: повторний виклик на той самий (батч, документ, рядок) не подвоює повернення
+    // (BullMQ retry / double-click). Рядок у ключі — два рядки документа зі спільної партії повертають
+    // кожен своє. Return-consumption має quantity > 0 (споживання — < 0).
     const existing = await db.batchConsumption.findFirst({
-      where: { orgId, batchId, documentType, documentId, quantity: { gt: 0 } },
+      where: { orgId, batchId, documentType, documentId, documentLineId, quantity: { gt: 0 } },
       select: { id: true },
     });
     if (existing) return;
@@ -463,7 +474,15 @@ export class BatchService {
         data: { remainingQty: { increment: qty }, isActive: true },
       }),
       db.batchConsumption.create({
-        data: { orgId, batchId, goodId: batch.goodId, quantity: qty, documentType, documentId },
+        data: {
+          orgId,
+          batchId,
+          goodId: batch.goodId,
+          quantity: qty,
+          documentType,
+          documentId,
+          documentLineId,
+        },
       }),
     ]);
     if (updated.count === 0) {
