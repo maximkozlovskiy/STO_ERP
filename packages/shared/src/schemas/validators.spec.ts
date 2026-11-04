@@ -1,10 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { z } from 'zod';
 import {
-  clearableDateString,
+  clearableCalendarDate,
   clearableString,
+  isCalendarYmd,
   moneyString,
   normalizeDecimalInput,
+  optionalCalendarDate,
   optionalMoneyNumber,
   patchBodyWithClears,
 } from './validators';
@@ -54,9 +56,9 @@ describe('clearableString — PATCH-поле, яке можна очистити
 
 // Review 2026-11-04: дати працівника стали clearableString — 'not-a-date' проходив схему, сервіс
 // робив `new Date('not-a-date')`, і Prisma давала 500 замість 400. Мутація: прибрати refine у
-// clearableDateString → кейс «не дата» червоніє.
-describe('clearableDateString — дата, яку PATCH може очистити', () => {
-  const schema = z.object({ d: clearableDateString() }).partial();
+// clearableCalendarDate → кейс «не дата» червоніє.
+describe('clearableCalendarDate — дата, яку PATCH може очистити', () => {
+  const schema = z.object({ d: clearableCalendarDate() }).partial();
 
   it.each([
     ['порожній рядок', { d: '' }, { d: null }],
@@ -69,6 +71,40 @@ describe('clearableDateString — дата, яку PATCH може очистит
 
   it('не дата → помилка валідації (400), а не 500 у Prisma', () => {
     expect(schema.safeParse({ d: 'not-a-date' }).success).toBe(false);
+  });
+});
+
+// Bug #1039: перевірка через `Date.parse` пропускала все, що V8 вміє прочитати: 31.02 → 03.03,
+// 'hello 5' → 2001, а рік 0000 / п'ять цифр доходив до Postgres → 500. Мутація: повернути
+// `!Number.isNaN(Date.parse(v))` у calendarDate → кожен рядок нижче червоніє.
+describe('календарна дата працівника — лише YYYY-MM-DD, що існує (Bug #1039)', () => {
+  const bad = [
+    '2026-02-31',
+    'hello 5',
+    '1',
+    '0000-01-01',
+    '99999-01-01',
+    '+275760-09-13',
+    '-000001-01-01',
+    '2026-11-04T10:00:00.000Z',
+  ];
+
+  it.each(bad.map(v => [v]))('clearableCalendarDate: %s → помилка валідації', v => {
+    expect(z.object({ d: clearableCalendarDate() }).safeParse({ d: v }).success).toBe(false);
+  });
+
+  it.each(bad.map(v => [v]))('optionalCalendarDate: %s → помилка валідації', v => {
+    expect(z.object({ d: optionalCalendarDate() }).safeParse({ d: v }).success).toBe(false);
+  });
+
+  it.each([['2024-02-29'], ['0001-01-01'], ['9999-12-31']])('%s — справжня дата, проходить', v => {
+    expect(isCalendarYmd(v)).toBe(true);
+    expect(z.object({ d: optionalCalendarDate() }).parse({ d: v })).toEqual({ d: v });
+  });
+
+  it("optionalCalendarDate: '' і null → undefined (створення без дати)", () => {
+    expect(z.object({ d: optionalCalendarDate() }).parse({ d: '' })).toEqual({ d: undefined });
+    expect(z.object({ d: optionalCalendarDate() }).parse({ d: null })).toEqual({ d: undefined });
   });
 });
 

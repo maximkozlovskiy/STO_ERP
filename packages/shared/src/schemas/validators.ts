@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { CALENDAR_DATE_RE } from '../constants';
 
 export const PHONE_UA_REGEX = /^\+380\d{9}$/;
 export const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -36,19 +37,28 @@ export const emptyToNull = (v: unknown): unknown => (v === '' ? null : v);
 export const clearableString = () => z.preprocess(emptyToNull, z.string().nullable().optional());
 
 /**
- * Дата-рядок, яку PATCH може очистити: '' / null → null, ключа немає → не чіпати, інакше рядок
- * мусить парситись як дата (як `optionalDateString`). `clearableString` для дат пропускав
- * 'not-a-date' → сервіс робив `new Date('not-a-date')` → Prisma 500 замість 400.
+ * `YYYY-MM-DD`, що існує в календарі: рік не 0000 (`CALENDAR_DATE_RE`), 31.02 → false. Дзеркало api
+ * `isCalendarDate`. `Date.parse` тут не годиться: V8 бере '2026-02-31' (→ 03.03), 'hello 5' (→ 2001),
+ * а '0000-01-01' / '99999-01-01' пропускає до Postgres → 500 (Bug #1039).
  */
-export const clearableDateString = () =>
-  z.preprocess(
-    emptyToNull,
-    z
-      .string()
-      .refine(v => !Number.isNaN(Date.parse(v)), { message: 'v.dateFormat' })
-      .nullable()
-      .optional(),
-  );
+export function isCalendarYmd(value: string): boolean {
+  if (!CALENDAR_DATE_RE.test(value)) return false;
+  const d = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === value;
+}
+
+const calendarDate = () => z.string().refine(isCalendarYmd, { message: 'v.dateFormat' });
+
+/** Опційна календарна дата `YYYY-MM-DD` (створення): '' / null → undefined, інакше `isCalendarYmd`. */
+export const optionalCalendarDate = () => z.preprocess(emptyToUndefined, calendarDate().optional());
+
+/**
+ * Календарна дата, яку PATCH може очистити: '' / null → null, ключа немає → не чіпати, інакше
+ * `YYYY-MM-DD`, що існує. `clearableString` для дат пропускав 'not-a-date' → Prisma 500; перевірка
+ * через `Date.parse` — 31.02 і рік 0000 (Bug #1039).
+ */
+export const clearableCalendarDate = () =>
+  z.preprocess(emptyToNull, calendarDate().nullable().optional());
 
 /**
  * Тіло PATCH з форми, що парситься create-схемою ('' → undefined, і JSON.stringify такий ключ викидає):

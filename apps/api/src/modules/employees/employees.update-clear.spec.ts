@@ -81,6 +81,20 @@ describe('EmployeesService.update — очищення полів', () => {
     },
   );
 
+  // guards: BR-EMP-004
+  // Bug #1039: `Date.parse` пропускав 31.02 (у БД — 03.03), 'hello 5' (2001 рік), а рік 0000 і
+  // п'ятизначний доходили до Postgres → 500. Мутація: повернути `Date.parse` у calendarDate
+  // (`@sto/shared` validators) → ці кейси червоніють.
+  it.each([
+    ['dateOfHire', '2026-02-31'],
+    ['dateOfHire', 'hello 5'],
+    ['dateOfFire', '0000-01-01'],
+    ['dateOfFire', '99999-01-01'],
+  ])('%s = %s → 400 від pipe, у базу нічого не йде', (field, value) => {
+    expect(() => pipe({ [field]: value })).toThrow(BadRequestException);
+    expect(txUpdate).not.toHaveBeenCalled();
+  });
+
   it('телефон очищено (null) — e-mail і дати, яких не чіпали, не потрапляють у data', async () => {
     await service.update(ORG, EMP_ID, pipe({ phone: null }));
     const data = writtenData();

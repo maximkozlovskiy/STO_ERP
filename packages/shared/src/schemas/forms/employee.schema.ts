@@ -1,8 +1,8 @@
 import { z } from 'zod';
 import {
-  clearableDateString,
+  clearableCalendarDate,
   clearableString,
-  optionalDateString,
+  optionalCalendarDate,
   optionalString,
   emptyToUndefined,
 } from '../validators';
@@ -200,9 +200,10 @@ const employeeBaseFields = {
   phone: optionalString(),
   email: optionalString(),
   status: z.preprocess(emptyToUndefined, z.enum(EMPLOYEE_STATUS_VALUES).optional()),
-  // Дата, а не будь-який рядок: сервіс робить `new Date(...)`, і 'not-a-date' давав Prisma 500.
-  dateOfHire: optionalDateString(),
-  dateOfFire: optionalDateString(),
+  // Календарна дата YYYY-MM-DD, а не будь-який рядок: сервіс робить `new Date(...)` — 'not-a-date' і рік 0000
+  // давали Prisma 500, а 31.02 тихо ставав 03.03 (Bug #1039).
+  dateOfHire: optionalCalendarDate(),
+  dateOfFire: optionalCalendarDate(),
   rateScheme: rateSchemeSchema,
 };
 
@@ -228,8 +229,8 @@ export const employeeUpdateSchema = z
     ...employeeBaseFields,
     phone: clearableString(),
     email: clearableString(),
-    dateOfHire: clearableDateString(),
-    dateOfFire: clearableDateString(),
+    dateOfHire: clearableCalendarDate(),
+    dateOfFire: clearableCalendarDate(),
   })
   .partial();
 export type EmployeeUpdateValues = z.infer<typeof employeeUpdateSchema>;
