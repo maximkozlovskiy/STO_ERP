@@ -27,6 +27,35 @@ export const emptyToUndefined = (v: unknown): unknown => (v === '' || v === null
 /** Опційний рядок: '' → undefined, trim не робимо (робить бек/схема за потреби). */
 export const optionalString = () => z.preprocess(emptyToUndefined, z.string().optional());
 
+/**
+ * PATCH-поле, яке користувач може очистити: '' / null → null («очистити»), ключа немає → не чіпати.
+ * `optionalString` тут не годиться — він робить `undefined` і з '', і з null, тож очищене у формі поле
+ * лишалося в БД (PATCH 200, старе значення; TECH-DEBT (а) 2026-11-01). Лише для nullable-колонок.
+ */
+export const emptyToNull = (v: unknown): unknown => (v === '' ? null : v);
+export const clearableString = () => z.preprocess(emptyToNull, z.string().nullable().optional());
+
+/**
+ * Тіло PATCH з форми, що парситься create-схемою ('' → undefined, і JSON.stringify такий ключ викидає):
+ * поле з `fields`, яке МАЛО значення в `original` (документ, з якого заповнили форму) і стало порожнім,
+ * іде як `null`. Поле, якого в `original` немає, лишається відсутнім — модалку відкривають і з рядка
+ * списку, де частини полів немає, і `null` для них стер би збережене.
+ */
+export function patchBodyWithClears<T extends object, K extends string>(
+  values: T,
+  original: Partial<Record<K, unknown>> | null | undefined,
+  fields: readonly K[],
+): T & Partial<Record<K, null>> {
+  const body = { ...values } as Record<string, unknown>;
+  for (const key of fields) {
+    const had = original?.[key];
+    const now = body[key];
+    if ((now === undefined || now === '') && had !== undefined && had !== null && had !== '')
+      body[key] = null;
+  }
+  return body as T & Partial<Record<K, null>>;
+}
+
 /** Опційний UUID: '' → undefined, інакше валідний UUID. */
 export const optionalUuid = () => z.preprocess(emptyToUndefined, uuidFieldSchema.optional());
 

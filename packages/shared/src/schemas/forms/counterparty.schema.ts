@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { AUTOMATION_CHANNELS } from '../../constants/automation-rules';
-import { optionalString } from '../validators';
+import { clearableString, emptyToNull, optionalString, patchBodyWithClears } from '../validators';
 
 /**
  * Спільна zod-схема контрагента (Counterparty) — ЄДИНЕ джерело правди web ↔ api.
@@ -108,10 +108,6 @@ export const COUNTERPARTY_CLEARABLE_FIELDS = [
 ] as const;
 export type CounterpartyClearableField = (typeof COUNTERPARTY_CLEARABLE_FIELDS)[number];
 
-/** PATCH: '' / null → null (очистити поле); відсутній ключ → поле не чіпається. */
-const emptyToNull = (v: unknown): unknown => (v === '' ? null : v);
-const clearableString = () => z.preprocess(emptyToNull, z.string().nullable().optional());
-
 export const counterpartyUpdateSchema = z
   .object({
     ...counterpartyBaseShape,
@@ -151,11 +147,5 @@ export function counterpartyPatchBody<T extends object>(
   values: T,
   original: Partial<Record<CounterpartyClearableField, unknown>>,
 ): T & Partial<Record<CounterpartyClearableField, null>> {
-  const body = { ...values } as Record<string, unknown>;
-  for (const key of COUNTERPARTY_CLEARABLE_FIELDS) {
-    const had = original[key];
-    if (body[key] === undefined && had !== undefined && had !== null && had !== '')
-      body[key] = null;
-  }
-  return body as T & Partial<Record<CounterpartyClearableField, null>>;
+  return patchBodyWithClears(values, original, COUNTERPARTY_CLEARABLE_FIELDS);
 }
