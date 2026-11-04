@@ -37,10 +37,17 @@ const CASES: ReadonlyArray<[string, z.ZodType, readonly string[]]> = [
   ['supplierReturnUpdateSchema', supplierReturnUpdateSchema, SUPPLIER_RETURN_CLEARABLE_FIELDS],
 ];
 
+/** Значення числових полів: рядок з форми → число. Решта полів бере '2026-11-04' (текст і дати). */
+const SAMPLE: Record<string, [string, unknown]> = {
+  year: ['2015', 2015],
+  engineVolume: ['1.6', 1.6],
+  currentMileage: ['120000', 120000],
+};
+
 const parse = (schema: z.ZodType, body: object): Record<string, unknown> =>
   schema.parse(body) as Record<string, unknown>;
 
-describe.each(CASES)('%s — очищення текстових полів', (_name, schema, fields) => {
+describe.each(CASES)('%s — очищення полів', (_name, schema, fields) => {
   it.each(fields.map(f => [f]))("%s: '' → null (очистити)", field => {
     expect(parse(schema, { [field]: '' })[field]).toBeNull();
   });
@@ -50,8 +57,9 @@ describe.each(CASES)('%s — очищення текстових полів', (_
   });
 
   it.each(fields.map(f => [f]))('%s: значення → як є', field => {
-    // Дати співробітника — теж рядки (YYYY-MM-DD); сервіс сам перетворює їх на Date.
-    expect(parse(schema, { [field]: '2026-11-04' })[field]).toBe('2026-11-04');
+    // Дати (працівника, авто, термін рахунку) — рядки YYYY-MM-DD; сервіс сам перетворює їх на Date.
+    const [input, expected] = SAMPLE[field] ?? ['2026-11-04', '2026-11-04'];
+    expect(parse(schema, { [field]: input })[field]).toBe(expected);
   });
 
   it('ключа немає → ключа немає (поле не чіпається)', () => {
@@ -71,5 +79,46 @@ describe('goodUpdateSchema — unit і barcode НЕ очищаються', () =>
   it('переліки GOOD_CLEARABLE_FIELDS не містять unit і barcode', () => {
     expect(GOOD_CLEARABLE_FIELDS).not.toContain('unit');
     expect(GOOD_CLEARABLE_FIELDS).not.toContain('barcode');
+  });
+});
+
+// TECH-DEBT (а) 2026-11-04: нетекстові поля. Очищення не знімає меж — число й дата валідуються так
+// само, як при створенні. Мутація: `clearableNumber(z.coerce.number())` без меж → кейси червоніють.
+describe('vehicleUpdateSchema — числа й дати очищаються, але межі лишаються', () => {
+  it.each([
+    ['year', '1899'],
+    ['year', '2015.5'],
+    ['engineVolume', '-0.1'],
+    ['currentMileage', '-1'],
+    ['currentMileage', '10.5'],
+    ['insuranceExpiry', 'not-a-date'],
+    ['inspectionExpiry', '2026-02-31'],
+  ])('%s = %s → помилка валідації', (field, value) => {
+    expect(vehicleUpdateSchema.safeParse({ [field]: value }).success).toBe(false);
+  });
+
+  it('пробіг 0 — значення, не очищення', () => {
+    expect(parse(vehicleUpdateSchema, { currentMileage: '0' }).currentMileage).toBe(0);
+  });
+});
+
+describe('documentDate — NOT NULL, не очищається', () => {
+  // Колонка `@default(now()) @db.Date`: null у PATCH дав би помилку Prisma. '' / null → undefined.
+  it.each([
+    ['invoiceUpdateSchema', invoiceUpdateSchema],
+    ['stockDocumentUpdateSchema', stockDocumentUpdateSchema],
+    ['supplierReturnUpdateSchema', supplierReturnUpdateSchema],
+  ] as const)("%s: '' і null → undefined", (_name, schema) => {
+    expect(parse(schema, { documentDate: '' }).documentDate).toBeUndefined();
+    expect(parse(schema, { documentDate: null }).documentDate).toBeUndefined();
+  });
+
+  it('переліки *_CLEARABLE_FIELDS не містять documentDate', () => {
+    for (const fields of [
+      INVOICE_CLEARABLE_FIELDS,
+      STOCK_DOCUMENT_CLEARABLE_FIELDS,
+      SUPPLIER_RETURN_CLEARABLE_FIELDS,
+    ] as ReadonlyArray<readonly string[]>)
+      expect(fields).not.toContain('documentDate');
   });
 });

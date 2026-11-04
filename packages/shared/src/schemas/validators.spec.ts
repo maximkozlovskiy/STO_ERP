@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { z } from 'zod';
 import {
   clearableCalendarDate,
+  clearableDateString,
+  clearableNumber,
   clearableString,
   isCalendarYmd,
   isIsoDateOrDateTime,
@@ -10,6 +12,7 @@ import {
   optionalCalendarDate,
   optionalDateString,
   optionalMoneyNumber,
+  optionalNumber,
   patchBodyWithClears,
 } from './validators';
 
@@ -143,6 +146,62 @@ describe('optionalDateString — дата або мітка часу, чий д�
   it("'' і null → undefined", () => {
     expect(schema.parse({ d: '' })).toEqual({ d: undefined });
     expect(schema.parse({ d: null })).toEqual({ d: undefined });
+  });
+});
+
+// TECH-DEBT (а) 2026-11-04: рік, обʼєм, пробіг авто йшли через emptyToUndefined — очищене у картці
+// число зникало з PATCH, і в БД лишалось старе. Мутації: `num.nullable()` без preprocess
+// (z.coerce робить з '' і null 0) → кейси '' / null червоніють; preprocess через emptyToUndefined →
+// ті самі кейси дають undefined.
+describe('clearableNumber — число, яке PATCH може очистити', () => {
+  const schema = z
+    .object({ n: clearableNumber(z.coerce.number().int().min(0, 'v.nonNeg')) })
+    .partial();
+
+  it.each([
+    ['порожній рядок', { n: '' }, { n: null }],
+    ['null', { n: null }, { n: null }],
+    ['рядок числа', { n: '120000' }, { n: 120000 }],
+    ['число', { n: 7 }, { n: 7 }],
+    ['нуль — значення, не очищення', { n: '0' }, { n: 0 }],
+    ['ключа немає — не чіпати', {}, {}],
+  ] as const)('%s', (_label, input, expected) => {
+    expect(schema.parse(input)).toEqual(expected);
+  });
+
+  it.each([['-1'], ['1.5'], ['abc']])('%s → помилка валідації (межі num лишаються)', v => {
+    expect(schema.safeParse({ n: v }).success).toBe(false);
+  });
+});
+
+describe('optionalNumber — число при створенні', () => {
+  const schema = z.object({ n: optionalNumber(z.coerce.number().min(0, 'v.nonNeg')) });
+
+  it("'' і null → undefined (не задано), '1.6' → 1.6, '-1' → помилка", () => {
+    expect(schema.parse({ n: '' })).toEqual({ n: undefined });
+    expect(schema.parse({ n: null })).toEqual({ n: undefined });
+    expect(schema.parse({ n: '1.6' })).toEqual({ n: 1.6 });
+    expect(schema.safeParse({ n: '-1' }).success).toBe(false);
+  });
+});
+
+// Дати страховки й техогляду авто, термін оплати рахунку — колонки-мітки часу (`DateTime?`).
+// Мутація: прибрати refine → кейси «не дата» червоніють.
+describe('clearableDateString — дата чи мітка часу, яку PATCH може очистити', () => {
+  const schema = z.object({ d: clearableDateString() }).partial();
+
+  it.each([
+    ['порожній рядок', { d: '' }, { d: null }],
+    ['null', { d: null }, { d: null }],
+    ['дата', { d: '2026-11-04' }, { d: '2026-11-04' }],
+    ['мітка часу', { d: '2026-11-04T08:30:00.000Z' }, { d: '2026-11-04T08:30:00.000Z' }],
+    ['ключа немає — не чіпати', {}, {}],
+  ] as const)('%s', (_label, input, expected) => {
+    expect(schema.parse(input)).toEqual(expected);
+  });
+
+  it.each([['not-a-date'], ['2026-02-31'], ['0000-01-01']])('%s → помилка валідації', v => {
+    expect(schema.safeParse({ d: v }).success).toBe(false);
   });
 });
 

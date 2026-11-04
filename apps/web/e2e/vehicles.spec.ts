@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Locator, type Page } from '@playwright/test';
 import { API } from './api-url';
 import { apiCall, getToken } from './api-helpers';
 import {
@@ -288,6 +288,78 @@ test.describe('Автомобілі', () => {
       const saved = await call('GET', `/vehicles/${createdId}`);
       expect(saved.status).toBe(200);
       expect(saved.body).toMatchObject({ color: null, notes: null });
+    } finally {
+      if (createdId) {
+        const del = await call('DELETE', `/vehicles/${createdId}`);
+        expect.soft(del.status, 'видалення авто').toBe(204);
+      }
+      const delModel = await call('DELETE', `/vehicle-models/${modelId}`);
+      expect.soft(delModel.status, 'видалення моделі').toBe(204);
+    }
+  });
+
+  // TECH-DEBT (а) 2026-11-04: рік, пробіг і дата страховки, очищені у картці, лишались у БД (схема
+  // PATCH робила з '' і null `undefined`). А дата страховки чи техогляду не зберігалась узагалі:
+  // форма шле `YYYY-MM-DD`, Prisma такий рядок відкидала (400). Авто — через UI.
+  test('картка авто — рік, пробіг і дата страховки зберігаються й очищаються (null у БД)', async ({
+    page,
+  }) => {
+    expect(garageId).toBeTruthy();
+    await page.goto(`/vehicles/new?garageId=${garageId}`);
+    await expect(page.locator('h1:has-text("Новий автомобіль")')).toBeVisible({ timeout: 20_000 });
+    const token = await getToken(page);
+    const call: ApiCaller = (method, url, data) => apiCall(page, token, method, url, data);
+    const modelName = `000 E2E num ${Date.now().toString().slice(-6)}`;
+    const { modelId } = await ensureVehicleModel(call, 'Toyota', modelName);
+    // Підпис дати не прив'язаний до поля (label без htmlFor) — поле шукаємо поруч із підписом.
+    const insurance = (scope: Page | Locator) =>
+      scope.locator('label:text-is("Страховка до") + div input[type="text"]');
+    let createdId = '';
+
+    try {
+      await searchVehicleDirectory(page, 'make', 'toyo', 'Toyota');
+      await pickVehicleDirectory(page, page, 'model', modelName);
+      await page.getByLabel('Рік', { exact: true }).fill('2015');
+      await page.getByLabel('Пробіг, км').fill('154321');
+      await insurance(page).fill('15.03.2027');
+      await insurance(page).press('Enter');
+      const create = page.waitForResponse(
+        r => /\/vehicles\/?$/.test(r.url()) && r.request().method() === 'POST',
+      );
+      await page
+        .locator('button:has-text("Створити"), button:has-text("Зберегти"), button[type="submit"]')
+        .first()
+        .click();
+      expect((await create).status()).toBe(201);
+      await page.waitForURL(/\/vehicles\/[0-9a-f-]{36}\/?$/, { timeout: 15_000 });
+      createdId = /\/vehicles\/([0-9a-f-]{36})/.exec(page.url())?.[1] ?? '';
+      await expect(page.getByText('15.03.2027')).toBeVisible({ timeout: 20_000 });
+
+      await page.getByRole('button', { name: 'Редагувати' }).click();
+      const dialog = page.getByRole('dialog');
+      await expect(dialog.getByLabel('Пробіг, км')).toHaveValue('154321');
+      await expect(insurance(dialog)).toHaveValue('15.03.2027');
+      await dialog.getByLabel('Рік', { exact: true }).fill('');
+      await dialog.getByLabel('Пробіг, км').fill('');
+      await insurance(dialog).fill('');
+      await insurance(dialog).press('Enter');
+      const patch = page.waitForResponse(
+        r => r.url().endsWith(`/vehicles/${createdId}`) && r.request().method() === 'PATCH',
+      );
+      await dialog.getByRole('button', { name: 'Зберегти' }).click();
+      const response = await patch;
+      expect(response.status()).toBe(200);
+      expect(response.request().postDataJSON()).toMatchObject({
+        year: null,
+        currentMileage: null,
+        insuranceExpiry: null,
+      });
+      await expect(dialog).toBeHidden();
+      await expect(page.getByText('15.03.2027')).toHaveCount(0);
+
+      const saved = await call('GET', `/vehicles/${createdId}`);
+      expect(saved.status).toBe(200);
+      expect(saved.body).toMatchObject({ year: null, currentMileage: null, insuranceExpiry: null });
     } finally {
       if (createdId) {
         const del = await call('DELETE', `/vehicles/${createdId}`);

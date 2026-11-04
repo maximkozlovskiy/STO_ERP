@@ -171,19 +171,19 @@ cd apps/api && npx vitest run src/modules/vehicles/<файл>.spec.ts
 
 **Маршрути UI:** `/vehicles`, `/counterparties`
 
-| Аспект                                                                                                                                                     | Тест                                 | Кейсів |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ | ------ |
-| сервіс: список, VIN, soft delete, відновлення, блокування гаража при створенні й відновленні (BR-CP-015), живі марка й модель при відновленні (BR-VEH-014) | `vehicles.service.spec.ts`           | 24     |
-| історія пробігу (BR-VEH-001…005)                                                                                                                           | `vehicles.mileage-history.spec.ts`   | 25     |
-| HTTP-контракт `GET /:id/mileage`: ролі, UUID                                                                                                               | `vehicles.contract.spec.ts`          | 15     |
-| марка й модель авто з довідника (BR-VEH-008)                                                                                                               | `vehicles.make-model.spec.ts`        | 10     |
-| довідник: ключ назви, перейменування й знімок назви в авто (BR-VEH-006, 007, 011)                                                                          | `vehicle-makes.names.spec.ts`        | 15     |
-| довідник: видалення, відновлення, злиття (BR-VEH-009…011)                                                                                                  | `vehicle-makes.delete-merge.spec.ts` | 11     |
-| HTTP-контракт довідника: ролі всіх маршрутів, UUID, zod (BR-VEH-013)                                                                                       | `vehicle-makes.contract.spec.ts`     | 88     |
-| стартовий список марок: код ↔ SQL міграції ↔ dev/CI seed (BR-VEH-012)                                                                                      | `vehicle-make-defaults.spec.ts`      | 4      |
-| PATCH: очищене текстове поле (VIN, номер, колір, нотатки…) — '' / null → `null` у записі, нечіпане не пишеться (TECH-DEBT (а))                             | `vehicles.update-clear.spec.ts`      | 10     |
+| Аспект                                                                                                                                                                     | Тест                                 | Кейсів |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ | ------ |
+| сервіс: список, VIN, soft delete, відновлення, блокування гаража при створенні й відновленні (BR-CP-015), живі марка й модель при відновленні (BR-VEH-014)                 | `vehicles.service.spec.ts`           | 24     |
+| історія пробігу (BR-VEH-001…005)                                                                                                                                           | `vehicles.mileage-history.spec.ts`   | 25     |
+| HTTP-контракт `GET /:id/mileage`: ролі, UUID                                                                                                                               | `vehicles.contract.spec.ts`          | 15     |
+| марка й модель авто з довідника (BR-VEH-008)                                                                                                                               | `vehicles.make-model.spec.ts`        | 10     |
+| довідник: ключ назви, перейменування й знімок назви в авто (BR-VEH-006, 007, 011)                                                                                          | `vehicle-makes.names.spec.ts`        | 15     |
+| довідник: видалення, відновлення, злиття (BR-VEH-009…011)                                                                                                                  | `vehicle-makes.delete-merge.spec.ts` | 11     |
+| HTTP-контракт довідника: ролі всіх маршрутів, UUID, zod (BR-VEH-013)                                                                                                       | `vehicle-makes.contract.spec.ts`     | 88     |
+| стартовий список марок: код ↔ SQL міграції ↔ dev/CI seed (BR-VEH-012)                                                                                                      | `vehicle-make-defaults.spec.ts`      | 4      |
+| PATCH: очищене поле (VIN, номер, колір, нотатки, рік, обʼєм, пробіг, дати) — '' / null → `null` у записі, нечіпане не пишеться; дата `YYYY-MM-DD` → `Date` (TECH-DEBT (а)) | `vehicles.update-clear.spec.ts`      | 20     |
 
-Разом: **202** кейси (цифри з `vitest --reporter=json`, не з grep).
+Разом: **212** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
 Поза модулями правила довідника стережуть ще:
 

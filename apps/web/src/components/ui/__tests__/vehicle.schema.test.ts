@@ -31,13 +31,15 @@ describe('vehicleFormSchema / vehicleCreate / vehicleUpdate', () => {
     });
     expect(r.success).toBe(false);
   });
-  it('валідна YYYY-MM-DD та повний ISO проходять; порожня → undefined', () => {
+  // TECH-DEBT (а) 2026-11-04: порожня дата у PATCH — «очистити» (null), у формі — «не задано».
+  it('валідна YYYY-MM-DD та повний ISO проходять; порожня: PATCH → null, форма → undefined', () => {
     expect(vehicleUpdateSchema.safeParse({ insuranceExpiry: '2025-01-01' }).success).toBe(true);
     expect(
       vehicleUpdateSchema.safeParse({ insuranceExpiry: '2025-01-01T00:00:00.000Z' }).success,
     ).toBe(true);
-    const empty = vehicleUpdateSchema.parse({ insuranceExpiry: '' });
-    expect(empty.insuranceExpiry).toBeUndefined();
+    expect(vehicleUpdateSchema.parse({ insuranceExpiry: '' }).insuranceExpiry).toBeNull();
+    const form = vehicleFormSchema.parse({ makeId: MAKE, modelId: MODEL, insuranceExpiry: '' });
+    expect(form.insuranceExpiry).toBeUndefined();
   });
 
   // Bug #754 — рік у розумному діапазоні (регресія прибраного HTML min=1900 max=2100).
@@ -46,9 +48,12 @@ describe('vehicleFormSchema / vehicleCreate / vehicleUpdate', () => {
     expect(vehicleUpdateSchema.safeParse({ year: '-100' }).success).toBe(false);
     expect(vehicleUpdateSchema.safeParse({ year: '999999' }).success).toBe(false);
   });
-  it('рік у діапазоні → коерсія у number; порожній → undefined', () => {
+  it('рік у діапазоні → коерсія у number; порожній: PATCH → null, форма → undefined', () => {
     expect(vehicleUpdateSchema.parse({ year: '2015' }).year).toBe(2015);
-    expect(vehicleUpdateSchema.parse({ year: '' }).year).toBeUndefined();
+    expect(vehicleUpdateSchema.parse({ year: '' }).year).toBeNull();
+    expect(
+      vehicleFormSchema.parse({ makeId: MAKE, modelId: MODEL, year: '' }).year,
+    ).toBeUndefined();
   });
 
   // Гараж: форма опційна (резолвиться батьком), create — обовʼязковий UUID.

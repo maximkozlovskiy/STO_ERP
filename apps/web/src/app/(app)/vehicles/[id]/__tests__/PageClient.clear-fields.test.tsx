@@ -43,14 +43,14 @@ const VEHICLE = {
   year: 2015,
   engineVolume: null,
   fuelType: null,
-  currentMileage: null,
+  currentMileage: 154321,
   color: 'Синій',
   notes: 'Старі нотатки',
   transmissionType: null,
   driveType: null,
   bodyType: null,
   engineCode: null,
-  insuranceExpiry: null,
+  insuranceExpiry: '2027-03-15T00:00:00.000Z',
   inspectionExpiry: null,
 };
 
@@ -114,5 +114,33 @@ describe('Картка авто — очищення полів у PATCH', () =>
     const body = patchBody();
     expect(body).toMatchObject({ color: 'Синій', notes: 'Старі нотатки' });
     expect(Object.values(body)).not.toContain(null);
+  });
+
+  // TECH-DEBT (а) 2026-11-04: рік, пробіг, дата страховки — у тому ж переліку. Мутація: прибрати
+  // 'currentMileage' з VEHICLE_CLEARABLE_FIELDS → ключа немає, кейс червоніє.
+  it('очищені рік, пробіг, дата страховки → null; техогляд, якого не було, відсутній', async () => {
+    await openEdit();
+    fireEvent.change(screen.getByDisplayValue('2015'), { target: { value: '' } });
+    fireEvent.change(screen.getByDisplayValue('154321'), { target: { value: '' } });
+    fireEvent.change(screen.getByDisplayValue('15.03.2027'), { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Зберегти' }));
+
+    await waitFor(() => expect(hasPatch()).toBe(true));
+    const body = patchBody();
+    expect(body).toMatchObject({ year: null, currentMileage: null, insuranceExpiry: null });
+    expect('inspectionExpiry' in body).toBe(false);
+    expect('engineVolume' in body).toBe(false);
+  });
+
+  it('рік, пробіг, дата не чіпали → числами й датою', async () => {
+    await openEdit();
+    fireEvent.click(screen.getByRole('button', { name: 'Зберегти' }));
+
+    await waitFor(() => expect(hasPatch()).toBe(true));
+    expect(patchBody()).toMatchObject({
+      year: 2015,
+      currentMileage: 154321,
+      insuranceExpiry: '2027-03-15',
+    });
   });
 });

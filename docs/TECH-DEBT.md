@@ -95,9 +95,13 @@
   `optionalString()` у PATCH-схемах `packages/shared/src/schemas/forms/*` перетворює `''` і `null` на «не змінювати».
   Для контрагента виправлено (`counterpartyUpdateSchema` + `counterpartyPatchBody`, 9afce727b) — той самий підхід на решту.~~ ✅ ЗАКРИТО 2026-11-04: `clearableString` / `patchBodyWithClears` (`packages/shared/src/schemas/validators.ts`)
   у 8 картках (fcc63f9c8 … 78cc0cc1c); дати працівника — `clearableCalendarDate` (Bug #1039), `optionalDateString` — справжня календарна дата (Bug #1040).
-- (2026-11-04) Нетекстові поля з тією ж вадою «очищене не очищається» (`emptyToUndefined`): авто — рік, об'єм двигуна,
+- ~~(2026-11-04) Нетекстові поля з тією ж вадою «очищене не очищається» (`emptyToUndefined`): авто — рік, об'єм двигуна,
   пробіг, дати страховки й техогляду; рахунок — `documentDate`, `dueDate`; складський документ і повернення
-  постачальнику — `documentDate`. Рядок наряду: `notes` у схемі clearable, UI для нього немає.
+  постачальнику — `documentDate`. Рядок наряду: `notes` у схемі clearable, UI для нього немає.~~ ✅ ЗАКРИТО 2026-11-05:
+  9fc04874b — `clearableNumber` / `clearableDateString` (`validators.ts`); авто (рік, обʼєм, пробіг, обидві дати) і
+  `dueDate` рахунку очищаються; дати авто сервіс пише `Date` (рядок `YYYY-MM-DD` Prisma відкидала — 400, дату картка не
+  зберігала взагалі). `documentDate` рахунку, складського документа й повернення — NOT NULL, не очищається свідомо.
+  Рядок наряду (`notes` без UI) — лишається як було.
 - ~~(2026-11-04, tester) Список працівників: бічна панель і колонка «Ставка» показують «Схема нарахування: —» —
   `GET /employees` свідомо не віддає `rateScheme` (приховано від приймальні, `employees.controller.ts:58`), а панель
   (`employees/page.tsx:426-430`, `:641`) читає його з рядка списку. Картка (`GET /employees/:id`) — правильна.~~ ✅ ЗАКРИТО 2026-11-04: список віддає `rateScheme` OWNER/ADMIN, іншим ролям колонки й поля
