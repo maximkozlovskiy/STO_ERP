@@ -84,19 +84,30 @@ export function patchBodyWithClears<T extends object, K extends string>(
 /** Опційний UUID: '' → undefined, інакше валідний UUID. */
 export const optionalUuid = () => z.preprocess(emptyToUndefined, uuidFieldSchema.optional());
 
+/** `YYYY-MM-DD` або ISO-мітка часу `YYYY-MM-DDTHH:mm[:ss[.sss]][Z|±HH:MM]`. */
+const ISO_DATE_OR_DATETIME_RE =
+  /^(\d{4}-\d{2}-\d{2})(T\d{2}:\d{2}(:\d{2}(\.\d{1,9})?)?(Z|[+-]\d{2}:?\d{2})?)?$/;
+
+/**
+ * Дата `YYYY-MM-DD` або ISO-мітка часу, чий календарний день існує (рік не 0000, 31.02 → false) і час
+ * читається. Bug #1040: голий `Date.parse` брав '2026-02-31' (рахунок датою 03.03), 'hello 5' (2001),
+ * а '0000-01-01' / '99999-01-01' доходили до Postgres → 500.
+ */
+export function isIsoDateOrDateTime(value: string): boolean {
+  const m = ISO_DATE_OR_DATETIME_RE.exec(value);
+  return !!m && isCalendarYmd(m[1]!) && !Number.isNaN(Date.parse(value));
+}
+
 /**
  * Опційна дата-рядок (ISO/`YYYY-MM-DD`): '' → undefined, інакше валідована.
  * Дзеркалить беківський `@IsDateString()` — без цього довільний рядок (напр. 'not-a-date')
  * проходить схему і летить у Prisma `DateTime?` → PrismaClientValidationError (500 замість
- * локалізованого 400). `z.coerce.date()` парсить і `2025-01-01`, і повний ISO; невалідне → issue.
+ * локалізованого 400). День мусить існувати в календарі (`isIsoDateOrDateTime`, Bug #1040).
  */
 export const optionalDateString = () =>
   z.preprocess(
     emptyToUndefined,
-    z
-      .string()
-      .refine(v => !Number.isNaN(Date.parse(v)), { message: 'v.dateFormat' })
-      .optional(),
+    z.string().refine(isIsoDateOrDateTime, { message: 'v.dateFormat' }).optional(),
   );
 
 /**

@@ -5952,3 +5952,25 @@ RECEPTIONIST; коментар у `employees.controller.ts:58`). Панель (`
 `emp.rateScheme` з РЯДКА СПИСКУ, де його ніколи немає → завжди «—». Модалка правильна, бо `openEditModal` дочитує
 `GET /employees/:id`. Варіанти: дочитувати картку для панелі (як модалка) лише для ролей із доступом, або прибрати
 поле/колонку для списку.
+
+## Bug #1040 — [MEDIUM] Дати документів (`optionalDateString`): 31.02 зберігається як 03.03, рік 0000 — 500
+
+**Файл:** `packages/shared/src/schemas/validators.ts` (`optionalDateString`)
+**Severity:** MEDIUM
+**Категорія:** business-logic / api-validation
+
+**Опис:** той самий клас, що Bug #1039, у спільному `optionalDateString` (дата документа, термін і дата оплати
+рахунку / замовлення, повернення, складського документа, оплати постачальнику, страховка й техогляд авто, планові
+дати наряду). Перевірка — лише `Date.parse`. Наживо: `PATCH /invoices/:id {"documentDate":"2026-02-31"}` → 200, у
+рахунку дата 03.03; `PATCH /purchase-orders/:id {"paymentDate":"2026-02-31"}` → 200, 03.03;
+`{"documentDate":"0000-01-01"}` і `{"paymentDate":"0000-01-01"}` → **500**. Блок карток цих схем не вводив — знайдено,
+проходячи ті самі PATCH-и.
+**Очікувана поведінка:** `YYYY-MM-DD` або ISO-мітка часу, день існує, рік не 0000 → інакше 400.
+**Фактична поведінка:** 200 з іншою датою (фінансовий документ) або 500.
+**Фікс:** `isIsoDateOrDateTime` — форма `YYYY-MM-DD[THH:mm[:ss[.sss]][Z|±HH:MM]]`, календарний день через
+`isCalendarYmd`, час читається; `optionalDateString` перевіряє ним. Тести: `validators.spec.ts` +15 (8 поганих, 5
+справжніх включно з мітками часу й зсувом, '' / null). Мутація: повернути `Date.parse` → 7 кейсів червоні. Наживо після
+фіксу: `0000-01-01`, `2026-02-31`, `hello 5` у `documentDate` рахунку й `paymentDate` замовлення → 400 «Невірний
+формат дати»; `2026-11-03` → 200; `plannedAt` наряду ISO-міткою → 200. API-модулі, що беруть ці схеми (invoices,
+purchase-orders, stock-documents, supplier-returns, supplier-payments, vehicles, work-orders, employees) — 1618 / 1618.
+**Статус:** [x] виправлено

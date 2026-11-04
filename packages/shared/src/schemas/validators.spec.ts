@@ -4,9 +4,11 @@ import {
   clearableCalendarDate,
   clearableString,
   isCalendarYmd,
+  isIsoDateOrDateTime,
   moneyString,
   normalizeDecimalInput,
   optionalCalendarDate,
+  optionalDateString,
   optionalMoneyNumber,
   patchBodyWithClears,
 } from './validators';
@@ -105,6 +107,42 @@ describe('календарна дата працівника — лише YYYY-M
   it("optionalCalendarDate: '' і null → undefined (створення без дати)", () => {
     expect(z.object({ d: optionalCalendarDate() }).parse({ d: '' })).toEqual({ d: undefined });
     expect(z.object({ d: optionalCalendarDate() }).parse({ d: null })).toEqual({ d: undefined });
+  });
+});
+
+// Bug #1040: optionalDateString (дата документа, оплати, термін рахунку, планові дати наряду) теж
+// стояв на голому `Date.parse`: рахунок з documentDate '2026-02-31' зберігався датою 03.03, а рік 0000
+// давав 500. Мутація: повернути `!Number.isNaN(Date.parse(v))` у optionalDateString → червоніють.
+describe('optionalDateString — дата або мітка часу, чий день існує (Bug #1040)', () => {
+  const schema = z.object({ d: optionalDateString() });
+
+  it.each([
+    ['2026-02-31'],
+    ['0000-01-01'],
+    ['99999-01-01'],
+    ['+275760-09-13'],
+    ['hello 5'],
+    ['1'],
+    ['2026-11-04T25:00'],
+    ['2026-02-30T10:00:00.000Z'],
+  ])('%s → помилка валідації', v => {
+    expect(schema.safeParse({ d: v }).success).toBe(false);
+  });
+
+  it.each([
+    ['2026-11-04'],
+    ['2024-02-29'],
+    ['2026-11-04T08:30'],
+    ['2026-11-04T08:30:00.000Z'],
+    ['2026-11-04T10:30:00+02:00'],
+  ])('%s → як є', v => {
+    expect(isIsoDateOrDateTime(v)).toBe(true);
+    expect(schema.parse({ d: v })).toEqual({ d: v });
+  });
+
+  it("'' і null → undefined", () => {
+    expect(schema.parse({ d: '' })).toEqual({ d: undefined });
+    expect(schema.parse({ d: null })).toEqual({ d: undefined });
   });
 });
 
