@@ -71,8 +71,9 @@ grep -rnE "\b(in)\s+[A-Z][a-zA-Z]*(Type|Status|Direction|Reason|Kind|Mode|Method
 - [ ] **Секрет у ШЛЯХУ URL (`/bot${token}/…`) → перевірка формату в самому клієнті, не лише в DTO одного
       маршруту:** той самий клієнт може отримати значення з іншого входу (загальний `…/providers/:code/verify`)
       (`journal/security.md`, 2026-10-30)
-- [ ] **Поле-дата в Zod-схемі (`packages/shared`) → `optionalDateString()` / `clearableDateString()`, НЕ
-      `optionalString()` / `clearableString()`.** Рядкова схема пропускає `'not-a-date'`, сервіс робить
+- [ ] **Поле-дата в Zod-схемі (`packages/shared`) → дата без часу: `optionalCalendarDate()` /
+      `clearableCalendarDate()` (`Date.parse` у `optionalDateString` бере 31.02 і рік 0000 — Bug #1039); мітка
+      часу — `optionalDateString()`. НЕ `optionalString()` / `clearableString()`.** Рядкова схема пропускає `'not-a-date'`, сервіс робить
       `new Date(...)` → Invalid Date → Prisma 500 замість 400. Grep:
       `grep -rnE "(date|Date|At|Expiry)\w*: (optional|clearable)String\(\)" packages/shared/src/schemas`
       → кожен збіг, що йде в `DateTime`-колонку, перевести (`journal/security.md`, 2026-11-04)
@@ -170,7 +171,7 @@ grep -n "SentryProvider" apps/web/src/app/layout.tsx apps/web/src/app/\(setup\)/
       кинув → інтерсептор знімає резервацію ключа; якщо кинуло читання вже проведеного документа
       (`return this.findOne(...)` після `$transaction`), повтор із тим самим ключем проведе ДРУГИЙ.
       Відповідь — з транзакції. Grep: `grep -rn -B2 -A12 "RequireIdempotencyKey()" apps/api/src/modules
-  --include="*.controller.ts"` → метод сервісу: після `await this.prisma.$transaction(` не має
+--include="*.controller.ts"` → метод сервісу: після `await this.prisma.$transaction(` не має
       бути `this.findOne(` (`journal/security.md`, 2026-10-31)
 
 ---
