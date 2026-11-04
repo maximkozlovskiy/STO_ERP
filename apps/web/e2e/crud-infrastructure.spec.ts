@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 
 test.use({ storageState: 'e2e/.auth/admin.json' });
 
@@ -59,11 +59,7 @@ test.describe('Інфраструктура — CRUD зони', () => {
       timeout: 15_000,
     });
 
-    // Cleanup — soft delete
-    const row = page.locator(`table tbody tr:has-text("${zoneName}")`).first();
-    await row.locator('button:has(svg.lucide-trash2)').first().click();
-    const confirmBtn = page.locator('button:has-text("Помітити на видалення")').first();
-    if (await confirmBtn.isVisible({ timeout: 3_000 })) await confirmBtn.click();
+    await deleteRow(page, zoneName);
   });
 
   test('зона — Зберегти disabled без назви', async ({ page }) => {
@@ -78,6 +74,20 @@ test.describe('Інфраструктура — CRUD зони', () => {
     await page.keyboard.press('Escape');
   });
 });
+
+/**
+ * Видалення рядка з підтвердженням і перевіркою, що рядок зник. Раніше тести шукали кнопку «Помітити на
+ * видалення», якої в діалозі немає (там «Так»), і мовчки її пропускали — у dev-базі накопичились десятки
+ * «E2E-Пост-…», а календарні спеки, що беруть першу пару підйомників за назвою, ловили чужі записи.
+ */
+async function deleteRow(page: Page, name: string) {
+  const row = page.locator(`table tbody tr:has-text("${name}")`).first();
+  await row.locator('button:has(svg.lucide-trash2)').first().click();
+  await page.getByRole('button', { name: 'Так', exact: true }).click();
+  await expect(page.locator(`table tbody tr:has-text("${name}")`)).toHaveCount(0, {
+    timeout: 15_000,
+  });
+}
 
 // ─── Пости ────────────────────────────────────────────────────────────────────
 
@@ -104,10 +114,7 @@ test.describe('Інфраструктура — CRUD поста', () => {
       timeout: 15_000,
     });
 
-    const row = page.locator(`table tbody tr:has-text("${postName}")`).first();
-    await row.locator('button:has(svg.lucide-trash2)').first().click();
-    const confirmBtn = page.locator('button:has-text("Помітити на видалення")').first();
-    if (await confirmBtn.isVisible({ timeout: 3_000 })) await confirmBtn.click();
+    await deleteRow(page, postName);
   });
 });
 
@@ -136,9 +143,6 @@ test.describe('Інфраструктура — CRUD складу', () => {
       timeout: 15_000,
     });
 
-    const row = page.locator(`table tbody tr:has-text("${warehouseName}")`).first();
-    await row.locator('button:has(svg.lucide-trash2)').first().click();
-    const confirmBtn = page.locator('button:has-text("Помітити на видалення")').first();
-    if (await confirmBtn.isVisible({ timeout: 3_000 })) await confirmBtn.click();
+    await deleteRow(page, warehouseName);
   });
 });
