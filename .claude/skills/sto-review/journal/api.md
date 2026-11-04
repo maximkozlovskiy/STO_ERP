@@ -476,3 +476,7 @@ CAS» — той самий клас: умова доступу, з якої р�
 **Фікс:** `toStatus: AUTOMATION_PAYMENT_ACTIVE_STATUS` у події створення; схема правила відкидає для
 «створено» статус поза `AUTOMATION_CREATED_STATUSES`; `eventVars(ctx, occurredAt, event.toStatus)`
 (`cb6f44ccb`). **Severity:** IMPORTANT (правило, що зберігається і не працює).
+
+### 2026-11-05 — Фільтр «живий постачальник» додано в пошук і автопідбір, а ручний вибір лишився повз нього — §5
+
+**Сигнал:** правило «підключення видаленого контрагента не бере участі» (BR-SOFR-011) стало фільтром `counterparty: { deletedAt: null }` у двох запитах (`search`, `SupplierAllocationService.connections`), а третій споживач того самого рішення — ручний вибір (`chooseOffer` і `selectable` у `buildItems`) — перевіряв лише `connection.enabled`/`deletedAt`: старі пропозиції видаленого постачальника в діалозі лишались доступними, а `choose-offer` писав у позицію його `supplierId`. **Grep:** `grep -rn "connection.enabled\|connection.deletedAt" apps/api/src/modules/supplier-api --include=*.ts | grep -v spec` — кожна перевірка «живе підключення» має враховувати й контрагента. **Фікс:** один предикат (`isConnectionLive`) для всіх споживачів замість умови, розкиданої по `where`. **Severity:** IMPORTANT
