@@ -305,6 +305,7 @@ describe('Employees — HTTP Contract (assignment endpoints)', () => {
       expect(serviceMock.findAll).toHaveBeenCalledWith(
         'org-1',
         expect.objectContaining({ liftId: FK_A, role: 'MECHANIC' }),
+        expect.any(Boolean),
       );
     });
 

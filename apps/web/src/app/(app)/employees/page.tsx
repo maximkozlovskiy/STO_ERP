@@ -10,7 +10,7 @@ import { EMPTY_ITEMS } from '@/hooks/api/usePaginatedList';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useSelectedRowRefresh } from '@/hooks/useSelectedRowRefresh';
 import { Pencil, Users, Trash2 } from 'lucide-react';
-import { useRequireAuth } from '@/lib/auth';
+import { useAuth, useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -124,8 +124,19 @@ export default function EmployeesPage() {
   const { t } = useTranslation('employees');
   const { confirm, dialogProps } = useConfirm();
 
+  // Схему нарахування API віддає лише OWNER/ADMIN (і в списку, і в картці) — приймальні колонки
+  // «Ставка» й поля панелі немає, а не «—» при заданій схемі.
+  const { employee: me } = useAuth();
+  const canSeeRate = me?.role === 'OWNER' || me?.role === 'ADMIN';
   // Колонки з перекладеними мітками (label = i18n).
-  const COLUMNS = useMemo(() => COLUMN_DEFS.map(c => ({ ...c, label: t(c.labelKey) })), [t]);
+  const COLUMNS = useMemo(
+    () =>
+      COLUMN_DEFS.filter(c => canSeeRate || c.key !== 'rate').map(c => ({
+        ...c,
+        label: t(c.labelKey),
+      })),
+    [t, canSeeRate],
+  );
   // Rate-scheme мітки (i18n) — використовуються у таблиці і в detail-панелі.
   const RATE_LABELS = useMemo<Record<string, string>>(
     () => ({
@@ -422,12 +433,14 @@ export default function EmployeesPage() {
               hidden={f.hidden}
             />
           ))}
-          <PanelField
-            label={t('panel.rateScheme')}
-            fieldKey="rateScheme"
-            hidden={panelConfig.isFieldHidden('rateScheme')}
-            value={emp.rateScheme ? RATE_LABELS[emp.rateScheme.type] : undefined}
-          />
+          {canSeeRate && (
+            <PanelField
+              label={t('panel.rateScheme')}
+              fieldKey="rateScheme"
+              hidden={panelConfig.isFieldHidden('rateScheme')}
+              value={emp.rateScheme ? RATE_LABELS[emp.rateScheme.type] : undefined}
+            />
+          )}
           <div className="pt-1">
             <Button
               variant="outline"

@@ -55,7 +55,7 @@ export class EmployeesController {
   @Get()
   // ACCOUNTANT: пікер працівника в модалці рознесення виплати зарплати (BR-BANK-030).
   // MECHANIC: довідник механіків картки наряду (рішення власника 2026-10-16, employee.md).
-  // Список не віддає rateScheme, тож розширення не відкриває ставок.
+  // Схему нарахування список віддає лише OWNER/ADMIN — як картка (`findOne`); решта ролей її не бачить.
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'ACCOUNTANT', 'MECHANIC')
   @ApiOperation({
     summary: 'Список співробітників',
@@ -83,7 +83,7 @@ export class EmployeesController {
     // розширюють йому список на власника, бухгалтера чи звільнених, а персональних даних
     // (телефон, e-mail, дати, `userId`) відповідь не має (рішення власника 2026-10-16, друге).
     if (user.role === 'MECHANIC') return this.service.findMechanicLookups(orgId, query);
-    return this.service.findAll(orgId, query);
+    return this.service.findAll(orgId, query, user.role === 'OWNER' || user.role === 'ADMIN');
   }
 
   @Get(':id')

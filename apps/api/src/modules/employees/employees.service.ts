@@ -33,6 +33,7 @@ export class EmployeesService {
   async findAll(
     orgId: string,
     query: EmployeesQueryDto = {},
+    includeRateScheme = false,
   ): Promise<{ items: EmployeeResponseDto[]; total: number }> {
     const showDeleted = query.showDeleted === 'true';
     const where: Prisma.EmployeeWhereInput = {
@@ -78,7 +79,7 @@ export class EmployeesService {
       }),
       this.prisma.employee.count({ where }),
     ]);
-    return { items: items.map(item => this.toDto(item)), total };
+    return { items: items.map(item => this.toDto(item, includeRateScheme)), total };
   }
 
   /**
@@ -570,8 +571,8 @@ export class EmployeesService {
         item.deletedAt instanceof Date ? item.deletedAt.toISOString() : (item.deletedAt ?? null),
     };
     // rateScheme (зарплатна схема) — чутливі дані, віддаються лише OWNER/ADMIN
-    // через findOne(includeRateScheme=true). findAll() ніколи не включає (список
-    // доступний і RECEPTIONIST). Bug: раніше toDto() ЗАВЖДИ пропускав rateScheme,
+    // (findOne і findAll з includeRateScheme=true; список бачать і RECEPTIONIST, і ACCOUNTANT —
+    // їм без схеми). Bug: раніше toDto() ЗАВЖДИ пропускав rateScheme,
     // навіть у findOne для OWNER/ADMIN — EmployeeEditModal тихо перезаписував
     // реальну схему на дефолтну (percent_normo/40%) при КОЖНОМУ редагуванні.
     if (!includeRateScheme) return base;

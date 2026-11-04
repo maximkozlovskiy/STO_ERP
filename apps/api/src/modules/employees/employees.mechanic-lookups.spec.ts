@@ -229,6 +229,25 @@ describe('MECHANIC — читання довідників картки наря
     expect(body.items[0]).not.toHaveProperty('rateScheme');
   });
 
+  // TECH-DEBT (а) 2026-11-04: список не віддавав схему нікому — панель і колонка «Ставка» показували «—»
+  // при заданій схемі. Тепер як картка: OWNER/ADMIN бачать, приймальня й бухгалтер — ні.
+  it.each(['OWNER', 'ADMIN'])(
+    'GET /employees: %s бачить схему нарахування в рядку списку',
+    async r => {
+      role = r;
+      const res = await get('/employees?role=OWNER&limit=200');
+      const body = res.json() as { items: Record<string, unknown>[] };
+      expect(body.items[0]).toHaveProperty('rateScheme', { type: 'HOURLY', rate: 250 });
+    },
+  );
+
+  it('GET /employees: бухгалтер схеми в списку не бачить', async () => {
+    role = 'ACCOUNTANT';
+    const res = await get('/employees?role=OWNER&limit=200');
+    const body = res.json() as { items: Record<string, unknown>[] };
+    expect(body.items[0]).not.toHaveProperty('rateScheme');
+  });
+
   it('GET /settings/organisation: механіку — лише поля картки наряду', async () => {
     const res = await get('/settings/organisation');
     const body = res.json() as Record<string, unknown>;
@@ -381,7 +400,9 @@ describe('MECHANIC — читання довідників картки наря
         status: 'ACTIVE',
         liftIds: ['lift-1'],
       });
-      expect(body.items[0]).not.toHaveProperty('rateScheme');
+      // Схему нарахування список віддає лише OWNER/ADMIN — як картка (TECH-DEBT (а) 2026-11-04).
+      if (r === 'ADMIN') expect(body.items[0]).toHaveProperty('rateScheme');
+      else expect(body.items[0]).not.toHaveProperty('rateScheme');
     },
   );
 
