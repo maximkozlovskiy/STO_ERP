@@ -5,6 +5,8 @@ import { useTranslation } from 'react-i18next';
 import { useForm, useFieldArray, Controller } from 'react-hook-form';
 import { i18nZodResolver } from '@/lib/i18nZodResolver';
 import {
+  STOCK_DOCUMENT_CLEARABLE_FIELDS,
+  patchBodyWithClears,
   stockDocumentFormSchema,
   type StockDocumentFormInput,
   type StockDocumentFormValues,
@@ -214,7 +216,7 @@ export function StockDocumentCreateModal({
     setValue,
     getValues,
     handleSubmit,
-    formState: { errors, isDirty: rhfDirty },
+    formState: { errors, isDirty: rhfDirty, defaultValues: formDefaults },
   } = useForm<StockDocumentFormInput, unknown, StockDocumentFormValues>({
     resolver: i18nZodResolver(stockDocumentFormSchema),
     defaultValues: emptyDefaults(),
@@ -588,14 +590,21 @@ export function StockDocumentCreateModal({
     }));
     try {
       if (isEditMode) {
-        // PATCH з lines замінює ВСІ рядки (soft-delete наявних, re-create з тіла).
+        // PATCH з lines замінює ВСІ рядки (soft-delete наявних, re-create з тіла). Нотатки, що
+        // мали значення в базі останнього `reset` і стали порожніми, — null (TECH-DEBT (а)).
         await apiFetch(`/stock-documents/${stockDocumentId}`, {
           method: 'PATCH',
-          body: JSON.stringify({
-            notes: values.notes || undefined,
-            documentDate: values.documentDate || undefined,
-            lines: payloadLines,
-          }),
+          body: JSON.stringify(
+            patchBodyWithClears(
+              {
+                notes: values.notes || undefined,
+                documentDate: values.documentDate || undefined,
+                lines: payloadLines,
+              },
+              formDefaults,
+              STOCK_DOCUMENT_CLEARABLE_FIELDS,
+            ),
+          ),
         });
         if (features.toastEnabled) toast.success(t('toast.documentSaved'));
         dirty.resetDirty();

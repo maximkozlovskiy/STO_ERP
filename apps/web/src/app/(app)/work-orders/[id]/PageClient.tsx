@@ -35,6 +35,8 @@ import {
   COMPLETION_ACT_READ_ROLES,
   COMPLETION_ACT_WRITE_ROLES,
   INVOICE_READ_ROLES,
+  WORK_ORDER_CLEARABLE_FIELDS,
+  patchBodyWithClears,
 } from '@sto/shared';
 import { ClientPaymentModal } from '@/components/ui/ClientPaymentModal';
 import { invoiceRemaining } from '@/lib/invoice-payment';
@@ -576,14 +578,22 @@ export default function WorkOrderCardPage() {
     try {
       const updated = await apiFetch<Partial<WorkOrderDetail>>(`/work-orders/${wo.id}`, {
         method: 'PATCH',
-        body: JSON.stringify({
-          documentDate: editForm.documentDate || undefined,
-          priority: editForm.priority || undefined,
-          repairCategory: editForm.repairCategory || undefined,
-          description: editForm.description || undefined,
-          inMileage: editForm.inMileage ? Number(editForm.inMileage) : undefined,
-          clientApproval: editForm.clientApproval,
-        }),
+        // Очищений опис (мав значення в `wo`) іде null-ом — інакше ключ зникає з JSON, і PATCH
+        // опис не очищає (TECH-DEBT (а)).
+        body: JSON.stringify(
+          patchBodyWithClears(
+            {
+              documentDate: editForm.documentDate || undefined,
+              priority: editForm.priority || undefined,
+              repairCategory: editForm.repairCategory || undefined,
+              description: editForm.description || undefined,
+              inMileage: editForm.inMileage ? Number(editForm.inMileage) : undefined,
+              clientApproval: editForm.clientApproval,
+            },
+            wo,
+            WORK_ORDER_CLEARABLE_FIELDS,
+          ),
+        ),
       });
       // PATCH returns WorkOrderResponseDto without lines/parts — merge to preserve them
       setWo(prev => (prev ? { ...prev, ...updated } : prev));

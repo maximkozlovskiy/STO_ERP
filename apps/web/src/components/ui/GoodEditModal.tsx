@@ -4,7 +4,13 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { i18nZodResolver } from '@/lib/i18nZodResolver';
-import { goodFormSchema, type GoodFormInput, DEFAULT_GOOD_UNIT } from '@sto/shared';
+import {
+  GOOD_CLEARABLE_FIELDS,
+  goodFormSchema,
+  patchBodyWithClears,
+  type GoodFormInput,
+  DEFAULT_GOOD_UNIT,
+} from '@sto/shared';
 import { Barcode, Package, TrendingUp } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
@@ -277,10 +283,12 @@ export function GoodEditModal({
         // barcode лише при створенні (edit має окремий таб штрихкодів).
         barcode: isEdit ? undefined : values.barcode,
       };
+      // Очищене поле (артикул, категорія, нотатки — мали значення в `good`) іде null-ом:
+      // інакше '' → undefined, ключ зникає з JSON, і PATCH поле не очищає (TECH-DEBT (а)).
       const saved = isEdit
         ? await apiFetch<GoodForModal>(`/goods/${good.id}`, {
             method: 'PATCH',
-            body: JSON.stringify(payload),
+            body: JSON.stringify(patchBodyWithClears(payload, good, GOOD_CLEARABLE_FIELDS)),
           })
         : await apiFetch<GoodForModal>('/goods', {
             method: 'POST',

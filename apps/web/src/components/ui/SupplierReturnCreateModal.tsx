@@ -5,6 +5,8 @@ import { useTranslation } from 'react-i18next';
 import { useForm, useFieldArray, Controller } from 'react-hook-form';
 import { i18nZodResolver } from '@/lib/i18nZodResolver';
 import {
+  SUPPLIER_RETURN_CLEARABLE_FIELDS,
+  patchBodyWithClears,
   supplierReturnFormSchema,
   type SupplierReturnFormInput,
   type SupplierReturnFormValues,
@@ -172,7 +174,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
     setValue,
     getValues,
     handleSubmit,
-    formState: { errors, isDirty: rhfDirty },
+    formState: { errors, isDirty: rhfDirty, defaultValues: formDefaults },
   } = useForm<SupplierReturnFormInput, unknown, SupplierReturnFormValues>({
     resolver: i18nZodResolver(supplierReturnFormSchema),
     defaultValues: emptyDefaults(),
@@ -445,9 +447,13 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
         })),
       };
       if (isEdit) {
+        // Нотатки, що мали значення в базі останнього `reset` (завантажене повернення) і стали
+        // порожніми, ідуть null-ом — інакше PATCH їх не очищає (TECH-DEBT (а)).
         await apiFetch(`/supplier-returns/${editId}`, {
           method: 'PATCH',
-          body: JSON.stringify(payload),
+          body: JSON.stringify(
+            patchBodyWithClears(payload, formDefaults, SUPPLIER_RETURN_CLEARABLE_FIELDS),
+          ),
         });
         if (features.toastEnabled) toast.success(t('toast.returnUpdated'));
       } else {

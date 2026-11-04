@@ -6,8 +6,10 @@ import i18n from '@/i18n/config';
 import { useForm } from 'react-hook-form';
 import { i18nZodResolver } from '@/lib/i18nZodResolver';
 import {
+  VEHICLE_CLEARABLE_FIELDS,
   counterpartyFormSchema,
   counterpartyPatchBody,
+  patchBodyWithClears,
   vehicleFormSchema,
   type CounterpartyFormInput,
   type CounterpartyFormValues,
@@ -558,10 +560,18 @@ export function CounterpartyEditModal({
       const { customerGarageId: _drop, ...payload } = values;
       let saved: Vehicle;
       if (editId) {
-        // PATCH наявного авто — гараж уже існує, customerGarageId не потрібен.
+        // PATCH наявного авто — гараж уже існує, customerGarageId не потрібен. Оригінал — значення,
+        // якими `startEditVehicle` заповнив форму (лише держномер, VIN, рік): очищене з них іде
+        // null-ом, а поля, яких рядок списку не має (колір, нотатки…), лишаються відсутніми.
         saved = await apiFetch<Vehicle>(`/vehicles/${editId}`, {
           method: 'PATCH',
-          body: JSON.stringify(payload),
+          body: JSON.stringify(
+            patchBodyWithClears(
+              payload,
+              vehicleForm.formState.defaultValues,
+              VEHICLE_CLEARABLE_FIELDS,
+            ),
+          ),
         });
       } else {
         // Якщо гаража ще немає — створюємо автоматично (новий контрагент без гаражу).

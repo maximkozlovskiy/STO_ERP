@@ -8,9 +8,11 @@ import { apiFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
 import {
   EMPLOYEE_STATUS_LABELS,
+  EMPLOYEE_CLEARABLE_FIELDS,
   EMPLOYEE_ROLE_LABELS,
   employeeFormSchema,
   buildRateScheme,
+  patchBodyWithClears,
   type EmployeeFormInput,
   type EmployeeFormValues,
   type RateType,
@@ -357,11 +359,12 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
         firstName: values.firstName,
         lastName: values.lastName,
         role: values.role,
-        phone: values.phone || undefined,
-        email: values.email || undefined,
+        // Порожнє вже undefined (схема форми); для PATCH очищене поле стане null нижче.
+        phone: values.phone,
+        email: values.email,
         status: values.status,
-        dateOfHire: values.dateOfHire || undefined,
-        dateOfFire: values.dateOfFire || undefined,
+        dateOfHire: values.dateOfHire,
+        dateOfFire: values.dateOfFire,
         rateScheme,
         ...(!isEdit &&
           values.grantAccess && {
@@ -369,10 +372,12 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
             password: values.password,
           }),
       };
+      // Очищене поле (мало значення в `employee`) іде null-ом — інакше ключ зникає з JSON, і
+      // PATCH телефон / e-mail / дати не очищає (TECH-DEBT (а)).
       const saved = isEdit
         ? await apiFetch<EmployeeForModal>(`/employees/${employee.id}`, {
             method: 'PATCH',
-            body: JSON.stringify(payload),
+            body: JSON.stringify(patchBodyWithClears(payload, employee, EMPLOYEE_CLEARABLE_FIELDS)),
           })
         : await apiFetch<EmployeeForModal>('/employees', {
             method: 'POST',

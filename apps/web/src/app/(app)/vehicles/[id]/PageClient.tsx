@@ -4,7 +4,13 @@ import { useCallback, useEffect, useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useForm } from 'react-hook-form';
 import { i18nZodResolver } from '@/lib/i18nZodResolver';
-import { vehicleFormSchema, type VehicleFormInput, type VehicleFormValues } from '@sto/shared';
+import {
+  VEHICLE_CLEARABLE_FIELDS,
+  patchBodyWithClears,
+  vehicleFormSchema,
+  type VehicleFormInput,
+  type VehicleFormValues,
+} from '@sto/shared';
 import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
@@ -186,8 +192,9 @@ export default function VehicleCardPage() {
     setShowEdit(true);
   };
 
-  // PATCH /vehicles/:id — customerGarageId у update-схемі відсутній (перенос гаража неможливий);
-  // notes завжди present (null для очищення), решта — parsed values зі схеми.
+  // PATCH /vehicles/:id — customerGarageId у update-схемі відсутній (перенос гаража неможливий).
+  // Очищене текстове поле (мало значення в `vehicle`, стало порожнім) іде як null — інакше
+  // '' → undefined, JSON.stringify ключ викидає, і PATCH поле не очищає (TECH-DEBT (а)).
   // `void` перед `saveEdit()`, `addNode()`, `removeNode()`, `addSchedule()`,
   // `removeSchedule()` у JSX: кожен має власний try/catch, що пише текст відмови
   // користувачу — `saveEdit` у `editError` (баннер у модалці), решта у `loadError`
@@ -198,10 +205,10 @@ export default function VehicleCardPage() {
     setEditSaving(true);
     setEditError('');
     try {
-      const { customerGarageId: _drop, notes, ...rest } = values;
+      const { customerGarageId: _drop, ...rest } = values;
       const updated = await apiFetch<Vehicle>(`/vehicles/${id}`, {
         method: 'PATCH',
-        body: JSON.stringify({ ...rest, notes: notes ?? null }),
+        body: JSON.stringify(patchBodyWithClears(rest, vehicle, VEHICLE_CLEARABLE_FIELDS)),
       });
       setVehicle(updated);
       setShowEdit(false);

@@ -6,6 +6,8 @@ import { useForm, useFieldArray } from 'react-hook-form';
 import { i18nZodResolver } from '@/lib/i18nZodResolver';
 import { validationText } from '@/lib/validation';
 import {
+  PURCHASE_ORDER_CLEARABLE_FIELDS,
+  patchBodyWithClears,
   purchaseOrderFormSchema,
   type PurchaseOrderFormInput,
   type PurchaseOrderFormValues,
@@ -177,7 +179,7 @@ export function PurchaseOrderCreateModal({
     watch,
     setValue,
     getValues,
-    formState: { errors, isDirty: rhfDirty },
+    formState: { errors, isDirty: rhfDirty, defaultValues: formDefaults },
   } = useForm<PurchaseOrderFormInput, unknown, PurchaseOrderFormValues>({
     resolver: i18nZodResolver(purchaseOrderFormSchema),
     defaultValues: emptyDefaults(),
@@ -872,24 +874,29 @@ export function PurchaseOrderCreateModal({
         price: l.price,
         ...(l.pricedSalePrice != null ? { pricedSalePrice: l.pricedSalePrice } : {}),
       }));
+      // Нотатки, що мали значення в базі останнього `reset` (завантажене замовлення) і стали
+      // порожніми, ідуть null-ом — інакше ключ зникає з JSON і PATCH їх не очищає (TECH-DEBT (а)).
+      const header = {
+        supplierId: values.supplierId || undefined,
+        warehouseId: values.warehouseId || undefined,
+        currencyId: values.currencyId || undefined,
+        // null → backend clears contractId; UUID → set; undefined → keep current.
+        // We always send the explicit value because supplier picker resets contract
+        // state to null and backend must persist that clear. contractId лишається
+        // окремим useState (auto-fill + explicit null-clear), НЕ у RHF.
+        contractId: contractId ?? null,
+        notes: values.notes || undefined,
+        documentDate: values.documentDate || undefined,
+        paymentDate: values.paymentDate || undefined,
+        // Порожнє → null (очистити ЕН і зупинити трекінг); непорожнє → встановити/оновити.
+        trackingNumber: values.trackingNumber ? values.trackingNumber : null,
+        lines: allLines,
+      };
       await apiFetch(`/purchase-orders/${purchaseOrderId}`, {
         method: 'PATCH',
-        body: JSON.stringify({
-          supplierId: values.supplierId || undefined,
-          warehouseId: values.warehouseId || undefined,
-          currencyId: values.currencyId || undefined,
-          // null → backend clears contractId; UUID → set; undefined → keep current.
-          // We always send the explicit value because supplier picker resets contract
-          // state to null and backend must persist that clear. contractId лишається
-          // окремим useState (auto-fill + explicit null-clear), НЕ у RHF.
-          contractId: contractId ?? null,
-          notes: values.notes || undefined,
-          documentDate: values.documentDate || undefined,
-          paymentDate: values.paymentDate || undefined,
-          // Порожнє → null (очистити ЕН і зупинити трекінг); непорожнє → встановити/оновити.
-          trackingNumber: values.trackingNumber ? values.trackingNumber : null,
-          lines: allLines,
-        }),
+        body: JSON.stringify(
+          patchBodyWithClears(header, formDefaults, PURCHASE_ORDER_CLEARABLE_FIELDS),
+        ),
       });
 
       if (features.toastEnabled) toast.success(t('toast.orderSaved'));

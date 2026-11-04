@@ -5,8 +5,10 @@ import { useTranslation } from 'react-i18next';
 import { useForm, useFieldArray, Controller } from 'react-hook-form';
 import { i18nZodResolver } from '@/lib/i18nZodResolver';
 import {
+  INVOICE_CLEARABLE_FIELDS,
   invoiceFormSchema,
   INVOICE_TYPE_VALUES,
+  patchBodyWithClears,
   type InvoiceFormInput,
   type InvoiceFormValues,
 } from '@sto/shared';
@@ -175,7 +177,7 @@ export function InvoiceCreateModal({
     setValue,
     getValues,
     handleSubmit,
-    formState: { errors, isDirty: rhfDirty },
+    formState: { errors, isDirty: rhfDirty, defaultValues: formDefaults },
   } = useForm<InvoiceFormInput, unknown, InvoiceFormValues>({
     resolver: i18nZodResolver(invoiceFormSchema),
     defaultValues: {
@@ -634,16 +636,24 @@ export function InvoiceCreateModal({
     setSavingBoth(true);
     setError('');
     try {
+      // Оригінал — база останнього `reset` (завантажений рахунок): очищені нотатки, що мали
+      // значення, ідуть null-ом, інакше ключ зникає з JSON і PATCH їх не очищає (TECH-DEBT (а)).
       await apiFetch(`/invoices/${invoiceId}`, {
         method: 'PATCH',
-        body: JSON.stringify({
-          counterpartyId: values.counterpartyId,
-          invoiceType: values.invoiceType,
-          currencyId: values.currencyId,
-          dueDate: values.dueDate,
-          documentDate: values.documentDate,
-          notes: values.notes,
-        }),
+        body: JSON.stringify(
+          patchBodyWithClears(
+            {
+              counterpartyId: values.counterpartyId,
+              invoiceType: values.invoiceType,
+              currencyId: values.currencyId,
+              dueDate: values.dueDate,
+              documentDate: values.documentDate,
+              notes: values.notes,
+            },
+            formDefaults,
+            INVOICE_CLEARABLE_FIELDS,
+          ),
+        ),
       });
 
       const linesNow = collectLines();
