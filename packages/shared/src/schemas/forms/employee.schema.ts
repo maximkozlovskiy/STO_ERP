@@ -1,5 +1,11 @@
 import { z } from 'zod';
-import { clearableString, optionalString, emptyToUndefined } from '../validators';
+import {
+  clearableDateString,
+  clearableString,
+  optionalDateString,
+  optionalString,
+  emptyToUndefined,
+} from '../validators';
 
 /**
  * Плоске числове поле форми, чия обовʼязковість залежить від rateType.
@@ -194,8 +200,9 @@ const employeeBaseFields = {
   phone: optionalString(),
   email: optionalString(),
   status: z.preprocess(emptyToUndefined, z.enum(EMPLOYEE_STATUS_VALUES).optional()),
-  dateOfHire: optionalString(),
-  dateOfFire: optionalString(),
+  // Дата, а не будь-який рядок: сервіс робить `new Date(...)`, і 'not-a-date' давав Prisma 500.
+  dateOfHire: optionalDateString(),
+  dateOfFire: optionalDateString(),
   rateScheme: rateSchemeSchema,
 };
 
@@ -221,8 +228,8 @@ export const employeeUpdateSchema = z
     ...employeeBaseFields,
     phone: clearableString(),
     email: clearableString(),
-    dateOfHire: clearableString(),
-    dateOfFire: clearableString(),
+    dateOfHire: clearableDateString(),
+    dateOfFire: clearableDateString(),
   })
   .partial();
 export type EmployeeUpdateValues = z.infer<typeof employeeUpdateSchema>;

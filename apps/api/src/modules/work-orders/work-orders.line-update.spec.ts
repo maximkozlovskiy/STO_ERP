@@ -163,6 +163,22 @@ describe('WorkOrdersService.updateLine — робота й виконавець 
     expect(data().actualHours).toBe(1.5);
   });
 
+  // Review 2026-11-04 (TECH-DEBT (а)): workOrderLineUpdateSchema тепер дає notes: null для '' / null.
+  // Мутації: `notes: dto.notes ?? undefined` у data → червоніє перший кейс; `dto.notes == null` у
+  // isLineActualOnlyPatch → червоніє другий.
+  it('notes: null у чернетці → нотатки рядка очищаються (null доходить до update)', async () => {
+    await service.updateLine(ORG, WO, LINE, { notes: null });
+    expect(data()).toHaveProperty('notes', null);
+  });
+
+  it('у «В роботі» notes: null разом із фактичними годинами → 400: це вже не «лише години»', async () => {
+    woStatus = 'IN_PROGRESS';
+    await expect(
+      service.updateLine(ORG, WO, LINE, { actualHours: 1, notes: null }),
+    ).rejects.toThrow(BadRequestException);
+    expect(lineUpdate).not.toHaveBeenCalled();
+  });
+
   it('зміна виконавця в наряді «В роботі» → 400: там правляться лише фактичні години', async () => {
     woStatus = 'IN_PROGRESS';
     await expect(service.updateLine(ORG, WO, LINE, { employeeId: EMP_NEW })).rejects.toThrow();

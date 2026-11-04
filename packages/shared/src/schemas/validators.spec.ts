@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { z } from 'zod';
 import {
+  clearableDateString,
   clearableString,
   moneyString,
   normalizeDecimalInput,
@@ -48,6 +49,26 @@ describe('clearableString — PATCH-поле, яке можна очистити
     ['ключа немає — не чіпати', {}, {}],
   ] as const)('%s', (_label, input, expected) => {
     expect(schema.parse(input)).toEqual(expected);
+  });
+});
+
+// Review 2026-11-04: дати працівника стали clearableString — 'not-a-date' проходив схему, сервіс
+// робив `new Date('not-a-date')`, і Prisma давала 500 замість 400. Мутація: прибрати refine у
+// clearableDateString → кейс «не дата» червоніє.
+describe('clearableDateString — дата, яку PATCH може очистити', () => {
+  const schema = z.object({ d: clearableDateString() }).partial();
+
+  it.each([
+    ['порожній рядок', { d: '' }, { d: null }],
+    ['null', { d: null }, { d: null }],
+    ['дата', { d: '2026-11-04' }, { d: '2026-11-04' }],
+    ['ключа немає — не чіпати', {}, {}],
+  ] as const)('%s', (_label, input, expected) => {
+    expect(schema.parse(input)).toEqual(expected);
+  });
+
+  it('не дата → помилка валідації (400), а не 500 у Prisma', () => {
+    expect(schema.safeParse({ d: 'not-a-date' }).success).toBe(false);
   });
 });
 

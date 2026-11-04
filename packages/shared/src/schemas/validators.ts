@@ -36,6 +36,21 @@ export const emptyToNull = (v: unknown): unknown => (v === '' ? null : v);
 export const clearableString = () => z.preprocess(emptyToNull, z.string().nullable().optional());
 
 /**
+ * Дата-рядок, яку PATCH може очистити: '' / null → null, ключа немає → не чіпати, інакше рядок
+ * мусить парситись як дата (як `optionalDateString`). `clearableString` для дат пропускав
+ * 'not-a-date' → сервіс робив `new Date('not-a-date')` → Prisma 500 замість 400.
+ */
+export const clearableDateString = () =>
+  z.preprocess(
+    emptyToNull,
+    z
+      .string()
+      .refine(v => !Number.isNaN(Date.parse(v)), { message: 'v.dateFormat' })
+      .nullable()
+      .optional(),
+  );
+
+/**
  * Тіло PATCH з форми, що парситься create-схемою ('' → undefined, і JSON.stringify такий ключ викидає):
  * поле з `fields`, яке МАЛО значення в `original` (документ, з якого заповнили форму) і стало порожнім,
  * іде як `null`. Поле, якого в `original` немає, лишається відсутнім — модалку відкривають і з рядка

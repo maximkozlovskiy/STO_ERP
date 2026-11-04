@@ -1,3 +1,4 @@
+import { BadRequestException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { employeeUpdateSchema, type EmployeeUpdateValues } from '@sto/shared';
@@ -67,6 +68,16 @@ describe('EmployeesService.update — очищення полів', () => {
     async field => {
       await service.update(ORG, EMP_ID, pipe({ [field]: '' }));
       expect(writtenData()).toHaveProperty(field, null);
+    },
+  );
+
+  // Review 2026-11-04: дати на clearableString пропускали 'not-a-date' → `new Date(...)` → Prisma 500.
+  // Мутація: повернути `clearableString()` датам у employeeUpdateSchema → кейс червоніє.
+  it.each([['dateOfHire'], ['dateOfFire']])(
+    '%s: не дата → 400 від pipe, у базу нічого не йде',
+    field => {
+      expect(() => pipe({ [field]: 'not-a-date' })).toThrow(BadRequestException);
+      expect(txUpdate).not.toHaveBeenCalled();
     },
   );
 
