@@ -193,8 +193,8 @@ export default function VehicleCardPage() {
   };
 
   // PATCH /vehicles/:id — customerGarageId у update-схемі відсутній (перенос гаража неможливий).
-  // Очищене текстове поле (мало значення в `vehicle`, стало порожнім) іде як null — інакше
-  // '' → undefined, JSON.stringify ключ викидає, і PATCH поле не очищає (TECH-DEBT (а)).
+  // Очищене поле (текст, число, дата; мало значення в `vehicle`, стало порожнім) іде як null —
+  // інакше '' → undefined, JSON.stringify ключ викидає, і PATCH поле не очищає (TECH-DEBT (а)).
   // `void` перед `saveEdit()`, `addNode()`, `removeNode()`, `addSchedule()`,
   // `removeSchedule()` у JSX: кожен має власний try/catch, що пише текст відмови
   // користувачу — `saveEdit` у `editError` (баннер у модалці), решта у `loadError`
