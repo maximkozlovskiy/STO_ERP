@@ -360,6 +360,34 @@ describe('Автопідбір — застосування (BR-SOFR-009)', () =
     });
   });
 
+  // guards: BR-SOFR-011
+  it('підключення видаленого контрагента чи видалене підключення — у підборі не беруть участі', async () => {
+    const { h, service, offer } = setup();
+    offer(ITEM_MANUAL, CONN_AVD, { price: 80 }); // дешевша — але контрагент видалений
+    offer(ITEM_MANUAL, CONN_UTR, { price: 95 });
+    h.t.counterparty.rows.find(r => r.id === SUP_AVD)!.deletedAt = new Date();
+    const res = await service.allocate(
+      ORG,
+      { batchId: BATCH, strategy: 'CHEAP', dryRun: true },
+      'OWNER',
+    );
+    expect(res.items[0]!.parts).toEqual([
+      expect.objectContaining({ supplierId: SUP_UTR, priceUah: 95 }),
+    ]);
+
+    // Видалене підключення — так само (контрагент живий).
+    h.t.counterparty.rows.find(r => r.id === SUP_AVD)!.deletedAt = null;
+    h.t.supplierConnection.rows.find(r => r.id === CONN_UTR)!.deletedAt = new Date();
+    const res2 = await service.allocate(
+      ORG,
+      { batchId: BATCH, strategy: 'CHEAP', dryRun: true },
+      'OWNER',
+    );
+    expect(res2.items[0]!.parts).toEqual([
+      expect.objectContaining({ supplierId: SUP_AVD, priceUah: 80 }),
+    ]);
+  });
+
   it('позиція не OPEN — пропущена з причиною; ролі без цін бачать null', async () => {
     const { h, service, offer } = setup();
     offer(ITEM_MANUAL, CONN_UTR);

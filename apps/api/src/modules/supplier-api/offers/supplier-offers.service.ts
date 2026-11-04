@@ -120,7 +120,9 @@ export class SupplierOffersService {
       this.loadItems(orgId, ids),
       // Поля підключення для відповіді — одразу: batch будується з уже прочитаного, без getBatch.
       this.prisma.supplierConnection.findMany({
-        where: { orgId, enabled: true, deletedAt: null },
+        // BR-SOFR-011: підключення видаленого контрагента не шукає (DELETE контрагента підключень
+        // не чіпає — без цього фільтра його пропозиції жили б у діалозі й автопідборі).
+        where: { orgId, enabled: true, deletedAt: null, counterparty: { deletedAt: null } },
         select: REQUEST_INCLUDE.connection.select,
         orderBy: [{ priority: 'asc' }, { createdAt: 'asc' }],
         take: 50,

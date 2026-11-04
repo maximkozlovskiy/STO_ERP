@@ -20,6 +20,7 @@ import {
   offersHarness,
   ORG,
   OTHER_ORG,
+  SUP_AVD,
 } from './supplier-offers.spec-fixture';
 
 /**
@@ -113,6 +114,14 @@ describe('Пошук пропозицій — batch і черга (BR-SOFR-002)'
         removeOnFail: true,
       }),
     );
+  });
+
+  // guards: BR-SOFR-011
+  it('підключення видаленого контрагента не шукає — запитів на нього немає', async () => {
+    const h = offersHarness();
+    h.t.counterparty.rows.find(r => r.id === SUP_AVD)!.deletedAt = new Date();
+    await h.service.search(ORG, { itemIds: [ITEM_MANUAL] }, { role: 'OWNER' });
+    expect(h.t.supplierOfferRequest.rows.map(r => r.connectionId)).toEqual([CONN_UTR]);
   });
 
   // sto-optimize 2026-10-18: по одній `add` на пару 100 позицій × 5 підключень тримали відповідь

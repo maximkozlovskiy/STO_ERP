@@ -282,7 +282,14 @@ export class SupplierAllocationService {
   private async connections(orgId: string, ids: string[]): Promise<Map<string, ConnectionInfo>> {
     if (ids.length === 0) return new Map();
     const rows = await this.prisma.supplierConnection.findMany({
-      where: { orgId, id: { in: ids }, enabled: true, deletedAt: null },
+      // BR-SOFR-011: підключення видаленого контрагента в підборі не бере участі.
+      where: {
+        orgId,
+        id: { in: ids },
+        enabled: true,
+        deletedAt: null,
+        counterparty: { deletedAt: null },
+      },
       select: {
         id: true,
         counterpartyId: true,
