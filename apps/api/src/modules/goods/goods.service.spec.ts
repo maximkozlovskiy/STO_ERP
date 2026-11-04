@@ -368,11 +368,13 @@ describe('GoodsService', () => {
       );
     });
 
-    it('sku очищується (порожній рядок) → skuNormalized=null', async () => {
+    it('sku очищується (null — goodUpdateSchema робить його з порожнього) → sku і skuNormalized=null', async () => {
       prisma.good.findFirst.mockResolvedValueOnce(goodRow);
-      await service.update('org-1', 'good-1', { sku: '' });
+      await service.update('org-1', 'good-1', { sku: null });
       expect(prisma.good.update).toHaveBeenCalledWith(
-        expect.objectContaining({ data: expect.objectContaining({ skuNormalized: null }) }),
+        expect.objectContaining({
+          data: expect.objectContaining({ sku: null, skuNormalized: null }),
+        }),
       );
     });
 

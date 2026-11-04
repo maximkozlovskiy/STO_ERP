@@ -81,10 +81,10 @@ export class UpdateSupplierReturnDto {
   @IsUUID()
   warehouseId?: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ type: String, nullable: true, description: 'null / "" → очистити' })
   @IsOptional()
   @IsString()
-  notes?: string;
+  notes?: string | null;
 
   @ApiPropertyOptional({ description: 'Дата документа (YYYY-MM-DD)' })
   @IsOptional()

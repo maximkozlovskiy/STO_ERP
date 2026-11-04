@@ -17,7 +17,7 @@ import {
   ShowDeletedParam,
 } from '../../common/dto/list-query.decorators';
 import { Transform } from 'class-transformer';
-import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional, OmitType, PartialType } from '@nestjs/swagger';
 import { StockBatchDto } from '../inventory/batch.service';
 import { GoodType } from '@prisma/client';
 import { UUID_REGEX } from '@sto/shared';
@@ -71,7 +71,26 @@ export class CreateGoodDto {
   preferredSupplierId?: string;
 }
 
-export class UpdateGoodDto extends PartialType(CreateGoodDto) {}
+/**
+ * PATCH товару: sku / category / notes — `| null` (очистити, `goodUpdateSchema`: '' / null → null).
+ * `unit` (NOT NULL) і `barcode` (своя вкладка) лишаються без null.
+ */
+export class UpdateGoodDto extends PartialType(
+  OmitType(CreateGoodDto, ['sku', 'category', 'notes'] as const),
+) {
+  @ApiPropertyOptional({ type: String, nullable: true })
+  @IsOptional()
+  @IsString()
+  sku?: string | null;
+  @ApiPropertyOptional({ type: String, nullable: true })
+  @IsOptional()
+  @IsString()
+  category?: string | null;
+  @ApiPropertyOptional({ type: String, nullable: true })
+  @IsOptional()
+  @IsString()
+  notes?: string | null;
+}
 
 // Сканер ШК часто додає провідні/кінцеві пробіли (або оператор вводить їх вручну).
 // Бек шукає sub-ШК через `equals` (точний матч) — не-обрізаний " 4820…" не збіжиться,

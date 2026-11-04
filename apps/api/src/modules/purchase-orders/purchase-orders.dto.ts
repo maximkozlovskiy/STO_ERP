@@ -121,7 +121,10 @@ export class UpdatePurchaseOrderDto {
   @IsUUID()
   contractId?: string | null;
 
-  @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
+  @ApiPropertyOptional({ type: String, nullable: true, description: 'null / "" → очистити' })
+  @IsOptional()
+  @IsString()
+  notes?: string | null;
 
   @ApiPropertyOptional({ description: 'Дата документа (YYYY-MM-DD)' })
   @IsOptional()

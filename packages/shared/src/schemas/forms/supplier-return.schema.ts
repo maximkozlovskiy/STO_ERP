@@ -1,5 +1,11 @@
 import { z } from 'zod';
-import { optionalString, optionalUuid, optionalDateString, moneyString } from '../validators';
+import {
+  clearableString,
+  optionalString,
+  optionalUuid,
+  optionalDateString,
+  moneyString,
+} from '../validators';
 
 /**
  * Спільна zod-схема повернення постачальнику (SupplierReturn) — ЄДИНЕ джерело правди web ↔ api.
@@ -40,11 +46,15 @@ export type SupplierReturnFormInput = z.input<typeof supplierReturnFormSchema>;
 export const supplierReturnCreateSchema = supplierReturnFormSchema;
 export type SupplierReturnCreateValues = SupplierReturnFormValues;
 
+/** Текстові поля повернення, які картка може очистити (PATCH: '' / null → null). */
+export const SUPPLIER_RETURN_CLEARABLE_FIELDS = ['notes'] as const;
+export type SupplierReturnClearableField = (typeof SUPPLIER_RETURN_CLEARABLE_FIELDS)[number];
+
 // Update — supplierId/warehouseId опційні, notes/documentDate/lines; БЕЗ purchaseOrderId.
 export const supplierReturnUpdateSchema = z.object({
   supplierId: optionalUuid(),
   warehouseId: optionalUuid(),
-  notes: optionalString(),
+  notes: clearableString(),
   documentDate: optionalDateString(),
   lines: z.array(supplierReturnLineSchema).optional(),
 });

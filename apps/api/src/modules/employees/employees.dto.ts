@@ -130,17 +130,17 @@ export class UpdateEmployeeDto {
   @IsObject()
   rateScheme?: RateScheme;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ type: String, nullable: true, description: 'null / "" → очистити' })
   @IsOptional()
   @IsString()
   @MaxLength(30)
-  phone?: string;
+  phone?: string | null;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ type: String, nullable: true, description: 'null / "" → очистити' })
   @IsOptional()
   @IsString()
   @MaxLength(254)
-  email?: string;
+  email?: string | null;
 
   @ApiPropertyOptional({ enum: EmployeeStatus })
   @IsOptional()
@@ -148,17 +148,17 @@ export class UpdateEmployeeDto {
   @IsEnum(EmployeeStatus)
   status?: EmployeeStatus;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ type: String, nullable: true, description: 'null / "" → очистити' })
   @IsOptional()
   @Transform(emptyToUndefined)
   @IsDateString()
-  dateOfHire?: string;
+  dateOfHire?: string | null;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ type: String, nullable: true, description: 'null / "" → очистити' })
   @IsOptional()
   @Transform(emptyToUndefined)
   @IsDateString()
-  dateOfFire?: string;
+  dateOfFire?: string | null;
 }
 
 // Query DTO for `GET /employees` — without it the controller silently dropped q/role/showDeleted

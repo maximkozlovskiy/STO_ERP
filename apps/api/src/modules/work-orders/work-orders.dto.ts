@@ -115,7 +115,10 @@ export class CreateWorkOrderDto {
 }
 
 export class UpdateWorkOrderDto {
-  @ApiPropertyOptional() @IsOptional() @IsString() description?: string;
+  @ApiPropertyOptional({ type: String, nullable: true, description: 'null / "" → очистити' })
+  @IsOptional()
+  @IsString()
+  description?: string | null;
   @ApiPropertyOptional() @IsOptional() @IsInt() @Min(0) inMileage?: number;
   @ApiPropertyOptional() @IsOptional() @IsInt() @Min(0) outMileage?: number;
 
@@ -477,8 +480,14 @@ export class CreateWorkOrderLineDto {
 // `number | null` (а CreateWorkOrderLineDto.actualHours = `number`). Після Omit
 // додаємо явну версію з nullable handling.
 export class UpdateWorkOrderLineDto extends PartialType(
-  OmitType(CreateWorkOrderLineDto, ['actualHours'] as const),
+  OmitType(CreateWorkOrderLineDto, ['actualHours', 'notes'] as const),
 ) {
+  // null / "" → очистити нотатки рядка (workOrderLineUpdateSchema); ключа немає → не чіпати.
+  @ApiPropertyOptional({ type: String, nullable: true })
+  @IsOptional()
+  @IsString()
+  notes?: string | null;
+
   // nullable handling — frontend save() надсилає `null` коли користувач
   // очистив inline "Год (факт.)" → без `ValidateIf(o => o.actualHours !== null)`
   // class-validator кидав 400 і будь-який save() з порожнім actualHours лагав

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import {
+  clearableString,
   optionalString,
   optionalUuid,
   optionalDateString,
@@ -92,8 +93,12 @@ const nullable = <T extends z.ZodTypeAny>(inner: T) =>
     z.union([z.null(), inner]).optional(),
   );
 
+/** Текстові поля шапки наряду, які картка може очистити (PATCH: '' / null → null). */
+export const WORK_ORDER_CLEARABLE_FIELDS = ['description'] as const;
+export type WorkOrderClearableField = (typeof WORK_ORDER_CLEARABLE_FIELDS)[number];
+
 export const workOrderUpdateSchema = z.object({
-  description: optionalString(),
+  description: clearableString(),
   inMileage: optionalNonNegInt(),
   outMileage: optionalNonNegInt(),
   priority: optionalPriority,
@@ -139,7 +144,9 @@ export const workOrderLineUpdateSchema = z.object({
   ),
   actualHours: nullable(withCap(z.coerce.number().min(0, 'v.workOrder.hours.nonNeg'), QTY_CAP)),
   price: optionalNonNegNumber(MONEY_CAP),
-  notes: optionalString(),
+  // '' / null → null (очистити). Ключ notes, навіть null, — це вже не «лише фактичні години»
+  // (updateLine: правка рядка в IN_PROGRESS/ON_HOLD).
+  notes: clearableString(),
 });
 export type WorkOrderLineUpdateValues = z.infer<typeof workOrderLineUpdateSchema>;
 

@@ -1,5 +1,11 @@
 import { z } from 'zod';
-import { optionalString, optionalUuid, optionalNonNegNumber, MONEY_CAP } from '../validators';
+import {
+  clearableString,
+  optionalString,
+  optionalUuid,
+  optionalNonNegNumber,
+  MONEY_CAP,
+} from '../validators';
 
 /**
  * Спільна zod-схема форми товару (Good) — ЄДИНЕ джерело правди валідації для web і api.
@@ -34,10 +40,20 @@ export const goodFormSchema = z.object({
 });
 
 /**
- * Схема часткового оновлення (PATCH): усі поля опційні, включно з name.
- * Для update-ендпоінта, який приймає лише змінені поля.
+ * Текстові поля товару, які картка може очистити (PATCH: '' / null → null). НЕ входять: `unit`
+ * (NOT NULL, типово «шт») і `barcode` (картка його не шле — штрихкоди мають свою вкладку).
  */
-export const goodUpdateSchema = goodFormSchema.partial();
+export const GOOD_CLEARABLE_FIELDS = ['sku', 'category', 'notes'] as const;
+export type GoodClearableField = (typeof GOOD_CLEARABLE_FIELDS)[number];
+
+/**
+ * Схема часткового оновлення (PATCH): усі поля опційні, включно з name.
+ * Для update-ендпоінта, який приймає лише змінені поля. Поля `GOOD_CLEARABLE_FIELDS`:
+ * '' / null → null (очистити), ключа немає → не чіпати.
+ */
+export const goodUpdateSchema = goodFormSchema
+  .extend({ sku: clearableString(), category: clearableString(), notes: clearableString() })
+  .partial();
 
 /** Значення форми ПІСЛЯ парсингу (числа — number, порожні опційні — undefined). */
 export type GoodFormValues = z.infer<typeof goodFormSchema>;

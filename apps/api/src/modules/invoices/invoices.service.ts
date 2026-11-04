@@ -536,7 +536,8 @@ export class InvoicesService {
       counterpartyId: dto.counterpartyId ?? undefined,
       dueDate: dto.dueDate ? new Date(dto.dueDate) : undefined,
       documentDate: dto.documentDate ? new Date(dto.documentDate) : undefined,
-      notes: dto.notes ?? undefined,
+      // null → очистити нотатки; undefined → не чіпати (`?? undefined` ковтав очищення).
+      notes: dto.notes,
       // Мультивалюта (Фаза 3): totalAmountBase/rateUsed лишаються зі старого курсу до
       // transition() (DRAFT→SENT нараховує CHARGE у base по свіжому currencyId) —
       // не перераховуємо тут, щоб не дублювати conversion-логіку поза FSM.

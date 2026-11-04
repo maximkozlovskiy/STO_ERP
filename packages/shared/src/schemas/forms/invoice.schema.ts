@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import {
+  clearableString,
   optionalString,
   optionalUuid,
   optionalDateString,
@@ -86,7 +87,13 @@ export const invoiceHeaderSchema = z.object({
 });
 export type InvoiceHeaderValues = z.infer<typeof invoiceHeaderSchema>;
 
-export const invoiceUpdateSchema = invoiceHeaderSchema.partial();
+/** Поля шапки рахунку, які картка може очистити (PATCH: '' / null → null). Дати — поза переліком. */
+export const INVOICE_CLEARABLE_FIELDS = ['notes'] as const;
+export type InvoiceClearableField = (typeof INVOICE_CLEARABLE_FIELDS)[number];
+
+export const invoiceUpdateSchema = invoiceHeaderSchema
+  .extend({ notes: clearableString() })
+  .partial();
 export type InvoiceUpdateValues = z.infer<typeof invoiceUpdateSchema>;
 
 // ─── Форма web (шапка + line-items) ──────────────────────────────────────────

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import {
+  clearableString,
   optionalString,
   optionalUuid,
   optionalDateString,
@@ -94,8 +95,12 @@ export type StockDocumentCreateValues = StockDocumentFormValues;
 // Update — лише notes/documentDate/lines (type/branch/warehouse незмінні після створення;
 // service дозволяє редагувати лише DRAFT і не приймає зміну type). Cross-field TRANSFER
 // не рефайнимо тут — targetWarehouse фіксований з create.
+/** Текстові поля складського документа, які картка може очистити (PATCH: '' / null → null). */
+export const STOCK_DOCUMENT_CLEARABLE_FIELDS = ['notes'] as const;
+export type StockDocumentClearableField = (typeof STOCK_DOCUMENT_CLEARABLE_FIELDS)[number];
+
 export const stockDocumentUpdateSchema = z.object({
-  notes: optionalString(),
+  notes: clearableString(),
   documentDate: optionalDateString(),
   lines: z.array(stockDocumentLineSchema).optional(),
 });

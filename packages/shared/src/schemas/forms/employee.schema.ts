@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { optionalString, emptyToUndefined } from '../validators';
+import { clearableString, optionalString, emptyToUndefined } from '../validators';
 
 /**
  * Плоске числове поле форми, чия обовʼязковість залежить від rateType.
@@ -212,5 +212,17 @@ export const employeeCreateSchema = z.object({
 });
 export type EmployeeCreateValues = z.infer<typeof employeeCreateSchema>;
 
-export const employeeUpdateSchema = z.object({ ...employeeBaseFields }).partial();
+/** Поля співробітника, які картка може очистити (PATCH: '' / null → null; сервіс дати мапить у null). */
+export const EMPLOYEE_CLEARABLE_FIELDS = ['phone', 'email', 'dateOfHire', 'dateOfFire'] as const;
+export type EmployeeClearableField = (typeof EMPLOYEE_CLEARABLE_FIELDS)[number];
+
+export const employeeUpdateSchema = z
+  .object({
+    ...employeeBaseFields,
+    phone: clearableString(),
+    email: clearableString(),
+    dateOfHire: clearableString(),
+    dateOfFire: clearableString(),
+  })
+  .partial();
 export type EmployeeUpdateValues = z.infer<typeof employeeUpdateSchema>;

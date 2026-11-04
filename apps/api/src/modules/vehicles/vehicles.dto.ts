@@ -13,20 +13,34 @@ import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
 import type { VehicleMileagePoint } from '@sto/shared';
 // ─── Vehicle ─────────────────────────────────────────────
 
-/** Поля авто, необовʼязкові і при створенні, і при оновленні (спільна основа двох DTO). */
+/**
+ * Поля авто, необовʼязкові і при створенні, і при оновленні (спільна основа двох DTO). Текстові —
+ * `| null`: PATCH очищає їх null-ом (`vehicleUpdateSchema`, '' / null → null).
+ */
 class VehicleOptionalFieldsDto {
-  @ApiPropertyOptional() @IsOptional() @IsString() vin?: string;
-  @ApiPropertyOptional() @IsOptional() @IsString() licensePlate?: string;
+  @ApiPropertyOptional({ type: String, nullable: true }) @IsOptional() @IsString() vin?:
+    string | null;
+  @ApiPropertyOptional({ type: String, nullable: true }) @IsOptional() @IsString() licensePlate?:
+    string | null;
   @ApiPropertyOptional() @IsOptional() @IsInt() year?: number;
   @ApiPropertyOptional() @IsOptional() engineVolume?: number;
-  @ApiPropertyOptional() @IsOptional() @IsString() fuelType?: string;
+  @ApiPropertyOptional({ type: String, nullable: true }) @IsOptional() @IsString() fuelType?:
+    string | null;
   @ApiPropertyOptional() @IsOptional() @IsInt() @Min(0) currentMileage?: number;
-  @ApiPropertyOptional() @IsOptional() @IsString() color?: string;
-  @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
-  @ApiPropertyOptional() @IsOptional() @IsString() transmissionType?: string;
-  @ApiPropertyOptional() @IsOptional() @IsString() driveType?: string;
-  @ApiPropertyOptional() @IsOptional() @IsString() bodyType?: string;
-  @ApiPropertyOptional() @IsOptional() @IsString() engineCode?: string;
+  @ApiPropertyOptional({ type: String, nullable: true }) @IsOptional() @IsString() color?:
+    string | null;
+  @ApiPropertyOptional({ type: String, nullable: true }) @IsOptional() @IsString() notes?:
+    string | null;
+  @ApiPropertyOptional({ type: String, nullable: true })
+  @IsOptional()
+  @IsString()
+  transmissionType?: string | null;
+  @ApiPropertyOptional({ type: String, nullable: true }) @IsOptional() @IsString() driveType?:
+    string | null;
+  @ApiPropertyOptional({ type: String, nullable: true }) @IsOptional() @IsString() bodyType?:
+    string | null;
+  @ApiPropertyOptional({ type: String, nullable: true }) @IsOptional() @IsString() engineCode?:
+    string | null;
   @ApiPropertyOptional()
   @IsOptional()
   @Transform(emptyToUndefined)

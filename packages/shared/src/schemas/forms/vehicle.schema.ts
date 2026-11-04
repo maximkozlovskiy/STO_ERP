@@ -1,5 +1,11 @@
 import { z } from 'zod';
-import { optionalString, optionalUuid, optionalDateString, emptyToUndefined } from '../validators';
+import {
+  clearableString,
+  optionalString,
+  optionalUuid,
+  optionalDateString,
+  emptyToUndefined,
+} from '../validators';
 
 /**
  * Спільна zod-схема автомобіля (Vehicle) — ЄДИНЕ джерело правди web ↔ api.
@@ -116,11 +122,40 @@ export const vehicleCreateSchema = z.object({
 export type VehicleCreateValues = z.infer<typeof vehicleCreateSchema>;
 
 /**
+ * Текстові поля авто, які картка може очистити (PATCH: '' / null → null). Числа й дати (рік, обʼєм,
+ * пробіг, страховка, техогляд) — поза цим переліком: їх очищення — окремий пункт TECH-DEBT.
+ */
+export const VEHICLE_CLEARABLE_FIELDS = [
+  'vin',
+  'licensePlate',
+  'fuelType',
+  'color',
+  'notes',
+  'transmissionType',
+  'driveType',
+  'bodyType',
+  'engineCode',
+] as const;
+export type VehicleClearableField = (typeof VEHICLE_CLEARABLE_FIELDS)[number];
+
+/**
  * Бек-update (PATCH): без customerGarageId (перенос гаража неможливий), усі поля опційні. Нова
- * марка — лише разом із моделлю: стара модель їй не належить (BR-VEH-008).
+ * марка — лише разом із моделлю: стара модель їй не належить (BR-VEH-008). Текстове поле з
+ * `VEHICLE_CLEARABLE_FIELDS`: '' / null → null (очистити), ключа немає → не чіпати.
  */
 export const vehicleUpdateSchema = z
-  .object(vehicleBaseShape)
+  .object({
+    ...vehicleBaseShape,
+    vin: clearableString(),
+    licensePlate: clearableString(),
+    fuelType: clearableString(),
+    color: clearableString(),
+    notes: clearableString(),
+    transmissionType: clearableString(),
+    driveType: clearableString(),
+    bodyType: clearableString(),
+    engineCode: clearableString(),
+  })
   .partial()
   .refine(v => v.makeId === undefined || v.modelId !== undefined, {
     message: 'v.vehicle.model.required',

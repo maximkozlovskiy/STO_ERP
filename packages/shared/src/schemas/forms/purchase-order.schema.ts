@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import {
+  clearableString,
   optionalString,
   optionalUuid,
   optionalDateString,
@@ -66,12 +67,16 @@ const nullableTrackingField = z.preprocess(
   z.union([z.string().max(64, 'v.purchaseOrder.trackingNumber.max'), z.null()]).optional(),
 );
 
-// Update — усі поля опційні; contractId/trackingNumber nullable (null очищає).
+/** Текстові поля замовлення, які картка може очистити (PATCH: '' / null → null). */
+export const PURCHASE_ORDER_CLEARABLE_FIELDS = ['notes'] as const;
+export type PurchaseOrderClearableField = (typeof PURCHASE_ORDER_CLEARABLE_FIELDS)[number];
+
+// Update — усі поля опційні; contractId/trackingNumber nullable (null очищає), notes: '' / null → null.
 export const purchaseOrderUpdateSchema = z.object({
   supplierId: optionalUuid(),
   warehouseId: optionalUuid(),
   contractId: nullableUuidField,
-  notes: optionalString(),
+  notes: clearableString(),
   documentDate: optionalDateString(),
   currencyId: optionalUuid(),
   paymentDate: optionalDateString(),
