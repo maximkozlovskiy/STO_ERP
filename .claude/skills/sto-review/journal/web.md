@@ -674,3 +674,12 @@ shared). Кожен винесений хелпер зсував межі СТА
 `findSeqRef` у ефекті, дія запам'ятовує покоління (`createdInSeqRef`), ефект не скидає стан у `null`
 для свого покоління; тест `useWorkOrderActions.invoice-find.test.ts` (відкладені проміси, мутацією
 червоніє). **Severity:** IMPORTANT
+
+### 2026-11-05 — Число 0 у дефолті форми через truthy стає `null` у PATCH — §8
+
+**Сигнал:** `engineVolume` став очищуваним (`VEHICLE_CLEARABLE_FIELDS`), а картка авто заповнювала форму
+`vehicle.engineVolume ? String(vehicle.engineVolume) : ''`. Обʼєм 0 (електромобіль) → '' → `patchBodyWithClears`
+бачить «мало значення (0) і стало порожнім» → `engineVolume: null` при збереженні без змін.
+**Grep:** `grep -rnE "\? String\([a-zA-Z.?]+\) : ''" apps/web/src --include=*.tsx | grep -v "!= null\|!== null"`
+**Фікс:** `!= null ? String(x) : ''`; тест `vehicles/[id]/__tests__/PageClient.clear-fields.test.tsx`
+(«обʼєм 0 … не null», мутацією червоніє). **Severity:** IMPORTANT

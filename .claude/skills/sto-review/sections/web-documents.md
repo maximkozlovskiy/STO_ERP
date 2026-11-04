@@ -231,6 +231,8 @@ cd apps/web && npx eslint "src/app/(app)/<сторінка>/page.tsx" | grep "'s
 grep -rnE "method: 'PATCH'" -A2 apps/web/src --include=*.tsx | grep -E "JSON.stringify\(values\)"
 # Схема PATCH, побудована з полів форми: '' і null → undefined, очистити поле неможливо
 grep -rnE "UpdateSchema = z" -A3 packages/shared/src/schemas/forms/*.ts
+# Числове поле в CLEARABLE: дефолт форми через truthy (`x ? String(x) : ''`) робить 0 порожнім → null
+grep -rnE "\? String\([a-zA-Z.?]+\) : ''" apps/web/src --include=*.tsx | grep -v "!= null\|!== null"
 ```
 
 - [ ] Форма редагування шле `JSON.stringify(values)`, а схема форми робить '' → `undefined` → очищене
@@ -238,3 +240,6 @@ grep -rnE "UpdateSchema = z" -A3 packages/shared/src/schemas/forms/*.ts
       `null` для порожнього рядка, а форма — слати `null` лише для поля, що МАЛО значення (модалку
       відкривають і з рядка списку без цих полів: `null` для них стер би збережене). Взірець —
       `counterpartyUpdateSchema` + `counterpartyPatchBody` (`journal/web.md`, 2026-11-01)
+- [ ] Числове поле з `*_CLEARABLE_FIELDS` заповнює форму через `!= null`, не truthy: `engineVolume ?
+    String(…) : ''` робив обʼєм 0 порожнім, а `patchBodyWithClears` (0 — значення) слав `null` при
+      КОЖНОМУ збереженні картки авто (`journal/web.md`, 2026-11-05)
