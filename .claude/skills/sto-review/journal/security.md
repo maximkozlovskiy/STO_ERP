@@ -275,3 +275,14 @@ failed-задачу, нова не ставилась, замовлення ви
 **Severity:** IMPORTANT. Не виправлено (той самий клас, ширше за Г2): `POST /cash-registers/:id/operations`
 читає рядок каси `readRowOf` ПІСЛЯ коміту оплати (клієнта й постачальнику) — збій читання звільняє ключ, і
 повтор проведе другу оплату. `confirm` чернетки безпечний: повтор упирається в CAS статусу (400).
+
+### 2026-11-04 — Дата в Zod-схемі як рядок → Prisma 500 — §2.3
+
+**Сигнал:** блок «очищення полів у картках» перевів `dateOfHire` / `dateOfFire` у
+`employeeUpdateSchema` на `clearableString()` (раніше `optionalString()` — та сама вада): `'not-a-date'`
+проходив `ZodValidationPipe`, `EmployeesService.applyUpdate` робив `new Date('not-a-date')`, Prisma
+падала 500 замість 400. **Grep:**
+`grep -rnE "(date|Date|At|Expiry)\w*: (optional|clearable)String\(\)" packages/shared/src/schemas` —
+лишився збіг у `employeeFormSchema` (лише web-форма з DatePicker, на бек не йде). **Фікс:**
+`clearableDateString()` у `validators.ts` (PATCH), `optionalDateString()` у бек-схемі створення; тест
+`employees.update-clear.spec.ts` «не дата → 400», доведено мутацією. **Severity:** IMPORTANT.
