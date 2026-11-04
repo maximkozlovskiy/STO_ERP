@@ -70,8 +70,9 @@ UI підписки на бот (автоматизація блок 4): вкл�
 | HTTP-контракт (DTO, статуси, валідація)                                                                                                                                                                 | `employees.contract.spec.ts`             | 26     |
 | видалення: блок за активним нарядом, каскад                                                                                                                                                             | `employees.remove-guard.spec.ts`         | 3      |
 | довідники картки наряду: механік — 200, лише id та ім'я активних механіків і id/номер/тип договору; приймальня й комірник — звужені налаштування й ставки ПДВ; інші ролі — повні відповіді; зміни — 403 | `employees.mechanic-lookups.spec.ts`     | 33     |
+| PATCH: очищені телефон, e-mail, дати прийому й звільнення — '' / null → `null`, нечіпане не пишеться (TECH-DEBT (а))                                                                                    | `employees.update-clear.spec.ts`         | 5      |
 
-Разом: **131** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **136** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
 Поза модулем: BR-EMP-003 — `apps/api/src/common/utils/like-pattern.sites.spec.ts` (емулятор `ILIKE`
 виконує `where` пошуку `findAll`; сканер сирих умов).

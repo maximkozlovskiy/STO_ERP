@@ -241,4 +241,60 @@ test.describe('Автомобілі', () => {
     const delModel = await call('DELETE', `/vehicle-models/${modelId}`);
     expect.soft(delModel.status, 'видалення моделі').toBe(204);
   });
+
+  // TECH-DEBT (а) 2026-11-01: очищені у картці колір і нотатки → PATCH 200, у БД лишались старі
+  // (схема PATCH робила з '' і null `undefined`). Авто створюється й редагується через UI;
+  // через API — лише модель у довіднику (передумова) і читання результату.
+  test('картка авто — очищені колір і нотатки зберігаються як порожні (null у БД)', async ({
+    page,
+  }) => {
+    expect(garageId).toBeTruthy();
+    await page.goto(`/vehicles/new?garageId=${garageId}`);
+    await expect(page.locator('h1:has-text("Новий автомобіль")')).toBeVisible({ timeout: 20_000 });
+    const token = await getToken(page);
+    const call: ApiCaller = (method, url, data) => apiCall(page, token, method, url, data);
+    const modelName = `000 E2E clr ${Date.now().toString().slice(-6)}`;
+    const { modelId } = await ensureVehicleModel(call, 'Toyota', modelName);
+    let createdId = '';
+
+    try {
+      await searchVehicleDirectory(page, 'make', 'toyo', 'Toyota');
+      await pickVehicleDirectory(page, page, 'model', modelName);
+      await page.getByLabel('Колір').fill('Синій');
+      await page.getByLabel('Нотатки').fill('000 E2E нотатки');
+      await page
+        .locator('button:has-text("Створити"), button:has-text("Зберегти"), button[type="submit"]')
+        .first()
+        .click();
+      await page.waitForURL(/\/vehicles\/[0-9a-f-]{36}\/?$/, { timeout: 15_000 });
+      createdId = /\/vehicles\/([0-9a-f-]{36})/.exec(page.url())?.[1] ?? '';
+      await expect(page.getByText('000 E2E нотатки')).toBeVisible({ timeout: 20_000 });
+
+      await page.getByRole('button', { name: 'Редагувати' }).click();
+      const dialog = page.getByRole('dialog');
+      await expect(dialog.getByLabel('Колір')).toHaveValue('Синій');
+      await dialog.getByLabel('Колір').fill('');
+      await dialog.getByLabel('Нотатки').fill('');
+      const patch = page.waitForResponse(
+        r => r.url().endsWith(`/vehicles/${createdId}`) && r.request().method() === 'PATCH',
+      );
+      await dialog.getByRole('button', { name: 'Зберегти' }).click();
+      const response = await patch;
+      expect(response.status()).toBe(200);
+      expect(response.request().postDataJSON()).toMatchObject({ color: null, notes: null });
+      await expect(dialog).toBeHidden();
+      await expect(page.getByText('000 E2E нотатки')).toHaveCount(0);
+
+      const saved = await call('GET', `/vehicles/${createdId}`);
+      expect(saved.status).toBe(200);
+      expect(saved.body).toMatchObject({ color: null, notes: null });
+    } finally {
+      if (createdId) {
+        const del = await call('DELETE', `/vehicles/${createdId}`);
+        expect.soft(del.status, 'видалення авто').toBe(204);
+      }
+      const delModel = await call('DELETE', `/vehicle-models/${modelId}`);
+      expect.soft(delModel.status, 'видалення моделі').toBe(204);
+    }
+  });
 });

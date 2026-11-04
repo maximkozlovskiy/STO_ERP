@@ -664,6 +664,52 @@ describe('CounterpartyEditModal — CRUD авто (BR-CP-007)', () => {
     expect(screen.queryByText('Toyota Camry')).toBeNull();
   });
 
+  // TECH-DEBT (а) 2026-11-01: очищений VIN раніше зникав із JSON ('' → undefined), PATCH 200.
+  // Оригінал — значення, якими олівець заповнив форму: поля, яких рядок списку не має (колір,
+  // нотатки), не стираються. Мутація: `JSON.stringify(payload)` → кейс червоніє.
+  it('редагування: очищений VIN → vin: null; колір і нотатки, яких рядок не має, — відсутні', async () => {
+    const api = mountApi({
+      garages: { 'cp-1': [{ id: 'g-1' }] },
+      vehicles: {
+        'cp-1': [
+          {
+            id: 'v-1',
+            makeId: '0a000000-0000-4000-8000-00000000a002',
+            modelId: '0a000000-0000-4000-8000-00000000b003',
+            make: 'Toyota',
+            model: 'Camry',
+            year: 2018,
+            licensePlate: 'AA1234BB',
+            vin: 'JTDBE32K123456789',
+          },
+        ],
+      },
+    });
+    api.on('PATCH /vehicles/v-1', () => ({
+      id: 'v-1',
+      makeId: '0a000000-0000-4000-8000-00000000a002',
+      modelId: '0a000000-0000-4000-8000-00000000b003',
+      make: 'Toyota',
+      model: 'Camry',
+      year: 2018,
+      licensePlate: 'AA1234BB',
+      vin: null,
+    }));
+    renderModal(cp('CLIENT'));
+    await openTab('Авто');
+
+    fireEvent.click(within(row('Toyota Camry')).getByTitle('Редагувати'));
+    const vin = await screen.findByDisplayValue('JTDBE32K123456789');
+    fireEvent.change(vin, { target: { value: '' } });
+    fireEvent.click(formButton('Оновити'));
+
+    await waitFor(() => expect(api.mutations()).toHaveLength(1));
+    const body = api.mutations()[0]!.body!;
+    expect(body).toMatchObject({ vin: null, licensePlate: 'AA1234BB' });
+    expect(body).not.toHaveProperty('color');
+    expect(body).not.toHaveProperty('notes');
+  });
+
   // guards: BR-CP-007
   it('видалення: підтвердження → DELETE /vehicles/:id, рядок зникає; відмова → нічого', async () => {
     const api = mountApi({

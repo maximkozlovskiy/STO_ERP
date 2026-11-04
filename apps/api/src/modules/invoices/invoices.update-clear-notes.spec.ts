@@ -1,0 +1,70 @@
+/**
+ * InvoicesService.update — очищення нотаток чернетки рахунку
+ *
+ * Аспект: картка рахунку очищає «Примітки» → PATCH 200, а в БД лишалось старе значення
+ * (TECH-DEBT (а) 2026-11-01). Дві причини: `invoiceUpdateSchema` робив з '' і null `undefined`,
+ * а сервіс писав `notes: dto.notes ?? undefined` — навіть явний `null` до Prisma не доходив.
+ * Тепер: '' / null → `null` у `prisma.invoice.update`; ключа немає → `notes` не чіпається.
+ *
+ * Сетап — `makeInvoicesHarness()` з `./invoices.spec-fixture`; тіло проходить ту саму
+ * `ZodValidationPipe(invoiceUpdateSchema)`, що й контролер.
+ */
+
+import { describe, it, expect, beforeEach } from 'vitest';
+import { invoiceUpdateSchema, type InvoiceUpdateValues } from '@sto/shared';
+import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
+import { makeInvoicesHarness, ORG, INV_ID, type InvoicesHarness } from './invoices.spec-fixture';
+
+const pipe = (body: Record<string, unknown>) =>
+  new ZodValidationPipe<InvoiceUpdateValues>(invoiceUpdateSchema).transform(body);
+
+describe('InvoicesService — update: очищення нотаток', () => {
+  let service: InvoicesHarness['service'];
+  let prisma: InvoicesHarness['prisma'];
+
+  beforeEach(async () => {
+    ({ service, prisma } = await makeInvoicesHarness());
+    prisma.invoice.findFirst.mockResolvedValue({
+      status: 'DRAFT',
+      counterpartyId: null,
+      workOrderId: null,
+    });
+    prisma.invoice.update.mockResolvedValue({
+      id: INV_ID,
+      orgId: ORG,
+      number: 'INV-2026-0001',
+      status: 'DRAFT',
+      amount: 100,
+      notes: null,
+      dueDate: null,
+      deletedAt: null,
+      totalWithoutVat: 0,
+      totalVat: 0,
+      totalWithVat: 0,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      workOrderId: null,
+      counterpartyId: null,
+      counterparty: { firstName: null, lastName: null, companyName: 'ТОВ' },
+      workOrder: null,
+    });
+  });
+
+  const writtenData = (): Record<string, unknown> =>
+    (prisma.invoice.update.mock.calls[0][0] as { data: Record<string, unknown> }).data;
+
+  it.each([[''], [null]])('notes %j з картки → notes: null у prisma.invoice.update', async raw => {
+    await service.update(ORG, INV_ID, pipe({ notes: raw }));
+    expect(writtenData()).toHaveProperty('notes', null);
+  });
+
+  it('notes не передано → поле не чіпається (undefined у data)', async () => {
+    await service.update(ORG, INV_ID, pipe({ amount: 100 }));
+    expect(writtenData().notes).toBeUndefined();
+  });
+
+  it('нове значення нотаток пишеться як є', async () => {
+    await service.update(ORG, INV_ID, pipe({ notes: 'Оплата до п’ятниці' }));
+    expect(writtenData().notes).toBe('Оплата до п’ятниці');
+  });
+});

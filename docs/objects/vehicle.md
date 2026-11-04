@@ -181,8 +181,9 @@ cd apps/api && npx vitest run src/modules/vehicles/<файл>.spec.ts
 | довідник: видалення, відновлення, злиття (BR-VEH-009…011)                                                                                                  | `vehicle-makes.delete-merge.spec.ts` | 11     |
 | HTTP-контракт довідника: ролі всіх маршрутів, UUID, zod (BR-VEH-013)                                                                                       | `vehicle-makes.contract.spec.ts`     | 88     |
 | стартовий список марок: код ↔ SQL міграції ↔ dev/CI seed (BR-VEH-012)                                                                                      | `vehicle-make-defaults.spec.ts`      | 4      |
+| PATCH: очищене текстове поле (VIN, номер, колір, нотатки…) — '' / null → `null` у записі, нечіпане не пишеться (TECH-DEBT (а))                             | `vehicles.update-clear.spec.ts`      | 10     |
 
-Разом: **192** кейси (цифри з `vitest --reporter=json`, не з grep).
+Разом: **202** кейси (цифри з `vitest --reporter=json`, не з grep).
 
 Поза модулями правила довідника стережуть ще:
 
