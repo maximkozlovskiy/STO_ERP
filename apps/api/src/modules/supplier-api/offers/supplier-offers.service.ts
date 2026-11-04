@@ -65,11 +65,25 @@ const REQUEST_INCLUDE = {
       enabled: true,
       deletedAt: true,
       catalogSyncedAt: true,
-      counterparty: { select: { firstName: true, lastName: true, companyName: true } },
+      counterparty: {
+        select: { firstName: true, lastName: true, companyName: true, deletedAt: true },
+      },
     },
   },
 } as const satisfies Prisma.SupplierOfferRequestInclude;
 type RequestRow = Prisma.SupplierOfferRequestGetPayload<{ include: typeof REQUEST_INCLUDE }>;
+
+/**
+ * BR-SOFR-011: підключення бере участь у виборі, лише коли воно увімкнене, не видалене і його
+ * контрагент не видалений (DELETE контрагента підключень не чіпає).
+ */
+function isConnectionLive(c: {
+  enabled: boolean;
+  deletedAt: Date | null;
+  counterparty: { deletedAt: Date | null };
+}): boolean {
+  return c.enabled && !c.deletedAt && !c.counterparty.deletedAt;
+}
 
 /** Межа пропозицій на один запит у відповіді (постачальник може віддати сотні складів). */
 const OFFERS_PER_REQUEST = 200;
@@ -413,7 +427,16 @@ export class SupplierOffersService {
     if (!isItemOpen(item)) throw new BadRequestException(err('err.purchaseList.itemNotOpen'));
     const offer = await this.prisma.supplierOffer.findFirst({
       where: { id: offerId, orgId, deletedAt: null },
-      include: { connection: { select: { counterpartyId: true, enabled: true, deletedAt: true } } },
+      include: {
+        connection: {
+          select: {
+            counterpartyId: true,
+            enabled: true,
+            deletedAt: true,
+            counterparty: { select: { deletedAt: true } },
+          },
+        },
+      },
     });
     const ownRequest = offer
       ? await this.offerRequestOfItem(orgId, item.id, offer.requestId)
@@ -421,7 +444,7 @@ export class SupplierOffersService {
     if (!offer || !ownRequest) {
       throw new NotFoundException(err('err.supplierApi.offerNotFound'));
     }
-    if (!offer.connection.enabled || offer.connection.deletedAt) {
+    if (!isConnectionLive(offer.connection)) {
       throw new BadRequestException(err('err.supplierApi.connectionDisabled'));
     }
     const s = await this.settings.getOrganisationSettings(orgId);
@@ -678,7 +701,7 @@ export class SupplierOffersService {
             matchedGoodId: o.matchedGoodId,
             itemSource: item.source,
             itemOpen,
-            connectionDisabled: !r.connection.enabled || !!r.connection.deletedAt,
+            connectionDisabled: !isConnectionLive(r.connection),
             policy: s.policy,
             priceUah,
           });

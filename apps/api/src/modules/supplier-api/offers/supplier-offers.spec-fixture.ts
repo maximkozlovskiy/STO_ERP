@@ -274,7 +274,10 @@ export function offersHarness(opts: OffersHarnessOptions = {}) {
     },
   );
   add('supplierOffer', [], () => ({ createdAt: tick(), deletedAt: null }), {
-    connection: r => byId('supplierConnection', r.connectionId),
+    connection: r => {
+      const c = byId('supplierConnection', r.connectionId);
+      return c ? { ...c, counterparty: byId('counterparty', c.counterpartyId) } : null;
+    },
   });
   add('supplierCatalogItem', []);
   add('integrationLog', []);

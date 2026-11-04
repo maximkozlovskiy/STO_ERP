@@ -165,6 +165,22 @@ describe('Вибір пропозиції (BR-SOFR-006)', () => {
     await expect(h.service.chooseOffer(ORG, ITEM_MANUAL, own)).rejects.toThrow(BadRequestException);
   });
 
+  // guards: BR-SOFR-011
+  it('контрагент підключення видалений після пошуку — у діалозі не обирається, вибір → 400', async () => {
+    const h = setup();
+    const offerId = withOffer(h, ITEM_MANUAL);
+    h.t.counterparty.rows.find(r => r.id === SUP_UTR)!.deletedAt = new Date();
+    const view = await h.service.itemOffers(ORG, ITEM_MANUAL, 'OWNER');
+    expect(view.requests[0]!.offers[0]).toMatchObject({
+      selectable: false,
+      notSelectableReason: 'connectionDisabled',
+    });
+    await expect(h.service.chooseOffer(ORG, ITEM_MANUAL, offerId)).rejects.toThrow(
+      BadRequestException,
+    );
+    expect(item(h, ITEM_MANUAL).offerKey).toBeNull();
+  });
+
   it('пропозиція з кешу (запит позиції посилається на чужий виконаний) — обирається', async () => {
     const h = setup();
     const offerId = withOffer(h, ITEM_WO);
