@@ -22,7 +22,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { InvoiceStatus, WorkOrderStatus } from '@prisma/client';
 import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
 import { csvArray } from '../../common/transforms/csv-array';
-import { CalendarDateParam } from '../../common/dto/list-query.decorators';
+import { ClearableTextParam, CalendarDateParam } from '../../common/dto/list-query.decorators';
 import { LinkedPaymentRowDto } from '../../common/dto/linked-payment-row.dto';
 
 export class CreateInvoiceDto {
@@ -76,9 +76,7 @@ export class UpdateInvoiceDto {
   @Transform(emptyToUndefined)
   @IsDateString()
   dueDate?: string;
-  @ApiPropertyOptional({ type: String, nullable: true, description: 'null / "" → очистити' })
-  @IsOptional()
-  @IsString()
+  @ClearableTextParam()
   notes?: string | null;
 
   @ApiPropertyOptional({ description: 'Дата документа (YYYY-MM-DD)' })

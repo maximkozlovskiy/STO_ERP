@@ -3084,6 +3084,19 @@
    "EmployeesService.remove — cascade guard (active work orders) дозволяє звільнення співробітника без активних нарядів (soft-delete + каскад AuthAccount)",
    "EmployeesService.remove — cascade guard (active work orders) співробітник не існує (guard пройдено, updateMany count=0) → NotFoundException"
   ],
+  "apps/api/src/modules/employees/employees.update-clear.spec.ts": [
+   "EmployeesService.update — очищення полів dateOfFire = 0000-01-01 → 400 від pipe, у базу нічого не йде",
+   "EmployeesService.update — очищення полів dateOfFire = 99999-01-01 → 400 від pipe, у базу нічого не йде",
+   "EmployeesService.update — очищення полів dateOfFire: '' з картки → null у employee.update",
+   "EmployeesService.update — очищення полів dateOfFire: не дата → 400 від pipe, у базу нічого не йде",
+   "EmployeesService.update — очищення полів dateOfHire = 2026-02-31 → 400 від pipe, у базу нічого не йде",
+   "EmployeesService.update — очищення полів dateOfHire = hello 5 → 400 від pipe, у базу нічого не йде",
+   "EmployeesService.update — очищення полів dateOfHire: '' з картки → null у employee.update",
+   "EmployeesService.update — очищення полів dateOfHire: не дата → 400 від pipe, у базу нічого не йде",
+   "EmployeesService.update — очищення полів email: '' з картки → null у employee.update",
+   "EmployeesService.update — очищення полів phone: '' з картки → null у employee.update",
+   "EmployeesService.update — очищення полів телефон очищено (null) — e-mail і дати, яких не чіпали, не потрапляють у data"
+  ],
   "apps/api/src/modules/exchange-rates/exchange-rates.contract.spec.ts": [
    "ExchangeRates — HTTP Contract GET /exchange-rates passes from/to/currencyId filters to service",
    "ExchangeRates — HTTP Contract GET /exchange-rates → 200 + { items, total }",
@@ -3396,7 +3409,7 @@
    "GoodsService update Bug #161: update з чужим brandId → BadRequestException, без update",
    "GoodsService update sku змінюється → skuNormalized перераховується (SOT)",
    "GoodsService update sku не передано → skuNormalized НЕ у data (не чіпаємо)",
-   "GoodsService update sku очищується (порожній рядок) → skuNormalized=null",
+   "GoodsService update sku очищується (null — goodUpdateSchema робить його з порожнього) → sku і skuNormalized=null",
    "GoodsService update оновлює товар коли FK не передані"
   ],
   "apps/api/src/modules/goods/goods.statuses.spec.ts": [
@@ -3980,6 +3993,12 @@
    "InvoicesService — transition-settlements transition — manual PAID + дзеркальний PAYMENT для standalone (Bug #675) standalone SENT→PAID: paidAmount=amount + дзеркальний PAYMENT на весь залишок (Bug #675 fix)",
    "InvoicesService — transition-settlements transition — manual PAID + дзеркальний PAYMENT для standalone (Bug #675) іновалютний standalone PARTIALLY_PAID→PAID: FX-проводка обнуляє base-залишок (Bug #745)",
    "InvoicesService — transition-settlements transition — manual PAID + дзеркальний PAYMENT для standalone (Bug #675) іновалютний ручний →PAID, чиста FX ≠ 0 (FX_GAIN 30 не відкочено) → повторно НЕ бронюється (Bug #745 idempotency)"
+  ],
+  "apps/api/src/modules/invoices/invoices.update-clear-notes.spec.ts": [
+   "InvoicesService — update: очищення нотаток notes \"\" з картки → notes: null у prisma.invoice.update",
+   "InvoicesService — update: очищення нотаток notes null з картки → notes: null у prisma.invoice.update",
+   "InvoicesService — update: очищення нотаток notes не передано → поле не чіпається (undefined у data)",
+   "InvoicesService — update: очищення нотаток нове значення нотаток пишеться як є"
   ],
   "apps/api/src/modules/invoices/invoices.update-counterparty.spec.ts": [
    "InvoicesService — update: зміна контрагента контрагента немає в цій org (чужий або видалений) → 404, рахунок не пишеться",
@@ -7785,6 +7804,18 @@
    "VehiclesService restore — марка й модель авто живі (BR-VEH-014) модель авто видалено (марка жива) → 400, авто не відновлюється",
    "VehiclesService restore — марка й модель авто живі (BR-VEH-014) пара читається в транзакції під спільним блокуванням довідника, до гаража; обидві живі → відновлено"
   ],
+  "apps/api/src/modules/vehicles/vehicles.update-clear.spec.ts": [
+   "VehiclesService.update — очищення текстових полів bodyType: '' з картки → null у prisma.vehicle.update",
+   "VehiclesService.update — очищення текстових полів color: '' з картки → null у prisma.vehicle.update",
+   "VehiclesService.update — очищення текстових полів driveType: '' з картки → null у prisma.vehicle.update",
+   "VehiclesService.update — очищення текстових полів engineCode: '' з картки → null у prisma.vehicle.update",
+   "VehiclesService.update — очищення текстових полів fuelType: '' з картки → null у prisma.vehicle.update",
+   "VehiclesService.update — очищення текстових полів licensePlate: '' з картки → null у prisma.vehicle.update",
+   "VehiclesService.update — очищення текстових полів notes: '' з картки → null у prisma.vehicle.update",
+   "VehiclesService.update — очищення текстових полів transmissionType: '' з картки → null у prisma.vehicle.update",
+   "VehiclesService.update — очищення текстових полів vin: '' з картки → null у prisma.vehicle.update",
+   "VehiclesService.update — очищення текстових полів колір і нотатки очищено (null) — решта полів не потрапляє в data"
+  ],
   "apps/api/src/modules/warehouses/warehouses.contract.spec.ts": [
    "Warehouses — HTTP Contract DELETE /warehouses/:id 204 — soft delete",
    "Warehouses — HTTP Contract GET /warehouses 200 — масив з полем isMain у кожному елементі",
@@ -8320,6 +8351,7 @@
    "WORK_ORDER_TRANSITIONS — property-based invariants самоперехід (from === to) ніколи не дозволений"
   ],
   "apps/api/src/modules/work-orders/work-orders.line-update.spec.ts": [
+   "WorkOrdersService.updateLine — робота й виконавець рядка notes: null у чернетці → нотатки рядка очищаються (null доходить до update)",
    "WorkOrdersService.updateLine — робота й виконавець рядка виконавець чужої організації або видалений → 404, рядок не змінено",
    "WorkOrdersService.updateLine — робота й виконавець рядка добуток рівно на межі Decimal(12,2) → проходить (BR-FIN-MONEYCAP)",
    "WorkOrdersService.updateLine — робота й виконавець рядка зміна виконавця в наряді «В роботі» → 400: там правляться лише фактичні години",
@@ -8328,7 +8360,8 @@
    "WorkOrdersService.updateLine — робота й виконавець рядка нормогодини × ціна понад Decimal(12,2) → 400, рядок не оновлюється (BR-FIN-MONEYCAP)",
    "WorkOrdersService.updateLine — робота й виконавець рядка правка без роботи й виконавця (лише фактичні години) їх не чіпає",
    "WorkOrdersService.updateLine — робота й виконавець рядка робота чужої організації або видалена → 404, рядок не змінено",
-   "WorkOrdersService.updateLine — робота й виконавець рядка ті самі робота й виконавець (картка шле їх щоразу) → без перевірки існування, поля не чіпаються"
+   "WorkOrdersService.updateLine — робота й виконавець рядка ті самі робота й виконавець (картка шле їх щоразу) → без перевірки існування, поля не чіпаються",
+   "WorkOrdersService.updateLine — робота й виконавець рядка у «В роботі» notes: null разом із фактичними годинами → 400: це вже не «лише години»"
   ],
   "apps/api/src/modules/work-orders/work-orders.linked-payments.spec.ts": [
    "WorkOrdersService.getLinkedDocuments — рядок оплати для сторно (BR-PAY-024) select бере sourceType і onlinePaymentIntentId; відповідь — sourceType і isOnline, без id наміру",

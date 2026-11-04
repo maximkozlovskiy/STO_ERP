@@ -26,6 +26,7 @@ import { StockDocumentType, StockDocumentStatus } from '@prisma/client';
 import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
 import { CALENDAR_DATE_RE } from '../../common/utils/kyiv-date';
 import { LIST_SEARCH_MAX_LENGTH } from '../../common/utils/like-pattern';
+import { ClearableTextParam } from '../../common/dto/list-query.decorators';
 
 export class StockDocumentLineDto {
   @ApiProperty()
@@ -78,9 +79,7 @@ export class CreateStockDocumentDto {
 }
 
 export class UpdateStockDocumentDto {
-  @ApiPropertyOptional({ type: String, nullable: true, description: 'null / "" → очистити' })
-  @IsOptional()
-  @IsString()
+  @ClearableTextParam()
   notes?: string | null;
 
   @ApiPropertyOptional({ description: 'Дата документа (YYYY-MM-DD)' })

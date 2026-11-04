@@ -21,7 +21,7 @@ import { Type, Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { PurchaseOrderStatus, DeliveryStatus } from '@prisma/client';
 import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
-import { CalendarDateParam } from '../../common/dto/list-query.decorators';
+import { ClearableTextParam, CalendarDateParam } from '../../common/dto/list-query.decorators';
 
 export class TransitionPurchaseOrderDto {
   @ApiProperty({ enum: PurchaseOrderStatus })
@@ -121,9 +121,7 @@ export class UpdatePurchaseOrderDto {
   @IsUUID()
   contractId?: string | null;
 
-  @ApiPropertyOptional({ type: String, nullable: true, description: 'null / "" → очистити' })
-  @IsOptional()
-  @IsString()
+  @ClearableTextParam()
   notes?: string | null;
 
   @ApiPropertyOptional({ description: 'Дата документа (YYYY-MM-DD)' })

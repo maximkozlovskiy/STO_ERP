@@ -32,7 +32,7 @@ import {
 } from '@prisma/client';
 import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
 import { csvArray } from '../../common/transforms/csv-array';
-import { CalendarDateParam } from '../../common/dto/list-query.decorators';
+import { ClearableTextParam, CalendarDateParam } from '../../common/dto/list-query.decorators';
 import { LinkedPaymentRowDto } from '../../common/dto/linked-payment-row.dto';
 
 // ─── Work Order ───────────────────────────────────────────
@@ -115,9 +115,7 @@ export class CreateWorkOrderDto {
 }
 
 export class UpdateWorkOrderDto {
-  @ApiPropertyOptional({ type: String, nullable: true, description: 'null / "" → очистити' })
-  @IsOptional()
-  @IsString()
+  @ClearableTextParam()
   description?: string | null;
   @ApiPropertyOptional() @IsOptional() @IsInt() @Min(0) inMileage?: number;
   @ApiPropertyOptional() @IsOptional() @IsInt() @Min(0) outMileage?: number;

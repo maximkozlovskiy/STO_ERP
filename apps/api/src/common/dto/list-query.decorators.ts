@@ -8,6 +8,7 @@ import {
   IsIn,
   IsNumber,
   IsOptional,
+  IsString,
   Matches,
   Max,
   Min,
@@ -83,4 +84,15 @@ export const CalendarDateParam = (description: string) =>
     Transform(emptyToUndefined),
     Matches(CALENDAR_DATE_RE),
     IsDateString({ strict: true }),
+  );
+
+/**
+ * Текстове поле PATCH, яке можна очистити: `null` / '' → очистити, ключа немає → не чіпати (тіло валідує
+ * zod `clearableString()`; тут — опис для Swagger і тип). Один декоратор замість трьох на поле.
+ */
+export const ClearableTextParam = () =>
+  applyDecorators(
+    ApiPropertyOptional({ type: String, nullable: true, description: 'null / "" → очистити' }),
+    IsOptional(),
+    IsString(),
   );

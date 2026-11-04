@@ -19,6 +19,7 @@ import { Type, Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { SupplierReturnStatus } from '@prisma/client';
 import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
+import { ClearableTextParam } from '../../common/dto/list-query.decorators';
 
 export class SupplierReturnLineDto {
   @ApiProperty()
@@ -81,9 +82,7 @@ export class UpdateSupplierReturnDto {
   @IsUUID()
   warehouseId?: string;
 
-  @ApiPropertyOptional({ type: String, nullable: true, description: 'null / "" → очистити' })
-  @IsOptional()
-  @IsString()
+  @ClearableTextParam()
   notes?: string | null;
 
   @ApiPropertyOptional({ description: 'Дата документа (YYYY-MM-DD)' })
