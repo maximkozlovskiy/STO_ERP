@@ -29,6 +29,28 @@ const MILEAGE_HISTORY_LIMIT = 200;
  */
 const MILEAGE_HISTORY_FETCH_CAP = 2000;
 
+type VehicleDateFields = { insuranceExpiry?: string | null; inspectionExpiry?: string | null };
+
+/**
+ * Дати страховки й техогляду приходять рядком (`YYYY-MM-DD` з картки або ISO) і йдуть у Prisma як
+ * `Date`: рядок без часу Prisma відкидає («premature end of input» → 400), тож картка авто не могла
+ * зберегти жодної дати. `null` — очистити, ключа немає — не чіпати.
+ */
+function withVehicleDates<T extends VehicleDateFields>(
+  dto: T,
+): Omit<T, keyof VehicleDateFields> & {
+  insuranceExpiry?: Date | null;
+  inspectionExpiry?: Date | null;
+} {
+  const { insuranceExpiry, inspectionExpiry, ...rest } = dto;
+  const toDate = (v: string | null) => (v === null ? null : new Date(v));
+  return {
+    ...rest,
+    ...(insuranceExpiry !== undefined && { insuranceExpiry: toDate(insuranceExpiry) }),
+    ...(inspectionExpiry !== undefined && { inspectionExpiry: toDate(inspectionExpiry) }),
+  };
+}
+
 @Injectable()
 export class VehiclesService {
   constructor(
@@ -87,7 +109,7 @@ export class VehiclesService {
         if (garage.length === 0)
           throw new NotFoundException(translateError('err.vehicle.garageNotFound', getLocale()));
         const names = await resolveVehicleNames(tx, orgId, dto.makeId, dto.modelId);
-        return tx.vehicle.create({ data: { ...dto, ...names, orgId } });
+        return tx.vehicle.create({ data: { ...withVehicleDates(dto), ...names, orgId } });
       },
       { timeout: VEHICLE_WRITE_TX_TIMEOUT_MS },
     );
@@ -108,14 +130,20 @@ export class VehiclesService {
     // BR-VEH-008: нова марка — лише з моделлю; нова модель без марки — моделлю поточної марки.
     const pair = vehiclePairToWrite(dto, existing);
     if (!pair) {
-      const item = await this.prisma.vehicle.update({ where: { id, orgId }, data: dto });
+      const item = await this.prisma.vehicle.update({
+        where: { id, orgId },
+        data: withVehicleDates(dto),
+      });
       return this.toDto(item);
     }
     const item = await this.prisma.$transaction(
       async tx => {
         await lockVehicleDirectoryShared(tx, orgId);
         const names = await resolveVehicleNames(tx, orgId, pair.makeId, pair.modelId);
-        return tx.vehicle.update({ where: { id, orgId }, data: { ...dto, ...pair, ...names } });
+        return tx.vehicle.update({
+          where: { id, orgId },
+          data: { ...withVehicleDates(dto), ...pair, ...names },
+        });
       },
       { timeout: VEHICLE_WRITE_TX_TIMEOUT_MS },
     );

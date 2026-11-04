@@ -70,12 +70,12 @@ export class UpdateInvoiceDto {
   @Transform(emptyToUndefined)
   @IsUUID()
   counterpartyId?: string;
-  // emptyToUndefined gap у PATCH-шляху.
-  @ApiPropertyOptional()
+  /** null — очистити термін (`invoiceUpdateSchema`, '' / null → null); ключа немає — не чіпати. */
+  @ApiPropertyOptional({ type: String, nullable: true })
   @IsOptional()
   @Transform(emptyToUndefined)
   @IsDateString()
-  dueDate?: string;
+  dueDate?: string | null;
   @ClearableTextParam()
   notes?: string | null;
 

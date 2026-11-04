@@ -46,7 +46,10 @@ export type SupplierReturnFormInput = z.input<typeof supplierReturnFormSchema>;
 export const supplierReturnCreateSchema = supplierReturnFormSchema;
 export type SupplierReturnCreateValues = SupplierReturnFormValues;
 
-/** Текстові поля повернення, які картка може очистити (PATCH: '' / null → null). */
+/**
+ * Поля повернення, які картка може очистити (PATCH: '' / null → null). `documentDate` — NOT NULL
+ * (`@default(now()) @db.Date`), тому поза переліком: '' лишається «не чіпати».
+ */
 export const SUPPLIER_RETURN_CLEARABLE_FIELDS = ['notes'] as const;
 export type SupplierReturnClearableField = (typeof SUPPLIER_RETURN_CLEARABLE_FIELDS)[number];
 

@@ -534,7 +534,8 @@ export class InvoicesService {
       amount: dto.amount ?? undefined,
       invoiceType: dto.invoiceType ?? undefined,
       counterpartyId: dto.counterpartyId ?? undefined,
-      dueDate: dto.dueDate ? new Date(dto.dueDate) : undefined,
+      // null → очистити термін; undefined → не чіпати (`dto.dueDate ? … : undefined` ковтав null).
+      dueDate: dto.dueDate === null ? null : dto.dueDate ? new Date(dto.dueDate) : undefined,
       documentDate: dto.documentDate ? new Date(dto.documentDate) : undefined,
       // null → очистити нотатки; undefined → не чіпати (`?? undefined` ковтав очищення).
       notes: dto.notes,

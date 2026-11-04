@@ -1,10 +1,12 @@
 import { z } from 'zod';
 import {
+  clearableDateString,
+  clearableNumber,
   clearableString,
+  optionalNumber,
   optionalString,
   optionalUuid,
   optionalDateString,
-  emptyToUndefined,
 } from '../validators';
 
 /**
@@ -59,26 +61,20 @@ export function optionLabel(
 }
 
 /**
- * Опційний рік випуску: '' → undefined, '2015' → 2015. Діапазон 1900..поточний+1
- * (дзеркалить прибраний HTML `min=1900 max=2100` старих форм — без нього рік міг бути
- * будь-яким цілим: '50', '-100', '999999'). Верхня межа — наступний модельний рік.
+ * Рік випуску: '2015' → 2015. Діапазон 1900..поточний+1 (дзеркалить прибраний HTML `min=1900
+ * max=2100` старих форм — без нього рік міг бути будь-яким цілим: '50', '-100', '999999').
+ * Верхня межа — наступний модельний рік.
  */
-const optionalYear = () =>
-  z.preprocess(
-    emptyToUndefined,
-    z.coerce
-      .number()
-      .int('v.vehicle.year.int')
-      .min(1900, 'v.vehicle.year.min')
-      .max(new Date().getFullYear() + 1, 'v.vehicle.year.max')
-      .optional(),
-  );
-/** Опційне невідʼємне ціле (пробіг). */
-const optionalNonNegInt = () =>
-  z.preprocess(emptyToUndefined, z.coerce.number().int().min(0, 'v.vehicle.nonNegInt').optional());
-/** Опційне невідʼємне число (обʼєм двигуна, Float). */
-const optionalNonNegFloat = () =>
-  z.preprocess(emptyToUndefined, z.coerce.number().min(0, 'v.vehicle.nonNegFloat').optional());
+const yearNumber = () =>
+  z.coerce
+    .number()
+    .int('v.vehicle.year.int')
+    .min(1900, 'v.vehicle.year.min')
+    .max(new Date().getFullYear() + 1, 'v.vehicle.year.max');
+/** Невідʼємне ціле (пробіг). */
+const nonNegInt = () => z.coerce.number().int().min(0, 'v.vehicle.nonNegInt');
+/** Невідʼємне число (обʼєм двигуна, Float). */
+const nonNegFloat = () => z.coerce.number().min(0, 'v.vehicle.nonNegFloat');
 
 // Базові поля Vehicle (без customerGarageId — його додає create-схема окремо: update його не має).
 // Марка й модель — лише з довідників (BR-VEH-008): клієнт передає ідентифікатори, назву
@@ -88,10 +84,10 @@ const vehicleBaseShape = {
   modelId: z.string().uuid('v.vehicle.model.required'),
   vin: optionalString(),
   licensePlate: optionalString(),
-  year: optionalYear(),
-  engineVolume: optionalNonNegFloat(),
+  year: optionalNumber(yearNumber()),
+  engineVolume: optionalNumber(nonNegFloat()),
   fuelType: optionalString(),
-  currentMileage: optionalNonNegInt(),
+  currentMileage: optionalNumber(nonNegInt()),
   color: optionalString(),
   notes: optionalString(),
   transmissionType: optionalString(),
@@ -122,8 +118,9 @@ export const vehicleCreateSchema = z.object({
 export type VehicleCreateValues = z.infer<typeof vehicleCreateSchema>;
 
 /**
- * Текстові поля авто, які картка може очистити (PATCH: '' / null → null). Числа й дати (рік, обʼєм,
- * пробіг, страховка, техогляд) — поза цим переліком: їх очищення — окремий пункт TECH-DEBT.
+ * Поля авто, які картка може очистити (PATCH: '' / null → null) — усі колонки nullable. Пробіг теж:
+ * порожній пробіг — стан нового авто, завершення наряду його заповнює (`OR currentMileage: null`),
+ * а історію пробігу (BR-VEH-001) будують наряди, не це поле.
  */
 export const VEHICLE_CLEARABLE_FIELDS = [
   'vin',
@@ -135,13 +132,19 @@ export const VEHICLE_CLEARABLE_FIELDS = [
   'driveType',
   'bodyType',
   'engineCode',
+  'year',
+  'engineVolume',
+  'currentMileage',
+  'insuranceExpiry',
+  'inspectionExpiry',
 ] as const;
 export type VehicleClearableField = (typeof VEHICLE_CLEARABLE_FIELDS)[number];
 
 /**
  * Бек-update (PATCH): без customerGarageId (перенос гаража неможливий), усі поля опційні. Нова
- * марка — лише разом із моделлю: стара модель їй не належить (BR-VEH-008). Текстове поле з
- * `VEHICLE_CLEARABLE_FIELDS`: '' / null → null (очистити), ключа немає → не чіпати.
+ * марка — лише разом із моделлю: стара модель їй не належить (BR-VEH-008). Поле з
+ * `VEHICLE_CLEARABLE_FIELDS`: '' / null → null (очистити), ключа немає → не чіпати; число й дата —
+ * з тими ж межами, що при створенні.
  */
 export const vehicleUpdateSchema = z
   .object({
@@ -155,6 +158,11 @@ export const vehicleUpdateSchema = z
     driveType: clearableString(),
     bodyType: clearableString(),
     engineCode: clearableString(),
+    year: clearableNumber(yearNumber()),
+    engineVolume: clearableNumber(nonNegFloat()),
+    currentMileage: clearableNumber(nonNegInt()),
+    insuranceExpiry: clearableDateString(),
+    inspectionExpiry: clearableDateString(),
   })
   .partial()
   .refine(v => v.makeId === undefined || v.modelId !== undefined, {

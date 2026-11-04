@@ -95,7 +95,10 @@ export type StockDocumentCreateValues = StockDocumentFormValues;
 // Update — лише notes/documentDate/lines (type/branch/warehouse незмінні після створення;
 // service дозволяє редагувати лише DRAFT і не приймає зміну type). Cross-field TRANSFER
 // не рефайнимо тут — targetWarehouse фіксований з create.
-/** Текстові поля складського документа, які картка може очистити (PATCH: '' / null → null). */
+/**
+ * Поля складського документа, які картка може очистити (PATCH: '' / null → null). `documentDate` — NOT NULL
+ * (`@default(now()) @db.Date`), тому поза переліком: '' лишається «не чіпати».
+ */
 export const STOCK_DOCUMENT_CLEARABLE_FIELDS = ['notes'] as const;
 export type StockDocumentClearableField = (typeof STOCK_DOCUMENT_CLEARABLE_FIELDS)[number];
 

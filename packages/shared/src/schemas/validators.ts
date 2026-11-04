@@ -111,6 +111,29 @@ export const optionalDateString = () =>
   );
 
 /**
+ * Дата-рядок (ISO/`YYYY-MM-DD`, як `optionalDateString`), яку PATCH може очистити: '' / null → null,
+ * ключа немає → не чіпати. Для колонок-міток часу (`DateTime?` без `@db.Date`); календарна дата —
+ * `clearableCalendarDate`. Сервіс перетворює рядок на `Date` сам: Prisma не бере `YYYY-MM-DD`.
+ */
+export const clearableDateString = () =>
+  z.preprocess(
+    emptyToNull,
+    z.string().refine(isIsoDateOrDateTime, { message: 'v.dateFormat' }).nullable().optional(),
+  );
+
+/**
+ * Число з поля форми, яке PATCH може очистити: '' / null → null, ключа немає → не чіпати, інакше
+ * `num` з його межами. `null` відсікається ДО `num`: `z.coerce.number()` зробив би з нього 0.
+ * Лише для nullable-колонок; дзеркало для створення — `optionalNumber(num)`.
+ */
+export const clearableNumber = <T extends z.ZodType<number, unknown>>(num: T) =>
+  z.preprocess(emptyToNull, num.nullable().optional());
+
+/** Опційне число з поля форми: '' / null → undefined (не задано), інакше `num` з його межами. */
+export const optionalNumber = <T extends z.ZodType<number, unknown>>(num: T) =>
+  z.preprocess(emptyToUndefined, num.optional());
+
+/**
  * Опційне невід'ємне число з коерцією з рядка: '' → undefined, '350' → 350.
  * `z.coerce.number()` перетворює рядок; порожнє відсікаємо ДО коерції (інакше '' → 0).
  */

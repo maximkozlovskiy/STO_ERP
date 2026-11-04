@@ -14,7 +14,7 @@ import type { VehicleMileagePoint } from '@sto/shared';
 // ─── Vehicle ─────────────────────────────────────────────
 
 /**
- * Поля авто, необовʼязкові і при створенні, і при оновленні (спільна основа двох DTO). Текстові —
+ * Поля авто, необовʼязкові і при створенні, і при оновленні (спільна основа двох DTO). Усі —
  * `| null`: PATCH очищає їх null-ом (`vehicleUpdateSchema`, '' / null → null).
  */
 class VehicleOptionalFieldsDto {
@@ -22,11 +22,16 @@ class VehicleOptionalFieldsDto {
     string | null;
   @ApiPropertyOptional({ type: String, nullable: true }) @IsOptional() @IsString() licensePlate?:
     string | null;
-  @ApiPropertyOptional() @IsOptional() @IsInt() year?: number;
-  @ApiPropertyOptional() @IsOptional() engineVolume?: number;
+  @ApiPropertyOptional({ type: Number, nullable: true }) @IsOptional() @IsInt() year?:
+    number | null;
+  @ApiPropertyOptional({ type: Number, nullable: true }) @IsOptional() engineVolume?: number | null;
   @ApiPropertyOptional({ type: String, nullable: true }) @IsOptional() @IsString() fuelType?:
     string | null;
-  @ApiPropertyOptional() @IsOptional() @IsInt() @Min(0) currentMileage?: number;
+  @ApiPropertyOptional({ type: Number, nullable: true })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  currentMileage?: number | null;
   @ApiPropertyOptional({ type: String, nullable: true }) @IsOptional() @IsString() color?:
     string | null;
   @ApiPropertyOptional({ type: String, nullable: true }) @IsOptional() @IsString() notes?:
@@ -41,16 +46,16 @@ class VehicleOptionalFieldsDto {
     string | null;
   @ApiPropertyOptional({ type: String, nullable: true }) @IsOptional() @IsString() engineCode?:
     string | null;
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ type: String, nullable: true })
   @IsOptional()
   @Transform(emptyToUndefined)
   @IsDateString()
-  insuranceExpiry?: string;
-  @ApiPropertyOptional()
+  insuranceExpiry?: string | null;
+  @ApiPropertyOptional({ type: String, nullable: true })
   @IsOptional()
   @Transform(emptyToUndefined)
   @IsDateString()
-  inspectionExpiry?: string;
+  inspectionExpiry?: string | null;
 }
 
 export class CreateVehicleDto extends VehicleOptionalFieldsDto {

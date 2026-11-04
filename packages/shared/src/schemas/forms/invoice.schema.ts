@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import {
+  clearableDateString,
   clearableString,
   optionalString,
   optionalUuid,
@@ -87,12 +88,16 @@ export const invoiceHeaderSchema = z.object({
 });
 export type InvoiceHeaderValues = z.infer<typeof invoiceHeaderSchema>;
 
-/** Поля шапки рахунку, які картка може очистити (PATCH: '' / null → null). Дати — поза переліком. */
-export const INVOICE_CLEARABLE_FIELDS = ['notes'] as const;
+/**
+ * Поля шапки рахунку, які картка може очистити (PATCH: '' / null → null). `documentDate` — NOT NULL
+ * (`@default(now()) @db.Date`): '' лишається «не чіпати». Порожній `dueDate` — рахунок без терміну,
+ * «Прострочено» (BR-INV-025) його не бере; термін за `invoiceDueDays` (BR-INV-004) — лише при створенні.
+ */
+export const INVOICE_CLEARABLE_FIELDS = ['notes', 'dueDate'] as const;
 export type InvoiceClearableField = (typeof INVOICE_CLEARABLE_FIELDS)[number];
 
 export const invoiceUpdateSchema = invoiceHeaderSchema
-  .extend({ notes: clearableString() })
+  .extend({ notes: clearableString(), dueDate: clearableDateString() })
   .partial();
 export type InvoiceUpdateValues = z.infer<typeof invoiceUpdateSchema>;
 
