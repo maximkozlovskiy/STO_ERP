@@ -172,8 +172,7 @@ test.describe('Постачальники API — від підключення 
       const res = await apiRequest(request, token, 'DELETE', `/supplier-connections/${id}`);
       expect.soft(res.status, 'DELETE підключення').toBeLessThan(300);
     }
-    // Лише створений нами товар видаляємо; перевикористаний живий OC 90 лишаємо (його DELETE
-    // і так інколи 400 через посилання, і він потрібен наступному прогону для матчу пропозицій).
+    // Лише створений нами товар видаляємо; перевикористаний чужий OC 90 лишаємо.
     if (state.goodId && !state.goodReused) {
       const res = await apiRequest(request, token, 'DELETE', `/goods/${state.goodId}`);
       expect.soft(res.status, 'DELETE товару').toBeLessThan(300);
@@ -223,22 +222,31 @@ test.describe('Постачальники API — від підключення 
       state.brandId = created.body.id;
       state.brandCreated = true;
     }
-    // sku МУСИТЬ дорівнювати артикулу каталогу (OC 90) для матчу пропозицій, тож унікальним бути
-    // не може. На брудній dev-базі з цим sku вже може лежати ЖИВИЙ товар попереднього прогону
-    // (його DELETE інколи 400 — товар у рухах/замовленнях, тож просто видалити не можна). Тому:
-    // є живий OC 90 → ПЕРЕВИКОРИСТАТИ його id, інакше створити. Самоізоляція без залежності від
-    // того, чи вдалося прибрати попередній. На чистій базі CI — завжди гілка create.
+    // sku МУСИТЬ дорівнювати артикулу каталогу (OC 90) для матчу пропозицій, а живий sku в
+    // організації унікальний (409). Залишок перерваного прогону («000 E2E …» з цим sku; його DELETE
+    // буває 400 — залишок на складі) раніше ПЕРЕВИКОРИСТОВУВАВСЯ — і тест брав товар зі старими
+    // позиціями інших списків: перший рядок «Купівлі» за назвою був чужою позицією (2026-11-05).
+    // Тепер звільняємо sku: залишок E2E видаляємо, а не вдалося — переназиваємо його sku через API,
+    // і створюємо СВІЙ товар із uid прогону. Чужий (не E2E) живий OC 90 на dev-базі не чіпаємо —
+    // лише тоді перевикористовуємо його. На чистій базі CI — завжди гілка create.
     const existing = await api<{ items: Array<{ id: string; sku: string | null; name: string }> }>(
       page,
       'GET',
       `/goods?q=${encodeURIComponent(ARTICLE)}&limit=50`,
     );
-    const liveSameSku = existing.body.items.find(x => x.sku === ARTICLE);
-    if (liveSameSku) {
-      // Перевикористаний товар має СВОЮ назву (не цьогопрогонний GOOD) — пошук у пікері нижче
-      // мусить шукати саме її, інакше опція не зʼявиться (Bug: тест шукав GOOD поточного прогону).
-      state.goodId = liveSameSku.id;
-      state.goodName = liveSameSku.name;
+    const liveSameSku = existing.body.items.filter(x => x.sku === ARTICLE);
+    for (const stale of liveSameSku.filter(x => x.name.startsWith('000 E2E '))) {
+      const del = await api(page, 'DELETE', `/goods/${stale.id}`);
+      if (del.status < 300) continue;
+      const released = await api(page, 'PATCH', `/goods/${stale.id}`, {
+        sku: `E2E-released-${stale.id.slice(0, 8)}`,
+      });
+      expect(released.status, `звільнити sku залишку ${stale.name}`).toBe(200);
+    }
+    const foreign = liveSameSku.find(x => !x.name.startsWith('000 E2E '));
+    if (foreign) {
+      state.goodId = foreign.id;
+      state.goodName = foreign.name;
       state.goodReused = true;
     } else {
       const good = await api<{ id: string }>(page, 'POST', '/goods', {
