@@ -53,12 +53,15 @@ const VEHICLE = {
   insuranceExpiry: '2027-03-15T00:00:00.000Z',
   inspectionExpiry: null,
 };
+let vehicle: typeof VEHICLE | (Omit<typeof VEHICLE, 'engineVolume'> & { engineVolume: number }) =
+  VEHICLE;
 
 beforeEach(() => {
+  vehicle = VEHICLE;
   apiFetchMock.mockReset();
   apiFetchMock.mockImplementation((path: string, init?: RequestInit) => {
-    if (path === '/vehicles/veh-1' && init?.method === 'PATCH') return Promise.resolve(VEHICLE);
-    if (path === '/vehicles/veh-1') return Promise.resolve(VEHICLE);
+    if (path === '/vehicles/veh-1' && init?.method === 'PATCH') return Promise.resolve(vehicle);
+    if (path === '/vehicles/veh-1') return Promise.resolve(vehicle);
     if (path === '/vehicles/veh-1/nodes') return Promise.resolve([]);
     if (path.startsWith('/maintenance-schedules')) return Promise.resolve([]);
     if (path === '/vehicle-makes') {
@@ -142,5 +145,17 @@ describe('Картка авто — очищення полів у PATCH', () =>
       currentMileage: 154321,
       insuranceExpiry: '2027-03-15',
     });
+  });
+
+  // Обʼєм 0 (електромобіль): форма заповнювалась `engineVolume ? String(…) : ''`, тож 0 ставав '',
+  // і `patchBodyWithClears` (0 — значення) слав null — збереження без змін стирало обʼєм.
+  // Мутація: повернути truthy-перевірку в `openEdit` → тіло має `engineVolume: null`, кейс червоніє.
+  it('обʼєм 0 і нічого не чіпали → обʼєм 0, не null', async () => {
+    vehicle = { ...VEHICLE, engineVolume: 0 };
+    await openEdit();
+    fireEvent.click(screen.getByRole('button', { name: 'Зберегти' }));
+
+    await waitFor(() => expect(hasPatch()).toBe(true));
+    expect(patchBody()).toMatchObject({ engineVolume: 0 });
   });
 });

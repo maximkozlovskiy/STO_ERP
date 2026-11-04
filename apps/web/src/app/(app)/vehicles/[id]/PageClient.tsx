@@ -175,8 +175,10 @@ export default function VehicleCardPage() {
       modelId: vehicle.modelId,
       vin: vehicle.vin ?? '',
       licensePlate: vehicle.licensePlate ?? '',
-      year: vehicle.year ? String(vehicle.year) : '',
-      engineVolume: vehicle.engineVolume ? String(vehicle.engineVolume) : '',
+      // `!= null`, не truthy: обʼєм 0 (електромобіль) інакше ставав '' і, бо поле очищуване,
+      // ішов у PATCH null-ом при КОЖНОМУ збереженні картки.
+      year: vehicle.year != null ? String(vehicle.year) : '',
+      engineVolume: vehicle.engineVolume != null ? String(vehicle.engineVolume) : '',
       fuelType: vehicle.fuelType ?? '',
       currentMileage: vehicle.currentMileage != null ? String(vehicle.currentMileage) : '',
       color: vehicle.color ?? '',

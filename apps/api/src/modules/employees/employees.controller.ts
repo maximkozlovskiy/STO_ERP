@@ -66,7 +66,9 @@ export class EmployeesController {
   @ApiExtraModels(EmployeeListDto, EmployeeLookupListDto)
   @ApiResponse({
     status: 200,
-    description: 'EmployeeLookupListDto — для ролі MECHANIC, EmployeeListDto — для решти',
+    description:
+      'EmployeeLookupListDto — для ролі MECHANIC, EmployeeListDto — для решти; `rateScheme` у ' +
+      'рядку — лише для OWNER/ADMIN (як EmployeeDetailDto)',
     schema: {
       oneOf: [
         { $ref: getSchemaPath(EmployeeListDto) },

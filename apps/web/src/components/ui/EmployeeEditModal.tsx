@@ -417,8 +417,8 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
   });
 
   const flatCats = useMemo(() => flattenTree(workCategories), [workCategories]);
-  // Схему ставки видаленого показати нічим: список її не віддає, а GET /employees/:id для
-  // видаленого — 404. Без цього форма показала б вигадану схему за замовчуванням (40%).
+  // Видаленого відкривають з рядка списку (GET /employees/:id для нього — 404); схему список віддає
+  // лише OWNER/ADMIN. Без схеми форма показала б вигадану за замовчуванням (40%) — тож ховаємо.
   const showRate = !readOnly || !!employee?.rateScheme;
 
   return (
