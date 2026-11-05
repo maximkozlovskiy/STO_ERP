@@ -56,6 +56,9 @@ type GridRow = { rowNo: number; cells: string[] };
 function recognisedColumns(cells: string[]): Map<number, Field> {
   const map = new Map<number, Field>();
   cells.forEach((h, i) => {
+    // «Назва:», «Код:» — підпис реквізиту в шапці прайсу, а не назва колонки (Bug #1043): інакше
+    // за рівності рахунку (таблиця з однією впізнаною колонкою) рядок реквізиту ставав заголовком.
+    if (h.trim().endsWith(':')) return;
     const key = headerKey(h);
     // Лише власні ключі: заголовок «constructor» чи «toString» інакше дав би «поле»-функцію
     // з прототипа і рядок даних прийнявся б за заголовок.
@@ -104,16 +107,45 @@ function toRows(grid: GridRow[]): GoodRefRow[] {
   return rows;
 }
 
+/** Рядок CSV → клітинки за роздільником `delimiter` (лапки враховано; досить для пошуку заголовка). */
+function splitLine(line: string, delimiter: ',' | ';'): string[] {
+  const cells: string[] = [];
+  let current = '';
+  let quoted = false;
+  for (const ch of line) {
+    if (ch === '"') quoted = !quoted;
+    else if (ch === delimiter && !quoted) {
+      cells.push(current);
+      current = '';
+    } else current += ch;
+  }
+  cells.push(current);
+  return cells;
+}
+
 /**
- * Роздільник CSV — ОДИН на файл, за першими рядками (рядок заголовків може стояти під шапкою):
- * якого знака поза лапками більше. Обидва одразу (`[',', ';']`) різали значення: Excel в
- * українській локалі пише через «;» і коми в назві («Фільтр, масляний») у лапки не бере —
- * колонки з'їжджали, і в поле артикула чи штрихкоду потрапляв шматок назви.
+ * Роздільник CSV — ОДИН на файл. Обидва одразу (`[',', ';']`) різали значення: Excel в українській
+ * локалі пише через «;» і коми в назві («Фільтр, масляний») у лапки не бере — колонки з'їжджали, і
+ * в поле артикула чи штрихкоду потрапляв шматок назви.
+ *  1. Той, з яким у перших рядках знаходиться рядок заголовків із більшою кількістю назв колонок
+ *     (заголовок може стояти під шапкою). Не підрахунок знаків: у файлі з двома колонками коми в
+ *     назвах переважили б «;» між колонками (Bug #1044).
+ *  2. Заголовка немає (чи нічия) — якого знака поза лапками в перших рядках більше.
  */
 function detectDelimiter(text: string): ',' | ';' {
+  const lines = text.split(/\r?\n/, HEADER_SCAN_ROWS);
+  const headerSize = (delimiter: ',' | ';') =>
+    lines.reduce(
+      (best, line) => Math.max(best, recognisedColumns(splitLine(line, delimiter)).size),
+      0,
+    );
+  const bySemicolon = headerSize(';');
+  const byComma = headerSize(',');
+  if (bySemicolon !== byComma) return bySemicolon > byComma ? ';' : ',';
+
   let commas = 0;
   let semicolons = 0;
-  for (const line of text.split(/\r?\n/, HEADER_SCAN_ROWS)) {
+  for (const line of lines) {
     let quoted = false;
     for (const ch of line) {
       if (ch === '"') quoted = !quoted;

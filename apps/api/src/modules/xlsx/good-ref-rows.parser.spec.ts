@@ -20,6 +20,8 @@
  *  · `workbook.worksheets[0]` замість вибору аркуша → обидва кейси про аркуші падають;
  *  · без пропуску прихованих аркушів → кейс про прихований аркуш падає;
  *  · без перевірки NUL-байтів → кейс «двійковий вміст у .csv» падає.
+ *  · без пропуску підписів із двокрапкою в `recognisedColumns` → кейс Bug #1043 падає;
+ *  · `detectDelimiter` без кроку «за рядком заголовків» (лише підрахунок знаків) → кейс Bug #1044 падає.
  */
 import { describe, it, expect } from 'vitest';
 import ExcelJS from 'exceljs';
@@ -289,6 +291,50 @@ describe('parseGoodRefRows — перелік товарів із файла', (
         brand: 'Knecht',
         barcode: null,
         name: 'Фільтр оливи',
+      },
+    ]);
+  });
+
+  // guards: BR-GOOD-013
+  it('Bug #1043: реквізит «Назва:» не перемагає таблицю з однією впізнаною колонкою', async () => {
+    // Рахунок 1 : 1 — без правила «підпис із двокрапкою — не назва колонки» вищий рядок (шапка)
+    // ставав заголовком, артикули читались як назви, і жоден товар не знаходився.
+    const text = 'Назва:;ТОВ «Тест»\n\nАртикул;Кількість\nA1;2\nA2;3\n';
+    const expected = [
+      { rowIndex: 4, code: null, article: 'A1', brand: null, barcode: null, name: null },
+      { rowIndex: 5, code: null, article: 'A2', brand: null, barcode: null, name: null },
+    ];
+    expect(await parseGoodRefRows(csv(text), 'csv')).toEqual(expected);
+    const buf = await xlsx([
+      ['Код:', '12345678'],
+      [],
+      ['Артикул', 'Кількість'],
+      ['A1', 2],
+      ['A2', 3],
+    ]);
+    expect(await parseGoodRefRows(buf, 'xlsx')).toEqual(expected);
+  });
+
+  // guards: BR-GOOD-013
+  it('Bug #1044: CSV через «;» у дві колонки, у назвах кілька ком без лапок — роздільник «;»', async () => {
+    // Ком у назвах більше, ніж «;» між колонками: роздільник за підрахунком знаків обирав «,».
+    const text = 'Артикул;Назва\nOC 90;Фільтр, оливи, Knecht, 1.6\nBP-1;Колодки, передні, Bosch\n';
+    expect(await parseGoodRefRows(csv(text), 'csv')).toEqual([
+      {
+        rowIndex: 2,
+        code: null,
+        article: 'OC 90',
+        brand: null,
+        barcode: null,
+        name: 'Фільтр, оливи, Knecht, 1.6',
+      },
+      {
+        rowIndex: 3,
+        code: null,
+        article: 'BP-1',
+        brand: null,
+        barcode: null,
+        name: 'Колодки, передні, Bosch',
       },
     ]);
   });
