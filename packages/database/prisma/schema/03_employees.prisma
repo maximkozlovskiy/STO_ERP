@@ -9,8 +9,9 @@ model Employee {
   role        UserRole
   status      EmployeeStatus @default(ACTIVE)
   rateScheme  Json
-  dateOfHire  DateTime?
-  dateOfFire  DateTime?
+  // Дати без часу (TECH-DEBT (а) §8 L528(9)): зарплата порівнює їх з межами періоду.
+  dateOfHire  DateTime?      @db.Date
+  dateOfFire  DateTime?      @db.Date
   syncVersion BigInt         @default(0)
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt

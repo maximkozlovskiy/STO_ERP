@@ -9,7 +9,7 @@
 ## Prisma модель
 
 `Employee` (`packages/database/prisma/schema/03_employees.prisma`): `status EmployeeStatus`
-(`ACTIVE` | `ON_LEAVE` | `FIRED`), `dateOfHire`, `dateOfFire`, `deletedAt`; акаунт входу —
+(`ACTIVE` | `ON_LEAVE` | `FIRED`), `dateOfHire`, `dateOfFire` (дата без часу, `@db.Date` з 2026-11-05), `deletedAt`; акаунт входу —
 `AuthAccount` (1:1, `tokenVersion`, `failedAttempts`, `lockedUntil`).
 
 ## API Endpoints (`/api/employees`, `/api/auth`)
