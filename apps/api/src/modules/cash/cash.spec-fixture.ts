@@ -348,7 +348,9 @@ export function makeMocks() {
         create: vi.fn(),
         findMany: vi.fn().mockResolvedValue([]),
         aggregate: vi.fn(),
-        groupBy: vi.fn(),
+        // Пошук історії за контрагентом бере id контрагентів каси групуванням (BR-CASH-034):
+        // за замовчуванням у касі контрагентів немає.
+        groupBy: vi.fn().mockResolvedValue([]),
       },
       expenseCategory: { findFirst: vi.fn() },
       // Історія каси шукає ще й за назвою контрагента / працівника (план 2026-10-14, п. 3.7):

@@ -466,6 +466,43 @@ describe('CashService.listOperations — історія операцій', () =>
     ]);
   });
 
+  // guards: BR-CASH-034
+  it('q → контрагент шукається серед контрагентів ЦІЄЇ каси, без стелі на всю базу', async () => {
+    const { m, service } = setup();
+    m.prisma.cashOperation.groupBy.mockResolvedValueOnce([
+      { counterpartyId: 'cp-1' },
+      { counterpartyId: 'cp-2' },
+    ]);
+    m.prisma.counterparty.findMany.mockResolvedValueOnce([{ id: 'cp-2' }]);
+    m.prisma.cashOperation.findMany.mockResolvedValueOnce([]);
+
+    await service.listOperations(ORG, REG, 100, { q: 'т' });
+
+    const group = m.prisma.cashOperation.groupBy.mock.calls[0][0];
+    expect(group.by).toEqual(['counterpartyId']);
+    expect(group.where).toEqual({ orgId: ORG, cashRegisterId: REG, counterpartyId: { not: null } });
+    const cpArgs = m.prisma.counterparty.findMany.mock.calls[0]![0] as {
+      where: Record<string, unknown>;
+      take?: number;
+    };
+    expect(cpArgs.where.id).toEqual({ in: ['cp-1', 'cp-2'] });
+    expect(cpArgs.take).toBeUndefined();
+    expect(m.prisma.cashOperation.findMany.mock.calls[0][0].where.OR).toContainEqual({
+      counterpartyId: { in: ['cp-2'] },
+    });
+  });
+
+  // guards: BR-CASH-034
+  it('q у касі без контрагентів — назви контрагентів не шукаються взагалі', async () => {
+    const { m, service } = setup();
+    m.prisma.cashOperation.findMany.mockResolvedValueOnce([]);
+
+    await service.listOperations(ORG, REG, 100, { q: 'Іваненко' });
+
+    expect(m.prisma.counterparty.findMany).not.toHaveBeenCalled();
+    expect(m.prisma.cashOperation.findMany.mock.calls[0][0].where.OR).toHaveLength(2);
+  });
+
   it('q із символами підстановки LIKE (% _) шукається буквально', async () => {
     const { m, service } = setup();
     m.prisma.cashOperation.findMany.mockResolvedValueOnce([]);

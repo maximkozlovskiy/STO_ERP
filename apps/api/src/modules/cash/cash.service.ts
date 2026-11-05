@@ -76,11 +76,6 @@ export interface CashOperationExtras {
   notes?: string | null;
 }
 
-// Пошук історії за назвою контрагента: у CashOperation контрагент — лише id без зв'язку в схемі,
-// тому спершу шукаємо контрагентів за назвою, потім рядки за їхніми id. Стеля — щоб запит
-// «а» не розгорнувся у список id на всю базу контрагентів.
-const COUNTERPARTY_SEARCH_LIMIT = 500;
-
 type CashOperationRow = Prisma.CashOperationGetPayload<{
   include: { expenseCategory: { select: { name: true } } };
 }>;
@@ -426,7 +421,9 @@ export class CashService {
         ? Math.min(Math.trunc(limit), 500)
         : 100;
     const contains = searchContains(filters.q);
-    const counterpartyIds = contains ? await this.findCounterpartyIdsByName(orgId, contains) : [];
+    const counterpartyIds = contains
+      ? await this.findRegisterCounterpartyIdsByName(orgId, cashRegisterId, contains)
+      : [];
     const ops = await this.prisma.cashOperation.findMany({
       where: {
         orgId,
@@ -467,18 +464,31 @@ export class CashService {
     return row;
   }
 
-  private async findCounterpartyIdsByName(
+  /**
+   * Пошук історії за назвою контрагента (BR-CASH-034): у CashOperation контрагент — лише id без
+   * зв'язку в схемі, тому спершу id контрагентів ЦІЄЇ каси (GROUP BY у БД), потім збіг назви серед
+   * них. Без стелі на всю базу: раніше бралися перші 500 збігів організації, і на короткому запиті
+   * контрагент каси, що не потрапив у вибірку, не знаходився (TECH-DEBT §10 п. 23).
+   */
+  private async findRegisterCounterpartyIdsByName(
     orgId: string,
+    cashRegisterId: string,
     contains: { contains: string; mode: 'insensitive' },
   ): Promise<string[]> {
+    const groups = await this.prisma.cashOperation.groupBy({
+      by: ['counterpartyId'],
+      where: { orgId, cashRegisterId, counterpartyId: { not: null } },
+    });
+    const registerIds = groups.flatMap(g => (g.counterpartyId ? [g.counterpartyId] : []));
+    if (registerIds.length === 0) return [];
     // Без `deletedAt: null` свідомо: історія каси показує й операції з видаленим контрагентом.
     const found = await this.prisma.counterparty.findMany({
       where: {
         orgId,
+        id: { in: registerIds },
         OR: [{ companyName: contains }, { lastName: contains }, { firstName: contains }],
       },
       select: { id: true },
-      take: COUNTERPARTY_SEARCH_LIMIT,
     });
     return found.map(c => c.id);
   }

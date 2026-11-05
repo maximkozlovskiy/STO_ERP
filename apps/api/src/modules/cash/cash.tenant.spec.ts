@@ -117,16 +117,19 @@ describe('CashService — ізоляція організацій (where/data н
   });
 
   // guards: BR-CASH-003
-  it('пошук історії за назвою контрагента шукає контрагентів лише своєї організації, зі стелею', async () => {
+  it('пошук історії за назвою контрагента шукає контрагентів лише своєї організації й каси', async () => {
     const { m, service } = setup();
+    m.prisma.cashOperation.groupBy.mockResolvedValueOnce([{ counterpartyId: 'cp-1' }]);
     m.prisma.cashOperation.findMany.mockResolvedValueOnce([]);
     await service.listOperations(ORG, REG, 100, { q: 'Іваненко' });
+    expect(m.prisma.cashOperation.groupBy.mock.calls[0][0].where).toMatchObject({
+      orgId: ORG,
+      cashRegisterId: REG,
+    });
     const args = m.prisma.counterparty.findMany.mock.calls[0]![0] as {
       where: Record<string, unknown>;
-      take: number;
     };
     expect(args.where.orgId).toBe(ORG);
-    expect(args.take).toBe(500);
   });
 
   // guards: BR-CASH-003
