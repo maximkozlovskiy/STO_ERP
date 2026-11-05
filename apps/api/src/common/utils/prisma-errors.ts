@@ -23,14 +23,31 @@ export function throwIfSerializationConflict(err: unknown, message: string): nev
  *   • `PrismaClientKnownRequestError` з кодом `P2034` — конфлікт помічено на запиті всередині
  *     транзакції;
  *   • `DriverAdapterError` з `cause.kind === 'TransactionWriteConflict'` — конфлікт помічено на
- *     COMMIT. Драйвер-адаптер (`@prisma/adapter-pg`) цю помилку в `P2034` не загортає.
+ *     COMMIT. Драйвер-адаптер (`@prisma/adapter-pg`) цю помилку в `P2034` не загортає;
+ *   • `PrismaClientKnownRequestError` `P2010` («Raw query failed. Code: `40P01`») — та сама помилка
+ *     адаптера на сирому запиті (блокування), в `meta.driverAdapterError`. Сюди ж — deadlock (40P01):
+ *     адаптер дає йому той самий `kind`, і транзакцію Postgres уже відкотив.
  *
  * Перевірка лише на `P2034` пропускала другу форму: дві одночасні видачі з однієї каси давали
  * одній із них безіменну 500 замість «каса зайнята — повторіть» (review 2026-10-14, наживо:
  * 21 відповідь 500 із 32 запитів). Клас помилки адаптера не імпортуємо — звіряємо назву й `kind`.
  */
 export function isSerializationConflict(err: unknown): boolean {
-  if (err instanceof Prisma.PrismaClientKnownRequestError) return err.code === 'P2034';
+  if (err instanceof Prisma.PrismaClientKnownRequestError) {
+    if (err.code === 'P2034') return true;
+    // Сирий запит (`$queryRaw` / `$executeRaw`: блокування `FOR UPDATE`, `pg_advisory_xact_lock`)
+    // — та сама помилка адаптера, загорнута в P2010 (P2039 — запит ORM без P-коду) з оригіналом у
+    // `meta.driverAdapterError`. Без цієї гілки жертва deadlock на блокуванні давала 500 (Bug #1048).
+    if (err.code === 'P2010' || err.code === 'P2039') {
+      return isWriteConflictAdapterError(err.meta?.driverAdapterError);
+    }
+    return false;
+  }
+  return isWriteConflictAdapterError(err);
+}
+
+/** `DriverAdapterError` із `cause.kind === 'TransactionWriteConflict'` (40001 / 40P01 у adapter-pg). */
+function isWriteConflictAdapterError(err: unknown): boolean {
   if (!(err instanceof Error) || err.name !== 'DriverAdapterError') return false;
   const cause: unknown = err.cause;
   return (
