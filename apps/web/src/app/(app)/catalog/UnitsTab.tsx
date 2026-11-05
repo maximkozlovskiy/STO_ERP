@@ -459,12 +459,18 @@ export default function UnitsTab() {
                           ? 'cursor-pointer hover:bg-surface-hover'
                           : '',
                     )}
-                    onClick={() => {
-                      if (!isDeleted && !u.isSystem && editingId === null) {
-                        setEditError('');
-                        setEditingId(u.id);
-                      }
-                    }}
+                    // Системна чи видалена одиниця не редагується: рядок без дії — без onClick,
+                    // щоб не ставав зупинкою Tab (TableRow, Bug #1045).
+                    onClick={
+                      !isDeleted && !u.isSystem
+                        ? () => {
+                            if (editingId === null) {
+                              setEditError('');
+                              setEditingId(u.id);
+                            }
+                          }
+                        : undefined
+                    }
                   >
                     <TableCell
                       className={cn(

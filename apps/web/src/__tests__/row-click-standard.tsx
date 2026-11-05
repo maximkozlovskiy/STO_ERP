@@ -97,6 +97,9 @@ export function itFollowsRowClickStandard(cfg: RowClickStandardConfig) {
   } else {
     it('панель вимкнена: картки у списку немає — клік нічого не відкриває', async () => {
       await renderWithPanel(false);
+      // Bug #1045: рядок без дії не стоїть у порядку Tab і не показує «руку».
+      expect(row()).not.toHaveAttribute('tabindex');
+      expect(row()).not.toHaveClass('cursor-pointer');
 
       fireEvent.click(row());
 

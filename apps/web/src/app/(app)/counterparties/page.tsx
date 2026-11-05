@@ -599,14 +599,19 @@ function CrmPageInner() {
                   )}
                   // Стандарт списків: панель увімкнена → клік показує/ховає панель;
                   // вимкнена → клік відкриває картку (те саме, що олівець).
-                  onClick={() =>
-                    activateRow({
-                      panelEnabled: detailPanel.enabled,
-                      isSelected: selectedCp?.id === cp.id,
-                      select: () => setSelectedCp(cp),
-                      deselect: () => setSelectedCp(null),
-                      open: isDeleted ? undefined : () => openEdit(cp),
-                    })
+                  // Видалений контрагент картки не має: з вимкненою панеллю рядок без дії — без
+                  // onClick, щоб не ставав зупинкою Tab (TableRow, Bug #1045).
+                  onClick={
+                    detailPanel.enabled || !isDeleted
+                      ? () =>
+                          activateRow({
+                            panelEnabled: detailPanel.enabled,
+                            isSelected: selectedCp?.id === cp.id,
+                            select: () => setSelectedCp(cp),
+                            deselect: () => setSelectedCp(null),
+                            open: isDeleted ? undefined : () => openEdit(cp),
+                          })
+                      : undefined
                   }
                 >
                   {features.bulkActionsEnabled && (

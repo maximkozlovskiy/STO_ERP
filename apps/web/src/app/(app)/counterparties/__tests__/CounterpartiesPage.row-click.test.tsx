@@ -116,11 +116,15 @@ describe('Контрагенти — стандарт кліку по рядку
     await screen.findByText('ТОВ Перший');
     await screen.findByRole('button', { name: 'Показати бокову панель' });
 
+    // Bug #1045: рядок без дії не стоїть у порядку Tab; живий сусід — стоїть.
+    expect(tableRow('ТОВ Перший')).not.toHaveAttribute('tabindex');
+    expect(tableRow('ТОВ Другий')).toHaveAttribute('tabindex', '0');
     fireEvent.click(tableRow('ТОВ Перший'));
     expect(card()).not.toBeInTheDocument();
     expect(within(tableRow('ТОВ Перший')).queryByTitle('Редагувати')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Показати бокову панель' }));
+    expect(tableRow('ТОВ Перший')).toHaveAttribute('tabindex', '0');
     fireEvent.click(tableRow('ТОВ Перший'));
     await waitFor(() => expect(panelShows('ТОВ Перший')).toBe(true));
     expect(screen.queryByText('Відкрити картку')).not.toBeInTheDocument();

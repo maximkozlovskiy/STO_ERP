@@ -444,14 +444,18 @@ export function InventoryTab() {
                   <TableRow
                     key={item.id}
                     // Стандарт списків: клік показує панель, повторний клік по тому самому рядку
-                    // її ховає. Картки залишку немає — з вимкненою панеллю клік нічого не робить.
-                    onClick={() =>
-                      activateRow({
-                        panelEnabled: detailPanel.enabled,
-                        isSelected: selectedItem?.id === item.id,
-                        select: () => setSelectedItem(item),
-                        deselect: () => setSelectedItem(null),
-                      })
+                    // її ховає. Картки залишку немає — з вимкненою панеллю рядок без дії: без
+                    // onClick, щоб не ставав зупинкою Tab (TableRow, Bug #1045).
+                    onClick={
+                      detailPanel.enabled
+                        ? () =>
+                            activateRow({
+                              panelEnabled: true,
+                              isSelected: selectedItem?.id === item.id,
+                              select: () => setSelectedItem(item),
+                              deselect: () => setSelectedItem(null),
+                            })
+                        : undefined
                     }
                     className={cn(
                       'group transition-colors',
