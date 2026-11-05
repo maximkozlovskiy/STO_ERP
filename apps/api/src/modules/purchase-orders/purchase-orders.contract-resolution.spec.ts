@@ -129,7 +129,7 @@ describe('PurchaseOrdersService.update — contract resolution', () => {
     expect(prisma.counterpartyContract.findFirst).not.toHaveBeenCalled();
     expect(prisma.purchaseOrder.update).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: PO_ID, orgId: ORG },
+        where: { id: PO_ID, orgId: ORG, deletedAt: null, status: 'DRAFT' },
         data: expect.objectContaining({
           supplierId: NEW_SUPPLIER,
           contractId: null,

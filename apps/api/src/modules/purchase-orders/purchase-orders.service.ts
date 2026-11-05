@@ -594,45 +594,56 @@ export class PurchaseOrdersService {
         : { rateUsed: 1, amountBase: totalAmount }
       : null;
 
-    const updated = await this.prisma.$transaction(
-      async tx => {
-        // BR-PL-009: рядки чернетки переписано чи змінено склад — позиції списків купівлі
-        // звіряються за товаром і складом, до запису самого замовлення (порядок блокувань).
-        const warehouseId = dto.warehouseId ?? po.warehouseId ?? undefined;
-        const warehouseChanged = !!dto.warehouseId && dto.warehouseId !== po.warehouseId;
-        if (computedLines !== undefined) {
-          await replaceDraftLines(tx, this.purchaseLists, {
-            orgId,
-            purchaseOrderId: id,
-            lines: computedLines,
-            warehouseId,
+    const updated = await this.prisma
+      .$transaction(
+        async tx => {
+          // BR-PL-009: рядки чернетки переписано чи змінено склад — позиції списків купівлі
+          // звіряються за товаром і складом, до запису самого замовлення (порядок блокувань).
+          const warehouseId = dto.warehouseId ?? po.warehouseId ?? undefined;
+          const warehouseChanged = !!dto.warehouseId && dto.warehouseId !== po.warehouseId;
+          if (computedLines !== undefined) {
+            await replaceDraftLines(tx, this.purchaseLists, {
+              orgId,
+              purchaseOrderId: id,
+              lines: computedLines,
+              warehouseId,
+            });
+          } else if (warehouseChanged) {
+            await reconcileDraftLists(tx, this.purchaseLists, orgId, id, warehouseId);
+          }
+          // BR-PO-017 (Bug #1051): «лише чернетка» — CAS у цій же транзакції. Перевірка вище лише
+          // швидка відмова: «Замовлено», скасування чи видалення між нею і цим записом інакше
+          // мовчки отримували нові рядки й тотали. Останнім записом — порядок «позиції → замовлення».
+          return tx.purchaseOrder.update({
+            where: { id, orgId, deletedAt: null, status: PurchaseOrderStatus.DRAFT },
+            data: {
+              supplierId: dto.supplierId ?? undefined,
+              warehouseId: dto.warehouseId ?? undefined,
+              contractId: newContractId,
+              notes: dto.notes,
+              totalAmount,
+              // Мультивалюта (TD1): currencyId NOT NULL — не дозволяємо занулити (лише зміна валюти).
+              currencyId: dto.currencyId ?? undefined,
+              ...(totalVat !== undefined ? { totalVat } : {}),
+              ...(conv ? { totalAmountBase: conv.amountBase, rateUsed: conv.rateUsed } : {}),
+              documentDate: dto.documentDate ? new Date(dto.documentDate) : undefined,
+              ...(dto.paymentDate !== undefined
+                ? { paymentDate: dto.paymentDate ? new Date(dto.paymentDate) : null }
+                : {}),
+              ...trackingUpdate,
+            },
+            include: PO_WRITE_INCLUDE,
           });
-        } else if (warehouseChanged) {
-          await reconcileDraftLists(tx, this.purchaseLists, orgId, id, warehouseId);
+        },
+        { timeout: TRANSACTION_TIMEOUT_MS },
+      )
+      .catch((e: unknown) => {
+        // CAS програв (P2025) — замовлення вже не чернетка чи видалене; рядки й позиції відкочено.
+        if ((e as { code?: string } | null)?.code === 'P2025') {
+          throw new BadRequestException(err('err.purchaseOrder.onlyDraftEditable'));
         }
-        return tx.purchaseOrder.update({
-          where: { id, orgId },
-          data: {
-            supplierId: dto.supplierId ?? undefined,
-            warehouseId: dto.warehouseId ?? undefined,
-            contractId: newContractId,
-            notes: dto.notes,
-            totalAmount,
-            // Мультивалюта (TD1): currencyId NOT NULL — не дозволяємо занулити (лише зміна валюти).
-            currencyId: dto.currencyId ?? undefined,
-            ...(totalVat !== undefined ? { totalVat } : {}),
-            ...(conv ? { totalAmountBase: conv.amountBase, rateUsed: conv.rateUsed } : {}),
-            documentDate: dto.documentDate ? new Date(dto.documentDate) : undefined,
-            ...(dto.paymentDate !== undefined
-              ? { paymentDate: dto.paymentDate ? new Date(dto.paymentDate) : null }
-              : {}),
-            ...trackingUpdate,
-          },
-          include: PO_WRITE_INCLUDE,
-        });
-      },
-      { timeout: TRANSACTION_TIMEOUT_MS },
-    );
+        throw e;
+      });
 
     // Новий/змінений ЕН → запускаємо опитування статусу доставки (offline-safe усередині).
     if (enqueueTracking) await this.deliveryTracking.enqueueInitial(orgId, id);

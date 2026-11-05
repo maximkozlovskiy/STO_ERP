@@ -15,7 +15,9 @@
  * (2) хук перенесено після CAS у `setStatus` — червоні ті самі три за `invocationCallOrder`;
  * (3) у `replaceDraftLines` звірку перенесено перед `createMany` — червоний кейс заміни рядків;
  * (4) у `remove` прямий `this.purchaseLists.onOrderClosed` замість помічника — червоний перепис
- * хуків; (5) `status` у soft delete `remove` — червоний перепис записів статусу.
+ * хуків; (5) `status` у soft delete `remove` — червоний перепис записів статусу;
+ * (6) `where` запису `update` без `deletedAt`/`status` і `writeTotals` без `status` — червоні три
+ * кейси CAS «лише чернетка» (BR-PO-017, Bug #1051).
  */
 
 import { readdirSync, readFileSync, statSync } from 'node:fs';
@@ -38,6 +40,7 @@ import { PurchaseOrderImportAdapter } from '../xlsx/document-line-import.adapter
 import type { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 import { exchangeRatesProvider, purchaseListProviders } from './purchase-orders.spec-fixture';
 import { domainEventMock } from '../../common/testing/prisma-mock';
+import { err } from '../../common/utils/err';
 
 const ORG = 'org-life';
 const PO_ID = '99999999-9999-4999-8999-999999999999';
@@ -335,6 +338,68 @@ describe('PurchaseOrdersService — хуки списків купівлі че�
       prisma.purchaseOrder.update.mock.invocationCallOrder[0]!,
     );
   });
+
+  // guards: BR-PO-017
+  it('PATCH чернетки: запис замовлення — CAS «чернетка, не видалена»; програв (P2025) — 400 і відкат', async () => {
+    prisma.purchaseOrder.findFirst.mockResolvedValueOnce({ ...poRead });
+    prisma.purchaseOrder.update.mockRejectedValueOnce(
+      Object.assign(new Error('Record to update not found'), { code: 'P2025' }),
+    );
+
+    await expect(service.update(ORG, PO_ID, { lines: twoLines } as never)).rejects.toMatchObject({
+      status: 400,
+      message: err('err.purchaseOrder.onlyDraftEditable'),
+    });
+    expect(prisma.purchaseOrder.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: PO_ID, orgId: ORG, deletedAt: null, status: PurchaseOrderStatus.DRAFT },
+      }),
+    );
+    // CAS — останнім записом, після рядків і звірки позицій (порядок «позиції → замовлення»).
+    expect(lists.reconcileDraftOrder.mock.invocationCallOrder[0]).toBeLessThan(
+      prisma.purchaseOrder.update.mock.invocationCallOrder[0]!,
+    );
+  });
+
+  // guards: BR-PO-017
+  it.each(['replace', 'append'] as const)(
+    'імпорт XLSX у транзакції (%s): тотали — CAS «чернетка»; програв — 403 «не чернетка»',
+    async mode => {
+      const adapter = new PurchaseOrderImportAdapter(
+        {} as PrismaService,
+        {
+          getDefaultVatRate: vi.fn().mockResolvedValue({ vatMode: 'NONE', vatRate: 0 }),
+        } as unknown as SettingsService,
+        {
+          resolveBaseConversion: vi.fn().mockResolvedValue({ amountBase: 50, rateUsed: 1 }),
+        } as unknown as ExchangeRatesService,
+        lists as unknown as PurchaseListLinkService,
+      );
+      const tx = {
+        ...prisma,
+        $queryRaw: vi.fn().mockResolvedValue([{ total: 50, vat: 0 }]),
+        purchaseOrder: {
+          ...prisma.purchaseOrder,
+          updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+          findFirstOrThrow: vi.fn().mockResolvedValue({ currencyId: 'c', documentDate: null }),
+        },
+      };
+      const run =
+        mode === 'replace'
+          ? adapter.replaceLines(tx as never, ORG, PO_ID, twoLines)
+          : adapter.appendLines(tx as never, ORG, PO_ID, twoLines);
+
+      await expect(run).rejects.toMatchObject({
+        status: 403,
+        message: err('err.xlsx.purchaseOrderNotDraft'),
+      });
+      expect(tx.purchaseOrder.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: PO_ID, orgId: ORG, deletedAt: null, status: 'DRAFT' },
+        }),
+      );
+    },
+  );
 });
 
 // ─── Сторож вихідного коду ────────────────────────────────────────────────────

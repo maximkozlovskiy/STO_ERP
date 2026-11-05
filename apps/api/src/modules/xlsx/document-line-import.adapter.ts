@@ -141,15 +141,7 @@ export class PurchaseOrderImportAdapter implements DocumentLineImportAdapter {
       purchaseOrderId: docId,
       lines: computed,
     });
-    await tx.purchaseOrder.updateMany({
-      where: { id: docId, orgId, deletedAt: null },
-      data: {
-        totalAmount,
-        totalVat,
-        totalAmountBase: conv.amountBase,
-        rateUsed: conv.rateUsed,
-      },
-    });
+    await this.writeTotals(tx, orgId, docId, { totalAmount, totalVat, conv }, true);
   }
 
   async appendLines(
@@ -206,7 +198,7 @@ export class PurchaseOrderImportAdapter implements DocumentLineImportAdapter {
     await reconcileDraftLists(tx, this.purchaseLists, orgId, docId);
     // Тотали — по ВСІХ активних рядках ПІСЛЯ вставки (не лише по нових), інакше наявні позиції
     // зникли б із суми документа.
-    await this.recalcTotals(tx, orgId, docId);
+    await this.recalcTotals(tx, orgId, docId, true);
   }
 
   /**
@@ -252,6 +244,7 @@ export class PurchaseOrderImportAdapter implements DocumentLineImportAdapter {
     tx: Prisma.TransactionClient,
     orgId: string,
     docId: string,
+    draftOnly = false,
   ): Promise<void> {
     // Рахуємо АГРЕГАЦІЄЮ в БД, а не findMany+reduce: сюди не можна ставити take-ліміт (на відміну
     // від запитів для відображення), бо зріз на MAX_QUERY_LIMIT=1000 тихо ЗАНИЗИВ би суму
@@ -284,15 +277,35 @@ export class PurchaseOrderImportAdapter implements DocumentLineImportAdapter {
       totalAmount,
       true,
     );
-    await tx.purchaseOrder.updateMany({
-      where: { id: docId, orgId, deletedAt: null },
+    await this.writeTotals(tx, orgId, docId, { totalAmount, totalVat, conv }, draftOnly);
+  }
+
+  /**
+   * Тотали замовлення — останній запис імпорту (порядок блокувань «позиції → замовлення»).
+   * `draftOnly` (BR-PO-017, Bug #1051): імпорт у транзакції (`applyImport`) — CAS «лише чернетка»:
+   * `assertDraft` перевіряє прочитаний до транзакції статус, і «Замовлено», скасування чи видалення
+   * між ними інакше отримували рядки з файла. Програли — відкат усього імпорту.
+   * Швидкий імпорт (`syncAfterDirectLineWrite`) рядки вже записав поза транзакцією — там без CAS.
+   */
+  private async writeTotals(
+    tx: Prisma.TransactionClient,
+    orgId: string,
+    docId: string,
+    t: { totalAmount: number; totalVat: number; conv: { amountBase: number; rateUsed: number } },
+    draftOnly: boolean,
+  ): Promise<void> {
+    const res = await tx.purchaseOrder.updateMany({
+      where: { id: docId, orgId, deletedAt: null, ...(draftOnly ? { status: 'DRAFT' } : {}) },
       data: {
-        totalAmount,
-        totalVat,
-        totalAmountBase: conv.amountBase,
-        rateUsed: conv.rateUsed,
+        totalAmount: t.totalAmount,
+        totalVat: t.totalVat,
+        totalAmountBase: t.conv.amountBase,
+        rateUsed: t.conv.rateUsed,
       },
     });
+    if (draftOnly && res.count === 0) {
+      throw new ForbiddenException(err('err.xlsx.purchaseOrderNotDraft'));
+    }
   }
 }
 
