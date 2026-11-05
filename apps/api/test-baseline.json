@@ -100,6 +100,10 @@
    "HTTP-кеш списків: браузер не тримає копію редагованих даних кожен виняток досі існує й досі має max-age (перелік не застарів)",
    "HTTP-кеш списків: браузер не тримає копію редагованих даних сторож справді обходить контролери і бачить декоратор Cache-Control"
   ],
+  "apps/api/src/common/http/send-file.spec.ts": [
+   "send-file — ім'я файла вкладення кирилиця — filename*=UTF-8'' з percent-кодуванням; апостроф і дужки теж кодуються (RFC 5987)",
+   "send-file — ім'я файла вкладення символи / \\ : * ? \" < > | у номері → «-»"
+  ],
   "apps/api/src/common/interceptors/idempotency-purge.processor.spec.ts": [
    "IdempotencyPurgeProcessor видаляє ЛИШЕ протерміновані (expiresAt < now)"
   ],
@@ -2979,6 +2983,68 @@
    "sanitizePayload редагує вкладені секрети (масив + вкладений обєкт)",
    "sanitizePayload редагує різні варіанти імен ключів (case-insensitive, api_key/apiKey/token/password)"
   ],
+  "apps/api/src/modules/document-export/document-export.controller.spec.ts": [
+   "DocumentExportController id не UUID — 400",
+   "DocumentExportController invoice іншої організації — 404",
+   "DocumentExportController invoice.xlsx — ім'я файла кирилицею у filename*=UTF-8''",
+   "DocumentExportController invoice: роль ACCOUNTANT, що читає документ, отримує файл",
+   "DocumentExportController invoice: роль MECHANIC, що не читає документ, — 403 без запиту в базу",
+   "DocumentExportController invoice: роль RECEPTIONIST, що читає документ, отримує файл",
+   "DocumentExportController invoice: роль STOREKEEPER, що не читає документ, — 403 без запиту в базу",
+   "DocumentExportController purchaseOrder іншої організації — 404",
+   "DocumentExportController purchaseOrder.docx — ім'я файла кирилицею у filename*=UTF-8''",
+   "DocumentExportController purchaseOrder: роль ACCOUNTANT, що читає документ, отримує файл",
+   "DocumentExportController purchaseOrder: роль RECEPTIONIST, що не читає документ, — 403 без запиту в базу",
+   "DocumentExportController purchaseOrder: роль STOREKEEPER, що читає документ, отримує файл",
+   "DocumentExportController stockDocument іншої організації — 404",
+   "DocumentExportController stockDocument.xlsx — ім'я файла кирилицею у filename*=UTF-8''",
+   "DocumentExportController stockDocument: роль ACCOUNTANT, що не читає документ, — 403 без запиту в базу",
+   "DocumentExportController stockDocument: роль RECEPTIONIST, що не читає документ, — 403 без запиту в базу",
+   "DocumentExportController stockDocument: роль STOREKEEPER, що читає документ, отримує файл",
+   "DocumentExportController supplierReturn іншої організації — 404",
+   "DocumentExportController supplierReturn.docx — ім'я файла кирилицею у filename*=UTF-8''",
+   "DocumentExportController supplierReturn: роль ACCOUNTANT, що читає документ, отримує файл",
+   "DocumentExportController supplierReturn: роль RECEPTIONIST, що не читає документ, — 403 без запиту в базу",
+   "DocumentExportController supplierReturn: роль STOREKEEPER, що читає документ, отримує файл",
+   "DocumentExportController невідомий формат «PDF» — 400 українською, документ не читається",
+   "DocumentExportController невідомий формат «csv» — 400 українською, документ не читається",
+   "DocumentExportController невідомий формат «exe» — 400 українською, документ не читається"
+  ],
+  "apps/api/src/modules/document-export/document-export.printable.spec.ts": [
+   "замовлення постачальнику на бланку (BR-PO-016) видалене — з позначкою; іншої організації — 404",
+   "замовлення постачальнику на бланку (BR-PO-016) замовлення без ПДВ — без колонки й рядка ПДВ",
+   "замовлення постачальнику на бланку (BR-PO-016) одиниця рядка → базова; сума рядка = кількість × ціна; ПДВ рядка; «ПДВ» і «Разом» — як у картці",
+   "замовлення постачальнику на бланку (BR-PO-016) постачальник, склад, договір, дата оплати; рядки в порядку картки, видалений рядок — ні",
+   "повернення постачальнику на бланку (BR-SRET-014) видалене — з позначкою; іншої організації — 404",
+   "повернення постачальнику на бланку (BR-SRET-014) постачальник, склад, замовлення-джерело; рядки в порядку картки; «Разом» = totalAmount без ПДВ",
+   "рахунок на бланку (BR-INV-028) назва, номер, дата документа, платник з реквізитами, «Оплатити до», примітка",
+   "рахунок на бланку (BR-INV-028) одиниця рядка → базова одиниця товару; робота — «год», ручний рядок — «шт»",
+   "рахунок на бланку (BR-INV-028) позначений на видалення — знаходиться й друкується з позначкою «ВИДАЛЕНО»",
+   "рахунок на бланку (BR-INV-028) підсумки «Разом» / «ПДВ» / «До сплати» — суми рахунку, як у GET /invoices/:id/pdf",
+   "рахунок на бланку (BR-INV-028) рахунок іншої організації — 404",
+   "рахунок на бланку (BR-INV-028) рядки в порядку картки (sortOrder, createdAt, id), не в порядку сховища",
+   "рахунок на бланку (BR-INV-028) ім'я файла — «Рахунок-<номер>», символи «/» у номері замінено на «-»",
+   "складський документ на бланку (BR-SDOC-009) видалений — з позначкою; іншої організації — 404",
+   "складський документ на бланку (BR-SDOC-009) жоден рядок без ціни — без «Разом»",
+   "складський документ на бланку (BR-SDOC-009) сума рядка = кількість × ціна (до копійки); рядок без ціни — без ціни й суми; «Разом» — рядки з ціною",
+   "складський документ на бланку (BR-SDOC-009) тип OPENING_BALANCE — назва «Введення залишків», файл «Залишки-<номер>»",
+   "складський документ на бланку (BR-SDOC-009) тип RECEIPT — назва «Оприбуткування», файл «Оприбуткування-<номер>»",
+   "складський документ на бланку (BR-SDOC-009) тип WRITEOFF — назва «Списання», файл «Списання-<номер>»",
+   "складський документ на бланку (BR-SDOC-009) тип у назві, склад і склад призначення переміщення, дата проведення за Києвом"
+  ],
+  "apps/api/src/modules/document-export/document-export.renderers.spec.ts": [
+   "DOCX документа (OOXML) назва, «ВИДАЛЕНО», таблиця рядків, текст екранується, підсумки з валютою",
+   "DOCX документа (OOXML) не видалений — без позначки",
+   "DOCX документа (OOXML) примітка з кількох рядків — переноси рядка (<w:br/>), а не злитий текст",
+   "DocumentExportService — файл і сторона-організація рахунок: «Постачальник» — організація з реквізитами перед платником; ім'я й тип файла",
+   "DocumentExportService — файл і сторона-організація складський документ: ім'я файла за типом, без сторони-організації",
+   "DocumentExportService — файл і сторона-організація ті самі підсумки у трьох форматах",
+   "PDF документа (pdfmake) назва з номером, «ВИДАЛЕНО», реквізити, рядки (сума з «грн», без ціни — порожньо), підсумки",
+   "PDF документа (pdfmake) не видалений документ — без позначки",
+   "XLSX документа (exceljs) кількості й суми — числа з форматом; рядок без ціни — порожня комірка",
+   "XLSX документа (exceljs) назва з номером, «ВИДАЛЕНО», підсумок «До сплати» — числом",
+   "XLSX документа (exceljs) формула в назві товару чи контрагента — з апострофом (xlsxSafe)"
+  ],
   "apps/api/src/modules/document-number/document-number.service.spec.ts": [
    "DocumentNumberService.next MONTHLY + lastResetYear=NULL → скидає до 1 (симетрія з YEARLY)",
    "DocumentNumberService.next NEVER: просто інкрементує currentSeq (+1) з паддингом",
@@ -5773,6 +5839,7 @@
    "PurchaseOrdersService.transition — FSM map паралельний перехід з того самого статусу: CAS програв → 400 «статус змінився», події немає"
   ],
   "apps/api/src/modules/purchase-orders/purchase-orders.line-goods.spec.ts": [
+   "PurchaseOrdersService.create/update — tenant-guard goodId рядків create і update: рядки пишуться з createdAt у порядку надсилання — так їх показують картка й друк",
    "PurchaseOrdersService.create/update — tenant-guard goodId рядків create: goodId рядка з іншої організації → NotFoundException ДО будь-якого запису",
    "PurchaseOrdersService.create/update — tenant-guard goodId рядків update без поля lines → товари не перевіряються (рядки не чіпаються), 404 немає",
    "PurchaseOrdersService.create/update — tenant-guard goodId рядків update: goodId рядка з іншої організації → NotFoundException ДО будь-якого запису"
@@ -6670,6 +6737,7 @@
    "StockDocuments — HTTP Contract POST /stock-documents/linked-counts повертає 400 для порожнього масиву (ArrayMinSize)"
   ],
   "apps/api/src/modules/stock-documents/stock-documents.line-goods-tenant.spec.ts": [
+   "StockDocumentsService — tenant-guard goodId рядків на update (BR-SDOC-002) update(): нові рядки пишуться з createdAt у порядку надсилання, відповідь сортує їх за ним — як картка й друк",
    "StockDocumentsService — tenant-guard goodId рядків на update (BR-SDOC-002) update(): пошук товарів обмежений org і живими записами (where: orgId + deletedAt:null)",
    "StockDocumentsService — tenant-guard goodId рядків на update (BR-SDOC-002) update(): чужий goodId серед рядків → 404 ДО запису (рядки не soft-delete-нуті, нові не створені)"
   ],
@@ -8699,6 +8767,7 @@
    "PurchaseOrderImportAdapter.appendLines новий goodId → createMany",
    "PurchaseOrderImportAdapter.appendLines порожній список рядків не ламає перерахунок",
    "PurchaseOrderImportAdapter.appendLines після запису рядків (append і replace) позиції списків купівлі звіряються в тій самій транзакції",
+   "PurchaseOrderImportAdapter.appendLines рядки файла (заміна й дописування) пишуться з createdAt у порядку файла — так їх показують картка й друк",
    "PurchaseOrderImportAdapter.appendLines тотали беруться з агрегації БД (без take-ліміту), а не з findMany рядків",
    "PurchaseOrderImportAdapter.appendLines тотали рахуються по ВСІХ активних рядках ПІСЛЯ вставки, не лише по нових",
    "PurchaseOrderImportAdapter.syncAfterDirectLineWrite ПДВ рядка перераховується від чинних кількості й ціни; рядок із правильним ПДВ не чіпається",
@@ -8706,7 +8775,8 @@
    "PurchaseOrderImportAdapter.syncAfterDirectLineWrite тотали замовлення пишуться з агрегації по всіх активних рядках, з сумою в базовій валюті",
    "PurchaseOrderImportAdapter.syncAfterDirectLineWrite швидкий імпорт рядків (XLSX у картці) теж звіряє позиції списків купівлі",
    "StockDocumentImportAdapter.appendLines дублікат goodId → доливає кількість (склад не задвоюється)",
-   "StockDocumentImportAdapter.appendLines новий goodId → createMany, наявні не чіпаються"
+   "StockDocumentImportAdapter.appendLines новий goodId → createMany, наявні не чіпаються",
+   "StockDocumentImportAdapter.appendLines рядки файла (заміна й дописування) пишуться з createdAt у порядку файла — так їх показують картка й друк"
   ],
   "apps/api/src/modules/xlsx/good-ref-rows.parser.spec.ts": [
    "parseGoodRefRows — перелік товарів із файла Bug #1043: реквізит «Назва:» не перемагає таблицю з однією впізнаною колонкою",
@@ -8848,7 +8918,8 @@
   "apps/api/src/modules/xlsx/xlsx.po-lines-import-totals.spec.ts": [
    "XlsxService.importPOLines — ПДВ рядків і тотали після запису жодного рядка не записано (товар не знайдено) → документ не чіпається",
    "XlsxService.importPOLines — ПДВ рядків і тотали після запису наявний рядок оновлено (кількість і ціна) → перерахунок теж іде",
-   "XlsxService.importPOLines — ПДВ рядків і тотали після запису новий рядок записано → перерахунок один раз, ПІСЛЯ запису, у транзакції, для цього замовлення"
+   "XlsxService.importPOLines — ПДВ рядків і тотали після запису новий рядок записано → перерахунок один раз, ПІСЛЯ запису, у транзакції, для цього замовлення",
+   "XlsxService.importPOLines — ПДВ рядків і тотали після запису нові рядки пишуться з createdAt у порядку файла — так їх показують картка й друк"
   ],
   "apps/api/src/modules/xlsx/xlsx.pricing-rule-goods.spec.ts": [
    "XlsxService — перелік товарів для правила ціноутворення розкладає рядки на знайдені, неоднозначні й не знайдені; у базу нічого не пише",

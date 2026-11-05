@@ -5,6 +5,16 @@
 
 ---
 
+### feat: друк і «Зберегти як» (PDF / Excel / Word) документів; рядок списку з клавіатури (2026-11-05)
+
+- `2a261449`, `5cd20935` TECH-DEBT (а) §8 L745 / L766 / L785: `GET /<invoices|purchase-orders|stock-documents|supplier-returns>/:id/export/:format`
+  — один бланк (`PrintableDocument`, модуль `document-export`) у трьох форматах (BR-INV-028, BR-PO-016, BR-SDOC-009,
+  BR-SRET-014), видалений — з «ВИДАЛЕНО»; картки друкують серверний PDF, повернення отримало «Друк» і «Зберегти як».
+  Помічники XLSX / DOCX кошторису винесено в `common/office`. `TableRow` з `onClick` — Tab + Enter.
+- Порядок рядків замовлення й складського документа — явний (`createdAt` зі зсувом); review `76f38bff`: імпорт XLSX
+  теж пише зсув, переноси рядків у DOCX; tester `6190b981` Bug #1045 (рядок без дії не бере Tab), `2676f767` Bug #1046
+  (друк повернення — номер, не UUID). `ff6db372` `applyLinePlan` замість трьох копій запису імпорту.
+
 ### fix(web): фокус після закриття вікна — на відкривача, не на `<body>` (2026-11-05)
 
 - `15cbe2b4` TECH-DEBT (а) §8 L697: `useFocusTrap` запам'ятовує відкривача й повертає на нього фокус після Escape чи
