@@ -42,3 +42,24 @@ export async function fetchOrNetworkError(
     throw new NetworkError(err);
   }
 }
+
+/**
+ * Відмова сервера з HTTP-статусом (TECH-DEBT §8 L556(14)): раніше `apiFetch` кидав голий `Error` з текстом,
+ * і місце виклику не могло відрізнити 409 «уже рознесено / позиції змінились» від решти помилок — реагувало
+ * на будь-яку. `message` — як і раніше текст сервера (його показують людині); `status` і `code` — для логіки.
+ */
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly code?: string,
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
+/** Відмова сервера саме з цим статусом (без `status` — будь-яка `ApiError`). */
+export function isApiError(err: unknown, status?: number): err is ApiError {
+  return err instanceof ApiError && (status === undefined || err.status === status);
+}

@@ -7,11 +7,15 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { vi, it, expect, describe, beforeEach } from 'vitest';
 
 const apiFetch = vi.fn();
-vi.mock('@/lib/api-client', () => ({ apiFetch: (...a: unknown[]) => apiFetch(...a) }));
+vi.mock('@/lib/api-client', async () => ({
+  apiFetch: (...a: unknown[]) => apiFetch(...a),
+  isApiError: (await import('@/lib/network-error')).isApiError,
+}));
 vi.mock('@/lib/toast', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock('@/lib/auth', () => ({ useAuth: () => ({ employee: { id: 'e1', role: 'STOREKEEPER' } }) }));
 
 import { AutoAllocateDialog } from '../AutoAllocateDialog';
+import { ApiError } from '@/lib/network-error';
 
 const BATCH = {
   id: 'b-1',
@@ -211,4 +215,37 @@ describe('AutoAllocateDialog', () => {
     await new Promise(r => setTimeout(r, 0));
     expect(allocateBodies.every(b => b.dryRun === true)).toBe(true);
   });
+
+  // TECH-DEBT §8 L556(14): `apiFetch` кидає `ApiError` зі статусом. Перегляд перераховується лише на 409
+  // («позиції змінились»), а не на будь-яку відмову. Мутація: прибрати `isApiError(e, 409)` → червоніє 400.
+  it.each([
+    [409, 'Позиції змінились', true],
+    [400, 'Невірний запит', false],
+  ] as const)(
+    'відмова %s при «Застосувати» — перегляд перераховано: %s',
+    async (status, text, recalculated) => {
+      const base = apiFetch.getMockImplementation()!;
+      apiFetch.mockImplementation((path: string, init?: { body?: string }) => {
+        if (path === '/supplier-offers/allocate') {
+          const body = JSON.parse(init?.body ?? '{}') as Record<string, unknown>;
+          if (!body.dryRun) {
+            allocateBodies.push(body);
+            return Promise.reject(new ApiError(text, status));
+          }
+        }
+        return base(path, init);
+      });
+      renderDialog();
+      await screen.findByText('обрано вручну — лишається');
+      fireEvent.click(screen.getByLabelText(/Перезаписати ручний вибір/));
+      const apply = screen.getByRole('button', { name: 'Застосувати' });
+      await waitFor(() => expect(apply).toBeEnabled());
+      const previewsBefore = allocateBodies.filter(b => b.dryRun).length;
+      fireEvent.click(apply);
+      expect(await screen.findByText(text)).toBeInTheDocument();
+      await new Promise(r => setTimeout(r, 50));
+      const previewsAfter = allocateBodies.filter(b => b.dryRun).length;
+      expect(previewsAfter > previewsBefore).toBe(recalculated);
+    },
+  );
 });

@@ -7,6 +7,7 @@ import { SUPPLIER_OFFER_BATCH_MAX, SUPPLIER_STRATEGIES } from '@sto/shared';
 import { fmtBankCurrencySuffix, fmtDate, fmtMoney, fmtQty } from '@/lib/format';
 import { toast } from '@/lib/toast';
 import { invalidateProcurementSideEffects } from '@/lib/cache-invalidation';
+import { isApiError } from '@/lib/api-client';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import {
   batchProgress,
@@ -188,9 +189,12 @@ export function AutoAllocateDialog({ ids, onClose, onApplied }: Props) {
       onApplied();
     } catch (e: unknown) {
       setNotice(e instanceof Error ? e.message : t('allocate.error'));
-      // 409 — позиції змінились: перерахувати перегляд від поточного стану.
-      void runPreview(strategy, overrideManual);
-      invalidateProcurementSideEffects(qc);
+      // 409 — позиції змінились: перерахувати перегляд від поточного стану. Інша відмова (мережа,
+      // 400, 403) перегляду не змінює — перераховувати нічого.
+      if (isApiError(e, 409)) {
+        void runPreview(strategy, overrideManual);
+        invalidateProcurementSideEffects(qc);
+      }
     } finally {
       applyingRef.current = false;
       setApplying(false);

@@ -10,6 +10,8 @@ import {
   apiBlobFetch,
   apiFetch,
   apiMultipartFetch,
+  ApiError,
+  isApiError,
   NetworkError,
   publicFetch,
   publicNeutralFetch,
@@ -64,6 +66,44 @@ describe('api-client public fetch — versioning URL contract (Bug #761)', () =>
     await expect(publicNeutralFetch('/public/work-orders/bad')).rejects.toThrow(
       'Посилання не дійсне',
     );
+  });
+});
+
+// TECH-DEBT §8 L556(14): відмова сервера — `ApiError` зі статусом і кодом; текст для людини — як раніше.
+describe('apiFetch / publicFetch — ApiError зі статусом', () => {
+  beforeEach(() => {
+    fetchMock.mockReset();
+    vi.stubGlobal('fetch', fetchMock);
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('409 → ApiError: status 409, code з тіла, message — текст сервера', async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 409,
+      statusText: 'Conflict',
+      json: async () => ({ message: 'Рядок уже рознесено', code: 'err.http.409' }),
+    } as unknown as Response);
+    const err = await publicFetch('/x').catch((e: unknown) => e);
+    expect(isApiError(err, 409)).toBe(true);
+    expect(err).toMatchObject({
+      status: 409,
+      code: 'err.http.409',
+      message: 'Рядок уже рознесено',
+    });
+    expect(isApiError(err, 400)).toBe(false);
+  });
+
+  it('apiFetch: масив повідомлень валідації → один текст, status 400', async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 400,
+      statusText: 'Bad Request',
+      json: async () => ({ message: ['Поле A', 'Поле B'] }),
+    } as unknown as Response);
+    const err = await apiFetch('/y').catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err).toMatchObject({ status: 400, message: 'Поле A; Поле B' });
   });
 });
 

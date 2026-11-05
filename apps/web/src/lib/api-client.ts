@@ -1,5 +1,5 @@
 import { TOKEN_KEY } from './auth';
-import { NetworkError, fetchOrNetworkError } from './network-error';
+import { ApiError, NetworkError, fetchOrNetworkError, isApiError } from './network-error';
 import { getCurrentLocale } from '@/i18n/locale';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
@@ -39,7 +39,7 @@ function emitSyncStatus(status: 'idle' | 'offline'): void {
   window.dispatchEvent(new CustomEvent('sto:sync-status', { detail: { status } }));
 }
 
-export { NetworkError };
+export { ApiError, isApiError, NetworkError };
 
 function setToken(token: string): void {
   if (typeof window !== 'undefined') sessionStorage.setItem(TOKEN_KEY, token);
@@ -58,9 +58,10 @@ function clearToken(): void {
 async function throwFromResponse(res: Response, fallback: string): Promise<never> {
   const body = (await res.json().catch(() => ({ message: fallback }))) as {
     message?: string | string[];
+    code?: string;
   };
   const msg = Array.isArray(body.message) ? body.message.join('; ') : (body.message ?? fallback);
-  throw new Error(msg);
+  throw new ApiError(msg, res.status, body.code);
 }
 
 // Dedup concurrent token refreshes. On token expiry a burst of parallel 401s (several
@@ -298,11 +299,12 @@ async function _publicFetch<T>(base: string, path: string, init?: RequestInit): 
     // NestJS class-validator повертає `message: string[]` при 400 — join '; '.
     const body = (await res.json().catch(() => ({ message: res.statusText }))) as {
       message?: string | string[];
+      code?: string;
     };
     const msg = Array.isArray(body.message)
       ? body.message.join('; ')
       : (body.message ?? `HTTP ${res.status}`);
-    throw new Error(msg);
+    throw new ApiError(msg, res.status, body.code);
   }
 
   if (res.status === 204) return undefined as T;
