@@ -5,7 +5,8 @@
 -- Далі — все, що на них посилається (restrict / cascade), і документ цілком, якщо видаляється його рядок.
 -- Організації не чіпаються. Тригери (FK, append-only) вимкнено на час транзакції
 -- (`session_replication_role = replica`), тому цілісність перевіряється наприкінці: висяче посилання
--- хоч в одному FK — відкат. Також звіряються залишки складу (рух ↔ залишок): нова розбіжність видна у звіті.
+-- хоч в одному FK — відкат; так само відкат, якщо проводка, рух складу чи рядок каси поліморфно
+-- (`documentId` без FK) посилається на видалений документ (крок 5б). Також звіряються залишки складу (рух ↔ залишок): нова розбіжність видна у звіті.
 --
 -- Типово — ПРОБНИЙ прогін (ROLLBACK) зі звітом «таблиця → скільки рядків». Справжнє видалення — `-v commit=1`.
 -- Спершу копія бази:
@@ -130,6 +131,36 @@ BEGIN
   END LOOP;
   IF bad > 0 THEN RAISE EXCEPTION 'цілісність порушена (% FK) — відкат', bad; END IF;
   RAISE NOTICE 'цілісність FK: ок';
+END $$;
+
+-- 5б) Поліморфні посилання (`documentId` / `entityId` без FK) — їх крок 5 не бачить. Документ, що
+-- потрапив у purge як залежний (наряд реального клієнта з тестовим авто, товаром чи складом),
+-- лишав би проводки на рахунку розрахунків, рухи складу й рядки каси, які тримають баланс і залишок
+-- (2026-11-05 так лишилось 818 проводок `WorkOrder` на нарядах, яких немає). Гроші й склад — відкат;
+-- журнали й події — лише звіт.
+DO $$
+DECLARE
+  r record; n bigint; bad int := 0;
+BEGIN
+  FOR r IN SELECT * FROM (VALUES
+    ('settlement_transactions','documentId', true), ('stock_movements','documentId', true),
+    ('cash_operations','documentId', true), ('cash_operations','baseDocumentId', true),
+    ('loyalty_transactions','documentId', true), ('batch_consumptions','documentId', true),
+    ('audit_events','entityId', false), ('comments','entityId', false), ('domain_events','documentId', false),
+    ('employee_notifications','documentId', false), ('integration_logs','documentId', false),
+    ('notification_logs','documentId', false), ('tasks','entityId', false)
+  ) AS t(tbl, col, critical)
+  LOOP
+    EXECUTE format('SELECT count(*) FROM %I WHERE %I::text IN (SELECT id FROM purge)', r.tbl, r.col) INTO n;
+    CONTINUE WHEN n = 0;
+    IF r.critical THEN
+      RAISE WARNING 'поліморфне посилання на видалений документ: %.% — %', r.tbl, r.col, n; bad := bad + 1;
+    ELSE
+      RAISE NOTICE 'журнал посилається на видалений документ: %.% — %', r.tbl, r.col, n;
+    END IF;
+  END LOOP;
+  IF bad > 0 THEN RAISE EXCEPTION 'гроші / склад посилаються на видалені документи (% колонок) — відкат', bad; END IF;
+  RAISE NOTICE 'поліморфні посилання грошей і складу: ок';
 END $$;
 
 -- 6) Узгодженість ПІСЛЯ: нові розбіжності складу (яких не було до)

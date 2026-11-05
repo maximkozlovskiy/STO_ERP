@@ -120,5 +120,10 @@ grep -n "model " packages/database/prisma/schema/*.prisma | grep -v "//"
 - [ ] **Змінено формат змінної шаблону (додано валюту / одиницю) → звірено ТИПОВІ тексти шаблонів**
       у константах, `seed.ts` і міграціях даних: текст, що вже дописує «грн» після змінної, дасть
       «грн грн» (`journal/database.md`, 2026-10-30)
+- [ ] **SQL-скрипт жорсткого видалення (`scripts/dev/*.sql`, міграція даних із `DELETE`) перевіряє не
+      лише FK, а й поліморфні посилання** (`documentId` / `entityId` без FK у `settlement_transactions`,
+      `stock_movements`, `cash_operations`, `loyalty_transactions`, `batch_consumptions`): документ,
+      видалений як залежний, лишав би проводки й рухи, що тримають баланс і залишок
+      (`journal/database.md`, 2026-11-05)
 
 ---
