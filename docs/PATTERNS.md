@@ -7,19 +7,20 @@
 
 ## Ключові компоненти (apps/web/src/components/ui/)
 
-| Компонент                           | Файл                       | Що робить                                                       |
-| ----------------------------------- | -------------------------- | --------------------------------------------------------------- |
-| `Modal`                             | `modal.tsx`                | `useId()` per instance, AnimatedBody, Escape, focus trap        |
-| `AnimatedBody`                      | `modal.tsx` (export)       | ResizeObserver + height transition 260ms                        |
-| `ModalTabs`                         | `modal-tabs.tsx`           | Вкладки для 1→N (Авто, Наряди, Штрихкоди)                       |
-| `DetailPanel`                       | `detail-panel.tsx`         | Бокова панель з tabs, configFields (⚙), PanelField/PanelSection |
-| `DetailPanelToggle`                 | `detail-panel-toggle.tsx`  | Кнопка поруч з ColumnsDropdown                                  |
-| `PhoneInput`                        | `phone-input.tsx`          | Маска `+38 (0XX) XXX-XX-XX`                                     |
-| `DirtyConfirmDialog`                | `dirty-confirm-dialog.tsx` | Діалог підтвердження закриття                                   |
-| `TabBar`                            | `TabBar.tsx`               | Taskbar для згорнутих модалок (amber chips)                     |
-| `BulkActionsBar`                    | `BulkActionsBar.tsx`       | Панель bulk-actions з Promise.allSettled                        |
-| `InlineEditCell` / `InlineViewCell` | —                          | Inline editing у таблиці                                        |
-| `ListStatusRow` / `ListFiltersRow`  | `list-toolbar.tsx`         | Рядок статусів і рядок фільтрів списку (див. «Панель списку»)   |
+| Компонент                           | Файл                       | Що робить                                                                                                                                                                                                    |
+| ----------------------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `Modal`                             | `modal.tsx`                | `useId()` per instance, AnimatedBody, Escape, focus trap                                                                                                                                                     |
+| `AnimatedBody`                      | `modal.tsx` (export)       | ResizeObserver + height transition 260ms                                                                                                                                                                     |
+| `ModalTabs`                         | `modal-tabs.tsx`           | Вкладки для 1→N (Авто, Наряди, Штрихкоди)                                                                                                                                                                    |
+| `DetailPanel`                       | `detail-panel.tsx`         | Бокова панель з tabs, configFields (⚙), PanelField/PanelSection                                                                                                                                              |
+| `DetailPanelToggle`                 | `detail-panel-toggle.tsx`  | Кнопка поруч з ColumnsDropdown                                                                                                                                                                               |
+| `PhoneInput`                        | `phone-input.tsx`          | Маска `+38 (0XX) XXX-XX-XX`                                                                                                                                                                                  |
+| `DirtyConfirmDialog`                | `dirty-confirm-dialog.tsx` | Діалог підтвердження закриття                                                                                                                                                                                |
+| `TabBar`                            | `TabBar.tsx`               | Taskbar для згорнутих модалок (amber chips)                                                                                                                                                                  |
+| `BulkActionsBar`                    | `BulkActionsBar.tsx`       | Панель bulk-actions з Promise.allSettled                                                                                                                                                                     |
+| `InlineEditCell` / `InlineViewCell` | —                          | Inline editing у таблиці                                                                                                                                                                                     |
+| `ListStatusRow` / `ListFiltersRow`  | `list-toolbar.tsx`         | Рядок статусів і рядок фільтрів списку (див. «Панель списку»)                                                                                                                                                |
+| `LinkedDocRef`                      | `LinkedDocRef.tsx`         | Номер пов'язаного документа: посилання, якщо роль відкриє документ (`canOpen(kind)` з `lib/nav`), інакше текст; власних переліків ролей біля переходів не писати (сторож `linked-doc-access.census.test.ts`) |
 
 ---
 

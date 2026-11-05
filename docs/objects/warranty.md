@@ -104,8 +104,8 @@ total, page, limit }` за стандартом списків (`page`, `limit` 
 | вкладка «Гарантії»: рядок, запит (порядок, стан, пошук), стани — кнопками над пошуком, «Звернення» за станом і роллю, вікно звернення, відмова, `?open=` (і новий стан після звернення), клік без панелі | `WarrantiesTab.test.tsx`                | 12     |
 | ролі вкладки = `@Roles` контролера                                                                                                                                                                       | `lib/__tests__/warranty-roles.test.ts`  | 2      |
 | `warrantyListPath`, поріг `useExpiringWarranties` = `WARRANTY_EXPIRING_DAYS`, інвалідація після звернення (Bug #718)                                                                                     | `hooks/api/useWarranties.test.tsx`      | 5      |
-| «Пов'язані документи»: перехід до гарантії лише ролям із вкладкою                                                                                                                                        | `lib/__tests__/linked-configs.test.tsx` | 29     |
-| `toWarranty` → `/work-orders?tab=warranties&open=<id>`                                                                                                                                                   | `lib/__tests__/linked-nav.test.tsx`     | 12     |
+| «Пов'язані документи»: перехід до гарантії лише ролям із вкладкою                                                                                                                                        | `lib/__tests__/linked-configs.test.tsx` | 38     |
+| `toWarranty` → `/work-orders?tab=warranties&open=<id>`                                                                                                                                                   | `lib/__tests__/linked-nav.test.tsx`     | 13     |
 
 E2E: `apps/web/e2e/work-order-warranties.spec.ts` (4) — наряд створюється в списку нарядів, робота й
 статуси до «Виконано» — на сторінці наряду; гарантія з'являється на вкладці; фільтр стану;

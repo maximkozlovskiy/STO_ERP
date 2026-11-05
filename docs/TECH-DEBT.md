@@ -149,7 +149,7 @@
 - ~~§10 п. 23 — пошук історії каси за контрагентом серед контрагентів цієї каси.~~ ✅ ЗАКРИТО 2026-11-05: контрагент шукається серед тих, що мають рядки в цій касі (групування рядків каси, без стелі 500 на всю організацію), BR-CASH-034, `cash.operation-record.spec.ts`.
 - ~~§12 п. 9 — порядок блокувань «оплата ‖ сторно» (deadlock).~~ ✅ ЗАКРИТО 2026-11-05: `PaymentsService.reverse` першим блокує наряд оплати (`lockWorkOrdersForUpdate`), а без наряду — рахунок, до CAS оплати й проводки сторно — порядок той самий, що в оплаті (BR-PAY-005, `payments.reverse.spec.ts`).
 - ~~§13 п. 5 / 21 — запит діапазону `GET /calendar/slots?from&to` і позначка «не всі дні»; вихідні філії в планових датах.~~ ✅ ЗАКРИТО 2026-11-05: п. 5 — `73709736` (2026-10-27); п. 21 — `99c3df3f`, `f67418ac`, `9d000e38` + review `e9dc7e68`, tester `587606965` (Bug #1047 «Робочі дні» не зберігались), `900d16c37` (Bug #1050): вихідні філії пропускаються в планових датах наряду (400 `plannedOnDayOff`), автокінці, нормогодинах і розбитті запису по днях (BR-WO-019, BR-CAL-016). Питання власнику — (б) №83–86.
-- §15 п. 4 — `canOpen(kind)` + `<LinkedDocRef>`.
+- ~~§15 п. 4 — `canOpen(kind)` + `<LinkedDocRef>`.~~ ✅ ЗАКРИТО 2026-11-05: `cf118d3da`, тести `c4c0557aa` — `LINKED_DOC_ACCESS` + `canOpen(kind, role)` у `lib/nav.ts` (сторінка — ролі пункту меню; картка вужча — `PURCHASE_ORDER_VIEW_ROLES`, `PURCHASE_DOCUMENT_ROLES`, `PROCUREMENT_READ_ROLES`, `WARRANTY_VIEW_ROLES`), `useLinkedNav().canOpen(kind)` і `components/ui/LinkedDocRef.tsx`. Переведено «Нестачу», «Позиції», касу (пропи `canOpenPurchaseOrders` прибрано), картку постачальника в замовленні й усі переходи «Пов'язаних документів» (`canOpenWarranties` прибрано). Звірка з guard-ами — `linked-doc-access.test.ts`, сторож — `linked-doc-access.census.test.ts`. Свідомо лишилось на `canOpenRoute`: `lib/automation-href.ts` (типи сутностей журналу, серед них задачі, оплати, онлайн-запис) — приймальні й бухгалтеру посилання на замовлення чи повернення з журналу веде на «Купівлю» без картки (не 403); перевести на `canOpen` — окремим рішенням.
 - ~~§15 п. 10 — `setStatus(tx)` / `replaceDraftLines(tx)` у замовленнях.~~ ✅ ЗАКРИТО 2026-11-05: `purchase-orders/purchase-order-lifecycle.ts` — `setStatus` (хук списків для CANCELLED / RECEIVED → CAS за прочитаним статусом → подія) для `transition` і `receive`, `replaceDraftLines` для PATCH картки й імпорту XLSX «замінити», `reconcileDraftLists` для дописування, швидкого імпорту й зміни складу, `closeOrderForPurchaseLists` для видалення чернетки. Порядок блокувань скрізь «позиції → замовлення»: у `receive` хук переїхав перед CAS (читає лише позиції, їх `receivedQty` уже записав розподіл), в імпорті XLSX звірка — перед тоталами замовлення. Сторож — `purchase-orders.lifecycle.spec.ts` (порядок за `invocationCallOrder` + перепис коду: хуки й запис статусу лише в модулі).
 - ~~§15 п. 8 — лічильник на `SupplierOfferBatch` (міграція).~~ ✅ ЗАКРИТО 2026-11-05: замість лічильника — індекс `(orgId, batchId, status)` (міграція `20261105190000_supplier_offer_requests_batch_status_idx`, замінив `(orgId, batchId)`) і `findFirst` відкритого запиту замість `count` у `completeBatchIfDone`: перевірка не перебирає batch, а копії стану, яку треба тримати узгодженою з запитами, немає.
 - ~~Прибрати модель `WorkGoodCategoryLink` і таблицю `work_good_category_links` (разом із seed).~~ ✅ ЗАКРИТО 2026-11-05: міграція `20261105180000_drop_work_order_templates_and_category_links`, крок зв'язків у `seed-catalog.ts` прибрано.
@@ -2059,12 +2059,14 @@ BR-INV-018…020, BR-CASH-026). Поведінку нижче не змінен�
    `IntegrationLogsTab`, `booking`, `ExcelImportWizard`, `calendar.utils` `TIME_FMT`/`KYIV_DMY_FMT`;
    публічний кошторис — можливо, свідомо). Глибше: форматери лише з `lib/format.ts` (`memoByLocale`) і
    гейт на `new Intl.*('uk-UA')` / `toLocale*('uk-UA')` поза ним.
-4. **Посилання на документи за роллю — у кожному компоненті свій тернарник** (Bugs #899, #900, #914).
+4. ~~**Посилання на документи за роллю — у кожному компоненті свій тернарник** (Bugs #899, #900, #914).
    Глибше: `canOpen(kind)` у `LinkedNav` з однієї мапи «вид документа → ролі» (її ж використовує guard
    сторінки й `nav-page-roles.test.ts`) і компонент `<LinkedDocRef>`.
    Частково: `canOpenRoute(href, role)` у `lib/nav.ts:282` (Bugs #900, #912; три файли); лишилось:
    `canOpen(kind)` і `<LinkedDocRef>` немає, локальні переліки ролей живуть далі (напр.
-   `cash/page.tsx:86`).
+   `cash/page.tsx:86`).~~ — ✅ ЗАКРИТО 2026-11-05:
+   `canOpen(kind, role)` з мапи `LINKED_DOC_ACCESS` (`lib/nav.ts`), `useLinkedNav().canOpen`,
+   `<LinkedDocRef>`; сторож — `linked-doc-access.census.test.ts` (див. розділ (а)).
 5. **Web повторює передумови бекенду** («Зняти резерв», блокування запису календаря, Bug #913).
    Глибше: DTO віддає прапорці можливостей (`canReleaseReservation`, `lock: {move, delete}`), які рахує
    та сама функція, що стоїть у перевірці; контрактний тест звіряє прапорець із рішенням.
