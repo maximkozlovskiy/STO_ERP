@@ -149,7 +149,8 @@
 - ~~§10 п. 23 — пошук історії каси за контрагентом серед контрагентів цієї каси.~~ ✅ ЗАКРИТО 2026-11-05: контрагент шукається серед тих, що мають рядки в цій касі (групування рядків каси, без стелі 500 на всю організацію), BR-CASH-034, `cash.operation-record.spec.ts`.
 - ~~§12 п. 9 — порядок блокувань «оплата ‖ сторно» (deadlock).~~ ✅ ЗАКРИТО 2026-11-05: `PaymentsService.reverse` першим блокує наряд оплати (`lockWorkOrdersForUpdate`), а без наряду — рахунок, до CAS оплати й проводки сторно — порядок той самий, що в оплаті (BR-PAY-005, `payments.reverse.spec.ts`).
 - ~~§13 п. 5 / 21 — запит діапазону `GET /calendar/slots?from&to` і позначка «не всі дні»; вихідні філії в планових датах.~~ ✅ ЗАКРИТО 2026-11-05: п. 5 — `73709736` (2026-10-27); п. 21 — `99c3df3f`, `f67418ac`, `9d000e38` + review `e9dc7e68`, tester `587606965` (Bug #1047 «Робочі дні» не зберігались), `900d16c37` (Bug #1050): вихідні філії пропускаються в планових датах наряду (400 `plannedOnDayOff`), автокінці, нормогодинах і розбитті запису по днях (BR-WO-019, BR-CAL-016). Питання власнику — (б) №83–86.
-- §15 п. 4 / 10 — `canOpen(kind)` + `<LinkedDocRef>`; `setStatus(tx)` / `replaceDraftLines(tx)` у замовленнях.
+- §15 п. 4 — `canOpen(kind)` + `<LinkedDocRef>`.
+- ~~§15 п. 10 — `setStatus(tx)` / `replaceDraftLines(tx)` у замовленнях.~~ ✅ ЗАКРИТО 2026-11-05: `purchase-orders/purchase-order-lifecycle.ts` — `setStatus` (хук списків для CANCELLED / RECEIVED → CAS за прочитаним статусом → подія) для `transition` і `receive`, `replaceDraftLines` для PATCH картки й імпорту XLSX «замінити», `reconcileDraftLists` для дописування, швидкого імпорту й зміни складу, `closeOrderForPurchaseLists` для видалення чернетки. Порядок блокувань скрізь «позиції → замовлення»: у `receive` хук переїхав перед CAS (читає лише позиції, їх `receivedQty` уже записав розподіл), в імпорті XLSX звірка — перед тоталами замовлення. Сторож — `purchase-orders.lifecycle.spec.ts` (порядок за `invocationCallOrder` + перепис коду: хуки й запис статусу лише в модулі).
 - ~~§15 п. 8 — лічильник на `SupplierOfferBatch` (міграція).~~ ✅ ЗАКРИТО 2026-11-05: замість лічильника — індекс `(orgId, batchId, status)` (міграція `20261105190000_supplier_offer_requests_batch_status_idx`, замінив `(orgId, batchId)`) і `findFirst` відкритого запиту замість `count` у `completeBatchIfDone`: перевірка не перебирає batch, а копії стану, яку треба тримати узгодженою з запитами, немає.
 - ~~Прибрати модель `WorkGoodCategoryLink` і таблицю `work_good_category_links` (разом із seed).~~ ✅ ЗАКРИТО 2026-11-05: міграція `20261105180000_drop_work_order_templates_and_category_links`, крок зв'язків у `seed-catalog.ts` прибрано.
 - ~~Прибрати модель `WorkOrderTemplate` і таблицю `work_order_templates` (зв'язок `Organisation.workOrderTemplates`, `'WorkOrderTemplate'` у `prisma.service.ts`).~~ ✅ ЗАКРИТО 2026-11-05: та сама міграція `20261105180000_drop_work_order_templates_and_category_links`; синк мобільного застосунку таблицю не читав (grep по `apps/mobile` і модулю sync — 0 збігів).
@@ -2081,10 +2082,12 @@ BR-INV-018…020, BR-CASH-026). Поведінку нижче не змінен�
    (див. розділ (а)). Лічильник на `SupplierOfferBatch` свідомо не вводили — він дублював би стан запитів.
 9. **`dns.lookup` на кожен HTTP-запит до постачальника** (`supplier-url-policy.ts`). Кеш перевірки на
    хост із коротким TTL — лише після рішення про ризик DNS rebinding.
-10. **Статус замовлення постачальнику з наслідками** (`purchase-orders.service` `transition`,
+10. ~~**Статус замовлення постачальнику з наслідками** (`purchase-orders.service` `transition`,
     `receive`, `remove`, xlsx-імпорт рядків чернетки): хуки списків купівлі підключаються в кожному
     місці виклику (Bug #885). Глибше: один `setStatus(tx, …)` і один `replaceDraftLines(tx, …)` у домені
-    замовлень.
+    замовлень.~~ — ✅ ЗАКРИТО 2026-11-05: `purchase-order-lifecycle.ts` (`setStatus`, `replaceDraftLines`,
+    `reconcileDraftLists`, `closeOrderForPurchaseLists`), сторож — `purchase-orders.lifecycle.spec.ts`
+    (див. розділ (а)).
 11. ~~**Бюджет бандла впритул**~~ — ✅ ЗНЯТО 2026-10-22: картка рахунку й вікно сторно — `next/dynamic`;
     локальна збірка: «Рахунки» 509 КБ, «Наряди» 511 КБ при ліміті 560, увесь JS 1,47 МБ з 1,55. Було: (2026-10-21, локальна збірка `d5f0eeed`): увесь JS — 1 501 809 Б gzip
     (ліміт піднято 1,5 → 1,55 МБ), найважча сторінка «Рахунки» — 558 КБ first-load при ліміті 560.
