@@ -90,6 +90,14 @@ grep -rn "ALTER TYPE.*ADD VALUE" packages/database/prisma/migrations/ | tail -5
       `grep -rn "skip" apps/api/src/modules --include=*.service.ts | grep -v spec` → у кожного findMany зі `skip`
       перевірити `orderBy` на унікальний хвіст.
 
+- [ ] Міграція `timestamp` → `date` (`@db.Date`) бере КИЇВСЬКУ дату, а не UTC-частину мітки:
+      `USING ((col AT TIME ZONE 'UTC') AT TIME ZONE 'Europe/Kyiv')::date`. Голий `col::date` зсуває на день
+      раніше значення, записані київською північчю (21:00/22:00 UTC), — а картка (`fmtDate`, Europe/Kyiv)
+      показувала саме київський день. Для півночі UTC обидва варіанти дають одне. Межі «по день» проти
+      `date`-колонки перевіряє integration-спек, не unit із моком `where`. Grep:
+      `grep -rn -A2 "TYPE DATE" packages/database/prisma/migrations | grep USING | grep -v "AT TIME ZONE"` (2026-11-05,
+      `employee_dates_db_date`)
+
 ---
 
 ### §9 Sync Readiness

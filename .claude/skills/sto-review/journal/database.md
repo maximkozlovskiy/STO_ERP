@@ -125,3 +125,17 @@ OVERDUE так само взяв у CAS лише статус: термін, п�
 — той самий порядок блокувань, що в іншого писача пачкою. Тести — таблиця в пам'яті зі зміною рядка
 між вибіркою і CAS (`work-orders.domain-events.spec.ts`, `invoice-overdue.processor.spec.ts`).
 **Severity:** IMPORTANT
+
+### 2026-11-05 — `timestamp` → `date` через голий `::date` — §6
+
+**Сигнал:** міграція `employee_dates_db_date` перетворювала `dateOfHire` / `dateOfFire` через
+`USING col::date`. Колонки — `timestamp(3)` без поясу в UTC; до 2026-11-04 API приймав будь-який ISO
+(`@IsDateString`, потім `optionalString`), тож значення `2026-05-01T00:00:00+03:00` лежало як
+`2026-04-30 21:00` і в картці (`fmtDate`, Europe/Kyiv) показувалось 01.05 — а `::date` дав би 30.04.
+На dev-базі всі значення були північчю UTC, тому перевірка «нічого не зсунулось» на dev цього не ловить.
+**Grep:** `grep -rn -A2 "TYPE DATE" packages/database/prisma/migrations | grep USING | grep -v "AT TIME ZONE"`
+**Фікс:** `USING ((col AT TIME ZONE 'UTC') AT TIME ZONE 'Europe/Kyiv')::date` — для півночі UTC те саме,
+київську північ повертає на свій день. Правка вже застосованої (не запушеної) міграції → оновити
+`_prisma_migrations.checksum` на dev-базі (sha256 файла), інакше `migrate dev` вимагатиме reset.
+Межі «прийнятий в останній / звільнений у перший день» — `payroll.accrual.integration.spec.ts`.
+**Severity:** IMPORTANT
