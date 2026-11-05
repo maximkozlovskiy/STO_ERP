@@ -287,4 +287,48 @@ describe('PayrollService — нарахування на живій БД (integr
     const accrued = [pa, pb].map(p => lineOf(p, percentEmployeeId)?.accruedAmount ?? 0);
     expect(accrued.sort()).toEqual([0, 400]);
   });
+
+  // guards: BR-PAYR-001
+  // `dateOfHire` / `dateOfFire` — колонки `date` (2026-11-05), межі періоду — мітки часу в UTC;
+  // Postgres зводить параметр до дати колонки, і саме тут видно, чи межа «по день» включна.
+  // Unit-спек бачить лише `where`, не результат. Мутації: `lte` → `lt` для дати прийому або
+  // `gte` → `gt` для звільнення (payroll.service `salariedWithoutWork`) → червоніють «прийнятий
+  // 31.03» / «звільнений 01.03»; межа початку по київській півночі (`T00:00:00+03:00`) →
+  // червоніє «звільнений 28.02».
+  it('окладник, прийнятий в останній день або звільнений у перший, входить; поза періодом — ні', async () => {
+    if (!dbAvailable) return;
+    const salaried = (lastName: string, dates: { dateOfHire?: string; dateOfFire?: string }) =>
+      raw.employee
+        .create({
+          data: {
+            orgId,
+            firstName: 'PAYR-IT',
+            lastName: `${lastName}-${stamp}`,
+            role: 'RECEPTIONIST',
+            rateScheme: {
+              type: 'fixed_plus_bonus',
+              params: { fixedMonthly: 31_000, bonusPercent: 0 },
+            },
+            // Як пише employees.service: `new Date('YYYY-MM-DD')`.
+            ...(dates.dateOfHire && { dateOfHire: new Date(dates.dateOfHire) }),
+            ...(dates.dateOfFire && { dateOfFire: new Date(dates.dateOfFire) }),
+          },
+          select: { id: true },
+        })
+        .then(e => (employeeIds.push(e.id), e.id));
+    const hiredLastDay = await salaried('HiredLastDay', { dateOfHire: '2031-03-31' });
+    const firedFirstDay = await salaried('FiredFirstDay', { dateOfFire: '2031-03-01' });
+    const hiredAfter = await salaried('HiredAfter', { dateOfHire: '2031-04-01' });
+    const firedBefore = await salaried('FiredBefore', { dateOfFire: '2031-02-28' });
+
+    const preview = await service.preview(orgId, '2031-03-01', '2031-03-31');
+    const has = (id: string) => preview.lines.some(l => l.employeeId === id);
+
+    expect({
+      hiredLastDay: has(hiredLastDay),
+      firedFirstDay: has(firedFirstDay),
+      hiredAfter: has(hiredAfter),
+      firedBefore: has(firedBefore),
+    }).toEqual({ hiredLastDay: true, firedFirstDay: true, hiredAfter: false, firedBefore: false });
+  });
 });

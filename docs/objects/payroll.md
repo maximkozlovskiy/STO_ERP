@@ -292,7 +292,7 @@ cd apps/api && npx vitest run src/modules/payroll/<файл>.spec.ts
 | ролі доступу                                 | `payroll.access.spec.ts`              | 8      |
 | хто у відомості й частка окладу              | `payroll.accrual.spec.ts`             | 24     |
 | умови схеми й нараховане по наряду (016)     | `payroll.rate-terms.spec.ts`          | 24     |
-| нарахування на живій БД (integration)        | `payroll.accrual.integration.spec.ts` | 7      |
+| нарахування на живій БД (integration)        | `payroll.accrual.integration.spec.ts` | 8      |
 
 Разом: **212** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
