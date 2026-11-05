@@ -12,7 +12,7 @@
 --     Голий `::date` дав би 30.04 — на день раніше, ніж бачив користувач.
 -- Той самий подвійний AT TIME ZONE уже вживають звіти (`reports.service`, Bug #808).
 ALTER TABLE "employees"
-  ALTER COLUMN "dateOfHire" TYPE DATE
+  ALTER COLUMN "dateOfHire" TYPE DATE -- destructive-ok: мітка часу → дата за київським часом, нічого не губиться
     USING (("dateOfHire" AT TIME ZONE 'UTC') AT TIME ZONE 'Europe/Kyiv')::date,
-  ALTER COLUMN "dateOfFire" TYPE DATE
+  ALTER COLUMN "dateOfFire" TYPE DATE -- destructive-ok: те саме для дати звільнення
     USING (("dateOfFire" AT TIME ZONE 'UTC') AT TIME ZONE 'Europe/Kyiv')::date;
