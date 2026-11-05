@@ -97,6 +97,40 @@ export interface ImportResult {
   errors: string[];
 }
 
+/**
+ * Записує план імпорту рядків документа: оновлення паралельно (кожне за своїм id — конфліктів
+ * немає), нові рядки — одним INSERT. Відмова окремого оновлення чи всього INSERT-у стає рядком
+ * у `result.errors`, а не винятком: решта файла все одно застосовується.
+ */
+async function applyLinePlan<U extends { label: string }>(
+  result: ImportResult,
+  updatesPlan: U[],
+  update: (u: U) => Promise<unknown>,
+  createsCount: number,
+  createAll: () => Promise<unknown>,
+): Promise<void> {
+  const updateResults = await Promise.allSettled(updatesPlan.map(update));
+  updateResults.forEach((r, i) => {
+    if (r.status === 'fulfilled') {
+      result.updated++;
+    } else {
+      const reason = r.reason instanceof Error ? r.reason.message : 'помилка';
+      result.errors.push(`${updatesPlan[i]?.label ?? ''}: ${reason}`);
+    }
+  });
+
+  if (createsCount > 0) {
+    try {
+      await createAll();
+      result.created += createsCount;
+    } catch (e: unknown) {
+      result.errors.push(
+        `Помилка масового створення: ${e instanceof Error ? e.message : 'помилка'}`,
+      );
+    }
+  }
+}
+
 @Injectable()
 export class XlsxService {
   constructor(
@@ -630,38 +664,17 @@ export class XlsxService {
       }
     }
 
-    // Updates паралель — кожен унікальний by id, ніяких конфліктів.
-    const updateResults = await Promise.allSettled(
-      updatesPlan.map(u =>
+    await applyLinePlan(
+      result,
+      updatesPlan,
+      u =>
         this.prisma.purchaseOrderLine.update({
           where: { id: u.id, orgId },
           data: { quantity: u.quantity, price: u.price },
         }),
-      ),
+      createsPlan.length,
+      () => this.prisma.purchaseOrderLine.createMany({ data: withOrderedStamps(createsPlan) }),
     );
-    for (let i = 0; i < updateResults.length; i++) {
-      const r = updateResults[i];
-      const u = updatesPlan[i];
-      if (!r || !u) continue;
-      if (r.status === 'fulfilled') {
-        result.updated++;
-      } else {
-        const reason = r.reason instanceof Error ? r.reason.message : 'помилка';
-        result.errors.push(`${u.label}: ${reason}`);
-      }
-    }
-
-    // Creates батчем — один INSERT з усіма рядками.
-    if (createsPlan.length > 0) {
-      try {
-        await this.prisma.purchaseOrderLine.createMany({ data: withOrderedStamps(createsPlan) });
-        result.created += createsPlan.length;
-      } catch (e: unknown) {
-        result.errors.push(
-          `Помилка масового створення: ${e instanceof Error ? e.message : 'помилка'}`,
-        );
-      }
-    }
 
     // Bug #843: рядки записано напряму (частковий успіх допускається), тому ПДВ рядків і тотали
     // замовлення перераховуються окремою транзакцією одразу після запису — і лише якщо щось
@@ -751,36 +764,17 @@ export class XlsxService {
       }
     }
 
-    const updateResults = await Promise.allSettled(
-      updatesPlan.map(u =>
+    await applyLinePlan(
+      result,
+      updatesPlan,
+      u =>
         this.prisma.stockDocumentLine.update({
           where: { id: u.id, orgId },
           data: { quantity: u.quantity, price: u.price },
         }),
-      ),
+      createsPlan.length,
+      () => this.prisma.stockDocumentLine.createMany({ data: withOrderedStamps(createsPlan) }),
     );
-    for (let i = 0; i < updateResults.length; i++) {
-      const r = updateResults[i];
-      const u = updatesPlan[i];
-      if (!r || !u) continue;
-      if (r.status === 'fulfilled') {
-        result.updated++;
-      } else {
-        const reason = r.reason instanceof Error ? r.reason.message : 'помилка';
-        result.errors.push(`${u.label}: ${reason}`);
-      }
-    }
-
-    if (createsPlan.length > 0) {
-      try {
-        await this.prisma.stockDocumentLine.createMany({ data: withOrderedStamps(createsPlan) });
-        result.created += createsPlan.length;
-      } catch (e: unknown) {
-        result.errors.push(
-          `Помилка масового створення: ${e instanceof Error ? e.message : 'помилка'}`,
-        );
-      }
-    }
 
     return result;
   }
@@ -876,36 +870,17 @@ export class XlsxService {
       }
     }
 
-    const updateResults = await Promise.allSettled(
-      updatesPlan.map(u =>
+    await applyLinePlan(
+      result,
+      updatesPlan,
+      u =>
         this.prisma.workOrderPart.update({
           where: { id: u.id, orgId },
           data: { quantity: u.quantity, price: u.price, amount: u.amount },
         }),
-      ),
+      createsPlan.length,
+      () => this.prisma.workOrderPart.createMany({ data: createsPlan }),
     );
-    for (let i = 0; i < updateResults.length; i++) {
-      const r = updateResults[i];
-      const u = updatesPlan[i];
-      if (!r || !u) continue;
-      if (r.status === 'fulfilled') {
-        result.updated++;
-      } else {
-        const reason = r.reason instanceof Error ? r.reason.message : 'помилка';
-        result.errors.push(`${u.label}: ${reason}`);
-      }
-    }
-
-    if (createsPlan.length > 0) {
-      try {
-        await this.prisma.workOrderPart.createMany({ data: createsPlan });
-        result.created += createsPlan.length;
-      } catch (e: unknown) {
-        result.errors.push(
-          `Помилка масового створення: ${e instanceof Error ? e.message : 'помилка'}`,
-        );
-      }
-    }
 
     // BR-WO-007: імпорт змінив запчастини наряду — тотали перераховує єдиний власник. Раніше цей
     // шлях тоталів не оновлював узагалі: сума наряду лишалась старою до першої ручної правки рядка.
