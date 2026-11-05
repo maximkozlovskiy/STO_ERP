@@ -4,7 +4,8 @@
 // Bug #913: «Зняти резерв» показувалось на позиції завершеного наряду — резерв уже списано
 // (BR-WO-021), і кнопка давала 400 `nothingToRelease`. Кнопка — лише поки наряд активний.
 //
-// Мутації: `canOpenPurchaseOrder` завжди true → падає кейс приймальні; `reservationReleasable`
+// Мутації: `LINKED_DOC_ACCESS.purchaseOrder` без `roles` (lib/nav) → падає кейс приймальні;
+// `reservationReleasable`
 // завжди true → падає кейс «Виконано».
 
 import { render, screen, fireEvent } from '@testing-library/react';

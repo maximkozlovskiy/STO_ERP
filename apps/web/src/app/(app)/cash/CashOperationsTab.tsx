@@ -72,13 +72,13 @@ export function isReversible(op: CashOperation): boolean {
   return !op.reversedBy && !op.reversalOfId && !NOT_REVERSIBLE_HERE.has(op.documentType ?? '');
 }
 
-/** id рядка історії в DOM — за ним позначка сторно прокручує до пари. */
 /** Підстава операції каси → вид документа для переходу (`canOpen` у `lib/nav`). */
 const BASE_DOCUMENT_KIND: Record<NonNullable<CashOperation['baseDocumentType']>, LinkedDocKind> = {
   WorkOrder: 'workOrder',
   PurchaseOrder: 'purchaseOrder',
 };
 
+/** id рядка історії в DOM — за ним позначка сторно прокручує до пари. */
 const rowDomId = (operationId: string) => `cash-op-${operationId}`;
 
 /** Скільки підсвічувати рядок, до якого перейшли з позначки сторно. */

@@ -2,7 +2,7 @@
 // має — клік вів на /403 через сім запитів із 403 (картка наряду встигала їх відправити). Номер
 // наряду — посилання лише для ролей, яких пускає сторінка нарядів; комірнику — текст.
 //
-// Мутація: `canOpenWorkOrder` завжди true → падають кейси комірника.
+// Мутація: `<LinkedDocRef>` без `nav.canOpen(kind)` (завжди посилання) → падають кейси комірника.
 
 import { render, screen, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
