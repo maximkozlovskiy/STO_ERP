@@ -3,6 +3,7 @@ import { loginViaForm } from './fixtures';
 import { API } from './api-url';
 import { createEmployeeViaUi } from './employee-ui';
 import { ensureVehicleModel } from './vehicle-directory';
+import { weekdayOfNextMonth } from './work-days';
 
 test.use({ storageState: 'e2e/.auth/admin.json' });
 test.describe.configure({ mode: 'serial' });
@@ -42,19 +43,14 @@ const pwd = () => `E2e-${Math.random().toString(36).slice(2, 10)}`;
 const MECH_LOGIN = { email: `e2e-tst-mech-${uid}@sto.local`, password: pwd() };
 const RECEPTION_LOGIN = { email: `e2e-tst-rec-${uid}@sto.local`, password: pwd() };
 
-const pad = (n: number) => String(n).padStart(2, '0');
 /**
- * 13-те число наступного місяця; копія `--repeat-each` N — на N днів пізніше (13…17, дні інших
- * календарних спеків — 12, 19, 23–25, 27). Копії йдуть паралельно, а сітка дня перебудовується на
+ * 2-й день пн–чт наступного місяця; копія `--repeat-each` N — на N таких днів пізніше (2…6;
+ * номери інших календарних спеків — у `work-days.ts`). Копії йдуть паралельно, а сітка дня перебудовується на
  * чужі записи тієї самої дати: прибраний сусідом запис зменшував висоту його рядка, і перетягування
  * опускалось на рядок нижче — на зайнятий підйомник (2026-11-01).
  */
 function targetDate(): string {
-  const today = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' }).format(new Date());
-  const [y, m] = today.split('-').map(Number);
-  const day = 13 + (test.info().repeatEachIndex % 5);
-  const next = new Date(Date.UTC(y, m, day)); // m — 1-based, тож це наступний місяць
-  return `${next.getUTCFullYear()}-${pad(next.getUTCMonth() + 1)}-${pad(day)}`;
+  return weekdayOfNextMonth(2 + (test.info().repeatEachIndex % 5));
 }
 
 async function getToken(page: Page): Promise<string> {

@@ -1,6 +1,7 @@
 import { test, expect, type Locator, type Page } from '@playwright/test';
 import { apiCall, apiRequest, getToken } from './api-helpers';
 import { ensureVehicleModel } from './vehicle-directory';
+import { weekdayOfNextMonth } from './work-days';
 
 test.use({ storageState: 'e2e/.auth/admin.json' });
 test.describe.configure({ mode: 'serial' });
@@ -14,7 +15,7 @@ test.describe.configure({ mode: 'serial' });
  *  3. перерва відкривається з типом, який змінити не можна, і «Видалити» її прибирає.
  *
  * Документи — через інтерфейс (запис — формою «+ Слот», наряд — у списку нарядів). Клієнт і авто
- * — передумови через API. Дата — 23-тє число наступного місяця.
+ * — передумови через API. Дата — 9-й день пн–чт наступного місяця (`weekdayOfNextMonth`).
  */
 
 const uid = Date.now().toString().slice(-6);
@@ -22,12 +23,8 @@ const CLIENT = `000 E2E Тип запису ${uid}`;
 const PLATE = `ST${uid.slice(-5)}`;
 const NOTE = `000 E2E перерва ${uid}`;
 
-const pad = (n: number) => String(n).padStart(2, '0');
 function targetDate(): string {
-  const ymd = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' }).format(new Date());
-  const [y, m] = ymd.split('-').map(Number);
-  const next = new Date(Date.UTC(y, m, 23)); // m — 1-based, тож це наступний місяць
-  return `${next.getUTCFullYear()}-${pad(next.getUTCMonth() + 1)}-23`;
+  return weekdayOfNextMonth(9);
 }
 const kyivHHMM = (iso: string) =>
   new Intl.DateTimeFormat('uk-UA', {

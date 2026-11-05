@@ -1,6 +1,7 @@
 import { test, expect, type Locator, type Page } from '@playwright/test';
 import { apiCall, apiRequest, getToken } from './api-helpers';
 import { ensureVehicleModel } from './vehicle-directory';
+import { weekdayOfNextMonth } from './work-days';
 
 // Висока сторінка: у dev-базі підйомників багато, обидва рядки тесту мають бути на екрані разом.
 test.use({ storageState: 'e2e/.auth/admin.json', viewport: { width: 1280, height: 1400 } });
@@ -17,20 +18,15 @@ test.describe.configure({ mode: 'serial' });
  *
  * Документи — через інтерфейс: НАРЯД створюється в списку нарядів, його статуси й скасування — на
  * сторінці й у картці, ЗАПИСИ календаря — формою «+ Слот» і формою запису, межі — мишею. Клієнт і
- * авто — передумови через API. Дата — 25-те число наступного місяця (філія 08:00–18:00).
+ * авто — передумови через API. Дата — 11-й день пн–чт наступного місяця (`weekdayOfNextMonth`) (філія 08:00–18:00).
  */
 
 const uid = Date.now().toString().slice(-6);
 const CLIENT = `000 E2E Зміна запису наряду ${uid}`;
 const PLATE = `WE${uid.slice(-5)}`;
 
-const pad = (n: number) => String(n).padStart(2, '0');
-const kyivToday = () =>
-  new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' }).format(new Date());
 function targetDate(): string {
-  const [y, m] = kyivToday().split('-').map(Number);
-  const next = new Date(Date.UTC(y, m, 25)); // m — 1-based, тож це наступний місяць
-  return `${next.getUTCFullYear()}-${pad(next.getUTCMonth() + 1)}-25`;
+  return weekdayOfNextMonth(11);
 }
 const kyivHHMM = (iso: string) =>
   new Intl.DateTimeFormat('uk-UA', {

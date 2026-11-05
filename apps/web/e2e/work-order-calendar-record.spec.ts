@@ -1,6 +1,7 @@
 import { test, expect, type Locator, type Page } from '@playwright/test';
 import { apiCall, apiRequest, getToken } from './api-helpers';
 import { ensureVehicleModel } from './vehicle-directory';
+import { weekdayOfNextMonth } from './work-days';
 
 // Вище за типові 720 px: попап пікера відкривається лише вниз, і рядок «19» наступного місяця
 // виходив за край вікна — прокрутка картки рухала попап, клік по дню губився (TECH-DEBT №74).
@@ -17,14 +18,13 @@ test.describe.configure({ mode: 'serial' });
  *  4. наряд, створений із форми запису календаря, має рівно один запис.
  *
  * За правилом власника документи — через інтерфейс (наряди — у списку й картці, запис — формою
- * «+ Слот»). Клієнт і авто — передумови через API. Дата — 19-те число наступного місяця.
+ * «+ Слот»). Клієнт і авто — передумови через API. Дата — 8-й день пн–чт наступного місяця (`weekdayOfNextMonth`, вихідні філії недоступні).
  */
 
 const uid = Date.now().toString().slice(-6);
 const CLIENT = `000 E2E Наряд у календарі ${uid}`;
 const PLATE = `WC${uid.slice(-5)}`;
 
-const pad = (n: number) => String(n).padStart(2, '0');
 const kyivNow = () => {
   const p = Object.fromEntries(
     new Intl.DateTimeFormat('sv-SE', {
@@ -41,9 +41,7 @@ const kyivNow = () => {
   return { ymd: `${p.year}-${p.month}-${p.day}`, hour: Number(p.hour) };
 };
 function targetDate(): string {
-  const [y, m] = kyivNow().ymd.split('-').map(Number);
-  const next = new Date(Date.UTC(y, m, 19)); // m — 1-based, тож це наступний місяць
-  return `${next.getUTCFullYear()}-${pad(next.getUTCMonth() + 1)}-19`;
+  return weekdayOfNextMonth(8);
 }
 const kyivHHMM = (iso: string) =>
   new Intl.DateTimeFormat('uk-UA', {

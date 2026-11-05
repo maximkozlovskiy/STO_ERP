@@ -4,6 +4,7 @@ import { apiCall, getToken } from './api-helpers';
 import { createCounterparty } from './cash-desk.helpers';
 import { createEmployeeViaUi } from './employee-ui';
 import { ensureVehicleModel } from './vehicle-directory';
+import { weekdayOfNextMonth } from './work-days';
 
 test.use({ storageState: 'e2e/.auth/admin.json' });
 test.describe.configure({ mode: 'serial' });
@@ -19,7 +20,7 @@ test.describe.configure({ mode: 'serial' });
  * За правилом власника документи — через інтерфейс: НАРЯД створюється й видаляється в списку
  * нарядів, ЗАПИСИ календаря — формою «+ Слот», переміщення — мишею, МЕХАНІК і його закріплення за
  * підйомником — сторінкою «Співробітники» (рішення власника 2026-10-19). Клієнт і авто — передумови
- * через API. Дата — 12-те число наступного місяця.
+ * через API. Дата — 7-й день пн–чт наступного місяця (`weekdayOfNextMonth`).
  */
 
 const uid = Date.now().toString().slice(-6);
@@ -30,13 +31,8 @@ const MECH_NAME = `${MECH_LAST} Механік`;
 const MECH_PASSWORD = `E2e-${Math.random().toString(36).slice(2, 10)}`;
 const MECH_EMAIL = `e2e-mech-${uid}@sto.local`;
 
-const pad = (n: number) => String(n).padStart(2, '0');
-const kyivToday = () =>
-  new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' }).format(new Date());
 function targetDate(): string {
-  const [y, m] = kyivToday().split('-').map(Number);
-  const next = new Date(Date.UTC(y, m, 12)); // m — 1-based, тож це наступний місяць
-  return `${next.getUTCFullYear()}-${pad(next.getUTCMonth() + 1)}-12`;
+  return weekdayOfNextMonth(7);
 }
 const kyivHHMM = (iso: string) =>
   new Intl.DateTimeFormat('uk-UA', {

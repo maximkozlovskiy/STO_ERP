@@ -3,6 +3,7 @@ import { apiCall, getToken } from './api-helpers';
 import { createCounterparty } from './cash-desk.helpers';
 import { createEmployeeViaUi } from './employee-ui';
 import { ensureVehicleModel } from './vehicle-directory';
+import { isMonThuDate } from './work-days';
 
 test.use({ storageState: 'e2e/.auth/admin.json' });
 test.describe.configure({ mode: 'serial' });
@@ -34,7 +35,8 @@ function candidateDates(): string[] {
   const [y, m] = kyivToday().split('-').map(Number);
   const next = new Date(Date.UTC(y, m, 1)); // m — 1-based, тож це наступний місяць
   const ym = `${next.getUTCFullYear()}-${pad(next.getUTCMonth() + 1)}`;
-  return Array.from({ length: 19 }, (_, i) => `${ym}-${pad(10 + i)}`);
+  // Лише пн–чт: вихідні філії наряд не приймає (BR-WO-019), а наступний день — теж робочий.
+  return Array.from({ length: 19 }, (_, i) => `${ym}-${pad(10 + i)}`).filter(isMonThuDate);
 }
 /** Київська дата (YYYY-MM-DD) моменту ISO. */
 const kyivDate = (iso: string) =>
