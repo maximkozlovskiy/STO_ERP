@@ -17,6 +17,7 @@ import { Plus, Trash2, Pencil, Check, X, Zap, PackageCheck, Wallet, Upload } fro
 import { apiFetch, apiPost } from '@/lib/api-client';
 import { newIdempotencyKey } from '@/lib/idempotency-key';
 import { PURCHASE_DOCUMENT_ROLES } from '@/lib/purchase-roles';
+import { canOpen } from '@/lib/nav';
 import { useAuth } from '@/lib/auth';
 import { toast } from '@/lib/toast';
 import { useCloseOnOutsideClick } from '@/hooks/useCloseOnOutsideClick';
@@ -138,11 +139,6 @@ const emptyDefaults = (): PurchaseOrderFormInput => ({
  * (Bug #851).
  */
 const SUPPLIER_PAYMENT_ROLES: readonly string[] = ['OWNER', 'ADMIN', 'ACCOUNTANT'];
-/**
- * Кому відкривається картка постачальника (`GET /counterparties/:id`). Комірник обирає
- * постачальника зі звуженого списку (BR-CP-014), а картку контрагента не читає й не змінює.
- */
-const COUNTERPARTY_CARD_ROLES: readonly string[] = ['OWNER', 'ADMIN', 'RECEPTIONIST', 'ACCOUNTANT'];
 
 export interface PurchaseOrderCreateModalProps {
   open: boolean;
@@ -168,7 +164,9 @@ export function PurchaseOrderCreateModal({
   const features = useUiFeatures();
   const { employee } = useAuth();
   const canPaySupplier = SUPPLIER_PAYMENT_ROLES.includes(employee?.role ?? '');
-  const canOpenSupplierCard = COUNTERPARTY_CARD_ROLES.includes(employee?.role ?? '');
+  // Картка постачальника (`GET /counterparties/:id`) — ролі картки контрагента; комірник обирає
+  // постачальника зі звуженого списку (BR-CP-014), а картку контрагента не читає й не змінює.
+  const canOpenSupplierCard = canOpen('counterparty', employee?.role);
   const dirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
 
   // react-hook-form + спільна zod-схема (шапка + line-items через useFieldArray).

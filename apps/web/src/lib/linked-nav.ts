@@ -3,6 +3,8 @@
 import { useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { isoToKyivLocalDateTime } from '@/lib/format';
+import { useAuth } from '@/lib/auth';
+import { canOpen, type LinkedDocKind } from '@/lib/nav';
 
 /**
  * Централізована навігація до пов'язаного документа.
@@ -26,6 +28,11 @@ export interface LinkedNav {
   toCalendarDay: (startAtIso: string) => void;
   /** Гарантія — у вкладці «Гарантії» нарядів, відкрита в бічній панелі (BR-WAR-005). */
   toWarranty: (id: string) => void;
+  /**
+   * Чи відкриє поточна роль документ цього виду (`canOpen` з `lib/nav`). Без доступу перехід не
+   * пропонують: номер — текст (`<LinkedDocRef>`), рядок «Пов'язаних документів» — без `navigate`.
+   */
+  canOpen: (kind: LinkedDocKind) => boolean;
 }
 
 /**
@@ -66,8 +73,10 @@ export function resolvePurchaseOrdersDeepLink(
 
 export function useLinkedNav(): LinkedNav {
   const router = useRouter();
+  const role = useAuth().employee?.role;
   return useMemo<LinkedNav>(
     () => ({
+      canOpen: kind => canOpen(kind, role),
       // Routed detail pages
       toWorkOrder: id => router.push(`/work-orders/${id}`),
       toCounterparty: id => router.push(`/counterparties/${id}`),
@@ -87,6 +96,6 @@ export function useLinkedNav(): LinkedNav {
         router.push(day ? `/calendar?view=day&date=${day}` : '/calendar');
       },
     }),
-    [router],
+    [router, role],
   );
 }

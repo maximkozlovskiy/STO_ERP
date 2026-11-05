@@ -157,7 +157,7 @@ function purchaseListSection(nav: LinkedNav, { title }: { title?: string } = {})
           { label: 'Створено', value: fmtDate(row.createdAt) },
         ],
       },
-      navigate: () => nav.toPurchaseList(row.id),
+      navigate: nav.canOpen('purchaseList') ? () => nav.toPurchaseList(row.id) : undefined,
     }),
   };
 }
@@ -176,7 +176,7 @@ function counterpartySection(nav: LinkedNav) {
         title: displayCounterpartyName(row),
         rows: [...(row.phone ? [{ label: 'Телефон', value: row.phone }] : [])],
       },
-      navigate: () => nav.toCounterparty(row.id),
+      navigate: nav.canOpen('counterparty') ? () => nav.toCounterparty(row.id) : undefined,
     }),
   };
 }
@@ -201,7 +201,7 @@ function workOrderSection(
         title: `Наряд ${row.number}`,
         rows: [{ label: 'Статус', value: woStatusLabel(row.status) }],
       },
-      navigate: () => nav.toWorkOrder(row.id),
+      navigate: nav.canOpen('workOrder') ? () => nav.toWorkOrder(row.id) : undefined,
     }),
   };
 }
@@ -234,7 +234,7 @@ function invoiceSection(
           ...(row.documentDate ? [{ label: 'Дата', value: fmtDate(row.documentDate) }] : []),
         ],
       },
-      navigate: () => nav.toInvoice(row.id),
+      navigate: nav.canOpen('invoice') ? () => nav.toInvoice(row.id) : undefined,
     }),
   };
 }
@@ -306,14 +306,7 @@ function paymentReversalFields(
 
 // ─── WorkOrder config (behavior-preserving дзеркало старої панелі) ──
 
-export function workOrderLinkedConfig(
-  nav: LinkedNav,
-  /**
-   * `canOpenWarranties` — роль бачить вкладку «Гарантії» (`GET /warranties`): лише тоді клік по
-   * гарантії веде туди. Механік відкриває наряд, але вкладки не має — переходу для нього немає.
-   */
-  { canOpenWarranties = false }: { canOpenWarranties?: boolean } = {},
-): LinkedEntityConfig {
+export function workOrderLinkedConfig(nav: LinkedNav): LinkedEntityConfig {
   return {
     fetchPath: id => `/work-orders/${id}/linked-documents`,
     sections: [
@@ -367,7 +360,7 @@ export function workOrderLinkedConfig(
               ...(row.notes ? [{ label: 'Примітка', value: row.notes }] : []),
             ],
           },
-          navigate: () => nav.toCalendarDay(row.startAt),
+          navigate: nav.canOpen('calendarDay') ? () => nav.toCalendarDay(row.startAt) : undefined,
         }),
       },
       {
@@ -395,7 +388,8 @@ export function workOrderLinkedConfig(
                 ...(row.description ? [{ label: 'Опис', value: row.description }] : []),
               ],
             },
-            navigate: canOpenWarranties ? () => nav.toWarranty(row.id) : undefined,
+            // Механік відкриває наряд, але вкладки «Гарантії» не має — переходу для нього немає.
+            navigate: nav.canOpen('warranty') ? () => nav.toWarranty(row.id) : undefined,
           };
         },
       },
@@ -535,8 +529,7 @@ function purchaseOrderSourceSection(
   {
     key = 'purchaseOrder',
     icon = ClipboardList,
-    canOpen = true,
-  }: { key?: string; icon?: typeof ClipboardList; canOpen?: boolean } = {},
+  }: { key?: string; icon?: typeof ClipboardList } = {},
 ) {
   const amount = (row: LinkedPurchaseOrderRow) =>
     row.totalAmount == null ? null : `${fmt(row.totalAmount)} ${row.currencySymbol || '₴'}`;
@@ -559,8 +552,8 @@ function purchaseOrderSourceSection(
           ...(amount(row) ? [{ label: 'Сума', value: amount(row) }] : []),
         ],
       },
-      // Приймальні картка замовлення закрита (`GET /purchase-orders/:id` — 403, Bug #914).
-      navigate: canOpen ? () => nav.toPurchaseOrder(row.id) : undefined,
+      // Приймальні картка замовлення закрита (`GET /purchase-orders/:id` — 403).
+      navigate: nav.canOpen('purchaseOrder') ? () => nav.toPurchaseOrder(row.id) : undefined,
     }),
   };
 }
@@ -638,7 +631,7 @@ export function counterpartyLinkedConfig(nav: LinkedNav): LinkedEntityConfig {
               ...(row.documentDate ? [{ label: 'Дата', value: fmtDate(row.documentDate) }] : []),
             ],
           },
-          navigate: () => nav.toSupplierReturn(row.id),
+          navigate: nav.canOpen('supplierReturn') ? () => nav.toSupplierReturn(row.id) : undefined,
         }),
       },
     ],
@@ -649,10 +642,7 @@ export function counterpartyLinkedConfig(nav: LinkedNav): LinkedEntityConfig {
 // Картка списку купівлі, вкладка «Документи» (BR-PL-020): наряди й замовлення постачальнику його
 // позицій, списки, обʼєднані в нього. Ключі секцій — як у `GET /purchase-lists/:id/linked-documents`.
 
-export function purchaseListLinkedConfig(
-  nav: LinkedNav,
-  { canOpenPurchaseOrders = true }: { canOpenPurchaseOrders?: boolean } = {},
-): LinkedEntityConfig {
+export function purchaseListLinkedConfig(nav: LinkedNav): LinkedEntityConfig {
   return {
     fetchPath: id => `/purchase-lists/${id}/linked-documents`,
     sections: [
@@ -660,11 +650,7 @@ export function purchaseListLinkedConfig(
         key: 'workOrders',
         title: i18n.t('purchaseLists:documents.workOrders'),
       }),
-      purchaseOrderSourceSection(nav, {
-        key: 'purchaseOrders',
-        icon: ShoppingCart,
-        canOpen: canOpenPurchaseOrders,
-      }),
+      purchaseOrderSourceSection(nav, { key: 'purchaseOrders', icon: ShoppingCart }),
       purchaseListSection(nav, { title: i18n.t('purchaseLists:documents.mergedLists') }),
     ],
   };

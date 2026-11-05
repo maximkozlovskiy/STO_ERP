@@ -19,8 +19,6 @@ import {
 } from '@/hooks/api/usePurchaseLists';
 import { purchaseListLinkedConfig } from '@/lib/linked-configs';
 import { useLinkedNav } from '@/lib/linked-nav';
-import { useAuth } from '@/lib/auth';
-import { PURCHASE_DOCUMENT_ROLES } from '../purchase-roles';
 import { cn } from '@/lib/utils';
 import {
   LinkedDocumentsPanel,
@@ -60,17 +58,12 @@ import {
 const PAGE_SIZE = 20;
 
 /**
- * Конфіг «Документів» списку (BR-PL-020). Приймальні картка замовлення закрита (Bug #914) — рядок
- * замовлення без переходу, сума — `null` від сервера (§2.1).
+ * Конфіг «Документів» списку (BR-PL-020). Приймальні картка замовлення закрита — рядок замовлення
+ * без переходу (`nav.canOpen`), сума — `null` від сервера (§2.1).
  */
 function usePurchaseListLinkedConfig() {
   const linkedNav = useLinkedNav();
-  const { employee } = useAuth();
-  const canOpenPurchaseOrders = PURCHASE_DOCUMENT_ROLES.includes(employee?.role ?? '');
-  return useMemo(
-    () => purchaseListLinkedConfig(linkedNav, { canOpenPurchaseOrders }),
-    [linkedNav, canOpenPurchaseOrders],
-  );
+  return useMemo(() => purchaseListLinkedConfig(linkedNav), [linkedNav]);
 }
 
 /** Колонка «Документи»: ключі — як у `POST /purchase-lists/linked-counts` (BR-PL-020). */

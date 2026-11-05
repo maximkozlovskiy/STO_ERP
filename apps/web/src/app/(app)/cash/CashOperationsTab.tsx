@@ -21,6 +21,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
+import { LinkedDocRef } from '@/components/ui/LinkedDocRef';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState, ListEmptyState } from '@/components/ui/empty-state';
 import { ListLoadError } from '@/components/ui/list-load-error';
@@ -31,7 +32,7 @@ import { ListSearchInput } from '@/components/ui/list-search-input';
 import { useDebounce } from '@/hooks/useDebounce';
 import { RowActionsMenu } from '@/components/ui/row-actions-menu';
 import { cn } from '@/lib/utils';
-import { useLinkedNav } from '@/lib/linked-nav';
+import type { LinkedDocKind } from '@/lib/nav';
 import { fiscalStatusLabel } from '@/i18n/enumLabel';
 import {
   Table,
@@ -72,6 +73,12 @@ export function isReversible(op: CashOperation): boolean {
 }
 
 /** id рядка історії в DOM — за ним позначка сторно прокручує до пари. */
+/** Підстава операції каси → вид документа для переходу (`canOpen` у `lib/nav`). */
+const BASE_DOCUMENT_KIND: Record<NonNullable<CashOperation['baseDocumentType']>, LinkedDocKind> = {
+  WorkOrder: 'workOrder',
+  PurchaseOrder: 'purchaseOrder',
+};
+
 const rowDomId = (operationId: string) => `cash-op-${operationId}`;
 
 /** Скільки підсвічувати рядок, до якого перейшли з позначки сторно. */
@@ -85,21 +92,10 @@ interface Props {
   canOperate?: boolean;
   /** Приймальня: лише внесення з приводами `RECEPTIONIST_CASH_REASONS`, без видачі й статей. */
   receptionist?: boolean;
-  /**
-   * Чи може роль відкрити картку замовлення постачальнику (сторінка «Купівля» — власник і
-   * адміністратор; бухгалтер бачить там лише графік оплат, приймальня — /403). Решті номер
-   * замовлення-підстави показуємо текстом, а не посиланням у нікуди.
-   */
-  canOpenPurchaseOrders?: boolean;
 }
 
-export default function CashOperationsTab({
-  canOperate = false,
-  receptionist = false,
-  canOpenPurchaseOrders = false,
-}: Props) {
+export default function CashOperationsTab({ canOperate = false, receptionist = false }: Props) {
   const { t } = useTranslation('cash');
-  const nav = useLinkedNav();
   const {
     data: registers,
     isLoading: regLoading,
@@ -209,12 +205,6 @@ export default function CashOperationsTab({
     () => new Map((operations ?? []).map(o => [o.id, o] as const)),
     [operations],
   );
-
-  const openBaseDocument = (op: CashOperation) => {
-    if (!op.baseDocumentId) return;
-    if (op.baseDocumentType === 'WorkOrder') nav.toWorkOrder(op.baseDocumentId);
-    else if (op.baseDocumentType === 'PurchaseOrder') nav.toPurchaseOrder(op.baseDocumentId);
-  };
 
   const onOpenShift = async () => {
     if (!selected) return;
@@ -596,26 +586,20 @@ export default function CashOperationsTab({
                   <TableCell
                     className={cn('text-[13px] whitespace-nowrap', reversed && 'opacity-60')}
                   >
-                    {op.baseDocumentId &&
-                    op.baseDocumentNumber &&
-                    op.baseDocumentType === 'PurchaseOrder' &&
-                    !canOpenPurchaseOrders ? (
-                      op.baseDocumentNumber
-                    ) : op.baseDocumentId && op.baseDocumentNumber ? (
-                      <button
-                        type="button"
-                        onClick={e => {
-                          e.stopPropagation();
-                          openBaseDocument(op);
-                        }}
+                    {/* Картку замовлення-підстави відкривають ролі документа й бухгалтер
+                        (BR-PO-015); приймальні номер замовлення — текст. */}
+                    {op.baseDocumentId && op.baseDocumentNumber && op.baseDocumentType ? (
+                      <LinkedDocRef
+                        kind={BASE_DOCUMENT_KIND[op.baseDocumentType]}
+                        id={op.baseDocumentId}
+                        label={op.baseDocumentNumber}
+                        stopPropagation
                         title={t('operations.openBaseAria', { number: op.baseDocumentNumber })}
                         aria-label={t('operations.openBaseAria', {
                           number: op.baseDocumentNumber,
                         })}
                         className="text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded-sm"
-                      >
-                        {op.baseDocumentNumber}
-                      </button>
+                      />
                     ) : (
                       <span className="text-muted-foreground">—</span>
                     )}

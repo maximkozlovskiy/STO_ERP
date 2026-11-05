@@ -6,12 +6,10 @@ import { PackageSearch, ListPlus } from 'lucide-react';
 import { useShortage, type ShortageRow } from '@/hooks/api/usePurchaseLists';
 import { useWarehouses } from '@/hooks/api/useInfrastructure';
 import { useBulkSelect } from '@/hooks/useBulkSelect';
-import { useLinkedNav } from '@/lib/linked-nav';
-import { useAuth } from '@/lib/auth';
-import { canOpenRoute } from '@/lib/nav';
 import { woStatusLabel } from '@/i18n/enumLabel';
 import { fmtDate, fmtQty } from '@/lib/format';
 import { Button } from '@/components/ui/button';
+import { LinkedDocRef } from '@/components/ui/LinkedDocRef';
 import { Select } from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -35,10 +33,6 @@ type Row = ShortageRow & { id: string };
  */
 export function ShortageView() {
   const { t } = useTranslation('purchaseLists');
-  const nav = useLinkedNav();
-  const { employee } = useAuth();
-  // Комірник сторінки нарядів не має (Bug #900): номер наряду — текст, а не посилання на 403.
-  const canOpenWorkOrder = canOpenRoute('/work-orders', employee?.role);
   const [warehouseId, setWarehouseId] = useState('');
   const { data: warehouses } = useWarehouses();
   const { data, isLoading, error, refetch } = useShortage({
@@ -153,17 +147,8 @@ export function ShortageView() {
                     />
                   </TableCell>
                   <TableCell>
-                    {canOpenWorkOrder ? (
-                      <button
-                        type="button"
-                        className="text-primary hover:underline"
-                        onClick={() => nav.toWorkOrder(r.workOrderId)}
-                      >
-                        {r.workOrderNumber}
-                      </button>
-                    ) : (
-                      <span>{r.workOrderNumber}</span>
-                    )}
+                    {/* Комірник сторінки нарядів не має: номер наряду для нього — текст. */}
+                    <LinkedDocRef kind="workOrder" id={r.workOrderId} label={r.workOrderNumber} />
                     <div className="text-[11px] text-muted-foreground">
                       {woStatusLabel(r.workOrderStatus)}
                       {r.plannedAt ? ` · ${fmtDate(r.plannedAt)}` : ''}

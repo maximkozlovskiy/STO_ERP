@@ -13,7 +13,6 @@ import {
 } from 'lucide-react';
 import { PURCHASE_LIST_ITEM_STATUS_BADGE, WO_PROCUREMENT_ACTIVE_STATUSES } from '@sto/shared';
 import { useAuth } from '@/lib/auth';
-import { canOpenRoute } from '@/lib/nav';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useBulkSelect } from '@/hooks/useBulkSelect';
 import { useNow } from '@/hooks/useNow';
@@ -27,13 +26,12 @@ import {
 } from '@/hooks/api/usePurchaseLists';
 import { useSupplierProcurementSettings } from '@/hooks/api/useSupplierOffers';
 import type { SupplierOption } from '@/hooks/api/useCounterparties';
-import { PURCHASE_DOCUMENT_ROLES } from '../purchase-roles';
 import { FormDialog } from './FormDialog';
 import { createOrdersFromItems, useProcurementAction } from './useProcurementAction';
-import { useLinkedNav } from '@/lib/linked-nav';
 import { purchaseListItemStatusLabel, poStatusLabel } from '@/i18n/enumLabel';
 import { fmtMoney, fmtQty } from '@/lib/format';
 import { Badge } from '@/components/ui/badge';
+import { LinkedDocRef } from '@/components/ui/LinkedDocRef';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -89,7 +87,6 @@ function reservationReleasable(i: PurchaseListItem): boolean {
 
 export function ItemsView({ canWrite }: { canWrite: boolean }) {
   const { t } = useTranslation('purchaseLists');
-  const nav = useLinkedNav();
   const { confirm, dialogProps } = useConfirm();
   const [status, setStatus] = useState('OPEN');
   const [supplierId, setSupplierId] = useState('');
@@ -103,11 +100,6 @@ export function ItemsView({ canWrite }: { canWrite: boolean }) {
   const { data: warehouses } = useWarehouses();
   const { employee } = useAuth();
   const canCreateSupplier = COUNTERPARTY_CREATE_ROLES.includes(employee?.role ?? '');
-  // Комірник сторінки нарядів не має (Bug #900): номер наряду — текст, а не посилання на 403.
-  const canOpenWorkOrder = canOpenRoute('/work-orders', employee?.role);
-  // Приймальня відкриває «Купівлю» лише на вкладці «Управління купівлями» (BR-PL-015), картки
-  // замовлення їй не відкрити (`GET /purchase-orders/:id` — 403): номер — текст (Bug #914).
-  const canOpenPurchaseOrder = PURCHASE_DOCUMENT_ROLES.includes(employee?.role ?? '');
   // Постачальників понад перші 200 — пошуком на сервері (Bug #918), тому вибір — окремий компонент.
   const suppliersNoneHint = t(
     canCreateSupplier ? 'items.dialogs.suppliersNone' : 'items.dialogs.suppliersNoneAsk',
@@ -385,32 +377,22 @@ export function ItemsView({ canWrite }: { canWrite: boolean }) {
                     {i.expectedPrice != null ? fmtMoney(i.expectedPrice) : '—'}
                   </TableCell>
                   <TableCell>
-                    {i.workOrderId && !canOpenWorkOrder ? (
-                      <span>{i.workOrderNumber}</span>
-                    ) : i.workOrderId ? (
-                      <button
-                        type="button"
-                        className="text-primary hover:underline"
-                        onClick={() => nav.toWorkOrder(i.workOrderId as string)}
-                      >
-                        {i.workOrderNumber}
-                      </button>
+                    {/* Номер — текст для ролі без сторінки нарядів (комірник). */}
+                    {i.workOrderId ? (
+                      <LinkedDocRef kind="workOrder" id={i.workOrderId} label={i.workOrderNumber} />
                     ) : (
                       <span className="text-muted-foreground">{t('items.manual')}</span>
                     )}
                   </TableCell>
                   <TableCell className="text-muted-foreground">{i.listNumber}</TableCell>
                   <TableCell>
-                    {i.purchaseOrderId && !canOpenPurchaseOrder ? (
-                      <span>{i.purchaseOrderNumber}</span>
-                    ) : i.purchaseOrderId ? (
-                      <button
-                        type="button"
-                        className="text-primary hover:underline"
-                        onClick={() => nav.toPurchaseOrder(i.purchaseOrderId as string)}
-                      >
-                        {i.purchaseOrderNumber}
-                      </button>
+                    {/* Приймальні картка замовлення закрита (BR-PL-015): номер — текст. */}
+                    {i.purchaseOrderId ? (
+                      <LinkedDocRef
+                        kind="purchaseOrder"
+                        id={i.purchaseOrderId}
+                        label={i.purchaseOrderNumber}
+                      />
                     ) : (
                       '—'
                     )}

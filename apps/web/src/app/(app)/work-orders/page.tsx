@@ -290,11 +290,7 @@ function WorkOrdersListTab() {
   }, []);
 
   const linkedNav = useLinkedNav();
-  const canOpenWarranties = canViewWarranties(employee?.role);
-  const linkedConfig = useMemo(
-    () => workOrderLinkedConfig(linkedNav, { canOpenWarranties }),
-    [linkedNav, canOpenWarranties],
-  );
+  const linkedConfig = useMemo(() => workOrderLinkedConfig(linkedNav), [linkedNav]);
 
   // Translated column defs — label resolved via t() (labelKey idiom); persistence keyed by `key`.
   const WO_COLUMNS = useMemo(() => WO_COLUMN_DEFS.map(c => ({ ...c, label: t(c.labelKey) })), [t]);

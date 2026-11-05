@@ -9,6 +9,9 @@
  */
 
 import type { LucideIcon } from 'lucide-react';
+import { PROCUREMENT_READ_ROLES } from '@sto/shared';
+import { PURCHASE_DOCUMENT_ROLES, PURCHASE_ORDER_VIEW_ROLES } from './purchase-roles';
+import { WARRANTY_VIEW_ROLES } from './warranty-roles';
 import {
   LayoutDashboard,
   Wrench,
@@ -316,4 +319,52 @@ export function canOpenRoute(href: string, role: string | null | undefined): boo
   const item = MASTER_NAV_ITEMS.find(i => i.href === href);
   if (!item?.roles) return true;
   return !!role && item.roles.includes(role);
+}
+
+/** Вид пов'язаного документа — ті самі, що мають перехід у `LinkedNav` (`lib/linked-nav.ts`). */
+export type LinkedDocKind =
+  | 'workOrder'
+  | 'counterparty'
+  | 'invoice'
+  | 'purchaseOrder'
+  | 'stockDocument'
+  | 'supplierReturn'
+  | 'purchaseList'
+  | 'calendarDay'
+  | 'warranty';
+
+/**
+ * Вид документа → сторінка, на яку веде перехід (її ролі — `roles` пункту меню, звірені з guard-ом
+ * сторінки), і, де картка документа ширша чи вужча за сторінку, — ролі самої картки. Роль картки
+ * діє лише разом із ролями сторінки, тож посилання ніколи не обіцяє більше, ніж пускає guard.
+ * Звіряє `lib/__tests__/linked-doc-access.test.ts`.
+ */
+export const LINKED_DOC_ACCESS: Readonly<
+  Record<LinkedDocKind, { route: string; roles?: readonly string[] }>
+> = {
+  workOrder: { route: '/work-orders' },
+  counterparty: { route: '/counterparties' },
+  invoice: { route: '/invoices' },
+  stockDocument: { route: '/stock-documents' },
+  calendarDay: { route: '/calendar' },
+  // Картку замовлення відкривають ролі документа і бухгалтер на перегляд (BR-PO-015) — з графіка
+  // оплат; приймальня бачить у «Купівлі» лише «Управління купівлями».
+  purchaseOrder: { route: '/purchase-orders', roles: PURCHASE_ORDER_VIEW_ROLES },
+  // Повернення — лише в повній сторінці замовлень (вкладка «Повернення»).
+  supplierReturn: { route: '/purchase-orders', roles: PURCHASE_DOCUMENT_ROLES },
+  // Списки — вкладка «Управління купівлями» (BR-PL-015); у бухгалтера її немає.
+  purchaseList: { route: '/purchase-orders', roles: PROCUREMENT_READ_ROLES },
+  // Вкладка «Гарантії» нарядів (BR-WAR-005); механік відкриває наряди, але не гарантії.
+  warranty: { route: '/work-orders', roles: WARRANTY_VIEW_ROLES },
+};
+
+/**
+ * Чи відкриє роль документ цього виду: посилання для ролі з доступом, текст — без нього. Єдине
+ * джерело для посилань на документи іншого розділу (у компонентах — `nav.canOpen` з
+ * `useLinkedNav()` або `<LinkedDocRef>`), щоб номер не вів на 403.
+ */
+export function canOpen(kind: LinkedDocKind, role: string | null | undefined): boolean {
+  const access = LINKED_DOC_ACCESS[kind];
+  if (!canOpenRoute(access.route, role)) return false;
+  return !access.roles || (!!role && access.roles.includes(role));
 }
