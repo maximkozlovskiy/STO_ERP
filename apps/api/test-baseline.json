@@ -5862,6 +5862,22 @@
    "PurchaseOrdersService.transition — FSM map Bug #541: PO line DTO містить goodInternalCode / goodSku / goodBrandName",
    "PurchaseOrdersService.transition — FSM map паралельний перехід з того самого статусу: CAS програв → 400 «статус змінився», події немає"
   ],
+  "apps/api/src/modules/purchase-orders/purchase-orders.lifecycle.spec.ts": [
+   "PurchaseOrdersService — хуки списків купівлі через модуль життєвого циклу PATCH чернетки: запис замовлення — CAS «чернетка, не видалена»; програв (P2025) — 400 і відкат",
+   "PurchaseOrdersService — хуки списків купівлі через модуль життєвого циклу видалення чернетки: позиції повертаються рівно раз і до soft delete замовлення",
+   "PurchaseOrdersService — хуки списків купівлі через модуль життєвого циклу заміна рядків у картці (PATCH) і в імпорті XLSX — одна послідовність записів і ті самі рядки",
+   "PurchaseOrdersService — хуки списків купівлі через модуль життєвого циклу зміна лише складу чернетки: рядки не переписуються, позиції звіряються до запису замовлення",
+   "PurchaseOrdersService — хуки списків купівлі через модуль життєвого циклу перехід DRAFT → ORDERED замовлення не закриває: позиції не чіпаються",
+   "PurchaseOrdersService — хуки списків купівлі через модуль життєвого циклу перехід ORDERED → PARTIAL замовлення не закриває: позиції не чіпаються",
+   "PurchaseOrdersService — хуки списків купівлі через модуль життєвого циклу перехід «Отримано» без приймання: позиції повертаються рівно раз і до CAS статусу",
+   "PurchaseOrdersService — хуки списків купівлі через модуль життєвого циклу повне приймання: остача позицій повертається рівно раз — після розподілу отриманого, до CAS статусу",
+   "PurchaseOrdersService — хуки списків купівлі через модуль життєвого циклу скасування: позиції повертаються рівно раз — після перевірки передачі в API, до CAS статусу",
+   "PurchaseOrdersService — хуки списків купівлі через модуль життєвого циклу часткове приймання замовлення не закриває: позиції не повертаються",
+   "PurchaseOrdersService — хуки списків купівлі через модуль життєвого циклу імпорт XLSX у транзакції (append): тотали — CAS «чернетка»; програв — 403 «не чернетка»",
+   "PurchaseOrdersService — хуки списків купівлі через модуль життєвого циклу імпорт XLSX у транзакції (replace): тотали — CAS «чернетка»; програв — 403 «не чернетка»",
+   "життєвий цикл замовлення — хуки й статус лише в одному модулі (сторож коду) статус замовлення (`purchaseOrder.update*` з `status`) пише лише `setStatus`",
+   "життєвий цикл замовлення — хуки й статус лише в одному модулі (сторож коду) хуки замовлення (`onOrderClosed`, `reconcileDraftOrder`) поза модулем списків кличе лише модуль життєвого циклу"
+  ],
   "apps/api/src/modules/purchase-orders/purchase-orders.line-goods.spec.ts": [
    "PurchaseOrdersService.create/update — tenant-guard goodId рядків create і update: рядки пишуться з createdAt у порядку надсилання — так їх показують картка й друк",
    "PurchaseOrdersService.create/update — tenant-guard goodId рядків create: goodId рядка з іншої організації → NotFoundException ДО будь-якого запису",
