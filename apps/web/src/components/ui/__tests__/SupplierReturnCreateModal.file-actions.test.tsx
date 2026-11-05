@@ -15,9 +15,10 @@ vi.mock('@/lib/api-client', () => ({
   apiFileFetch: (...a: unknown[]) => apiFileFetchMock(...a),
 }));
 const downloadBlobMock = vi.fn();
+const printPdfMock = vi.fn(() => Promise.resolve());
 vi.mock('@/lib/download', () => ({
   downloadBlob: (...a: unknown[]) => downloadBlobMock(...a),
-  printPdf: vi.fn(),
+  printPdf: (...a: unknown[]) => printPdfMock(...(a as [])),
 }));
 vi.mock('@/lib/ref-cache', () => ({ getCached: () => null, setCache: vi.fn() }));
 vi.mock('@/hooks/useUiFeatures', () => ({ useUiFeatures: () => ({ toastEnabled: false }) }));
@@ -48,6 +49,7 @@ describe('SupplierReturnCreateModal — друк і «Зберегти як» (B
     apiFetchMock.mockReset();
     apiFileFetchMock.mockReset();
     downloadBlobMock.mockReset();
+    printPdfMock.mockClear();
   });
 
   // guards: BR-SRET-014
@@ -67,7 +69,10 @@ describe('SupplierReturnCreateModal — друк і «Зберегти як» (B
     await waitFor(() =>
       expect(downloadBlobMock).toHaveBeenCalledWith(blob, 'Повернення-ПОВ-1.pdf'),
     );
-    expect(apiFileFetchMock).toHaveBeenCalledWith('/supplier-returns/sr1/export/pdf', 'sr1.pdf');
+    // Bug #1046: запасне ім'я файла й заголовок вікна друку — номер повернення, а не UUID.
+    expect(apiFileFetchMock).toHaveBeenCalledWith('/supplier-returns/sr1/export/pdf', 'ПОВ-1.pdf');
+    fireEvent.click(screen.getByRole('button', { name: /Друк/ }));
+    expect(printPdfMock).toHaveBeenCalledWith(expect.any(Function), 'ПОВ-1');
   });
 
   // guards: BR-SRET-014

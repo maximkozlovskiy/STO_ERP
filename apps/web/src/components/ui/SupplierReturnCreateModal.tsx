@@ -195,6 +195,8 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
   const [loadedId, setLoadedId] = useState<string | null>(null);
   const [supplierName, setSupplierName] = useState('');
   const [purchaseOrderNumber, setPurchaseOrderNumber] = useState('');
+  // Номер завантаженого повернення — заголовок вікна друку й запасне ім'я файла (Bug #1046).
+  const [docNumber, setDocNumber] = useState('');
 
   // ── UI state ───────────────────────────────────────────────────────────────
   const [saving, setSaving] = useState(false);
@@ -288,6 +290,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
         setIsDeleted(!!data.deletedAt);
         setSupplierName(data.supplierName ?? '');
         setPurchaseOrderNumber(data.purchaseOrderNumber ?? '');
+        setDocNumber(data.number ?? '');
         // reset() ставить нову «чисту» базу з наявного запису → rhfDirty=false.
         reset({
           supplierId: data.supplierId,
@@ -604,7 +607,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
               {isEdit && editId && !notLoaded && (
                 <DocumentExportActions
                   exportPath={`/supplier-returns/${editId}/export`}
-                  fallbackName={editId}
+                  fallbackName={docNumber || editId}
                   labels={{ print: t('card.print'), saveAs: t('card.saveAs') }}
                   saveAsOpen={saveAsOpen}
                   setSaveAsOpen={setSaveAsOpen}
