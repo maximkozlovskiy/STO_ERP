@@ -601,7 +601,8 @@ describe('Settings — HTTP Contract', () => {
       const res = await app.inject({ method: 'GET', url: '/settings/work-hours' });
       expect(res.statusCode).toBe(200);
       const body = res.json() as { workStartHour: number; workEndHour: number };
-      expect(body).toEqual({ workStartHour: 9, workEndHour: 18 });
+      // Рядка налаштувань немає → кожен день робочий (BR-WO-019), усі сім явно.
+      expect(body).toEqual({ workStartHour: 9, workEndHour: 18, workDays: [1, 2, 3, 4, 5, 6, 7] });
     });
 
     it('повертає {8, 20} коли settings має workStartTime="08:00", workEndTime="20:00"', async () => {
@@ -610,7 +611,7 @@ describe('Settings — HTTP Contract', () => {
         .mockResolvedValue({ workStartTime: '08:00', workEndTime: '20:00' });
       const res = await app.inject({ method: 'GET', url: '/settings/work-hours' });
       expect(res.statusCode).toBe(200);
-      expect(res.json()).toEqual({ workStartHour: 8, workEndHour: 20 });
+      expect(res.json()).toEqual({ workStartHour: 8, workEndHour: 20, workDays: [1, 2, 3, 4, 5] });
     });
 
     it('повертає workStartHour=0 коли workStartTime="00:00" (parseInt edge case)', async () => {
@@ -619,7 +620,7 @@ describe('Settings — HTTP Contract', () => {
         .mockResolvedValue({ workStartTime: '00:00', workEndTime: '12:00' });
       const res = await app.inject({ method: 'GET', url: '/settings/work-hours' });
       expect(res.statusCode).toBe(200);
-      expect(res.json()).toEqual({ workStartHour: 0, workEndHour: 12 });
+      expect(res.json()).toEqual({ workStartHour: 0, workEndHour: 12, workDays: [1, 2, 3, 4, 5] });
     });
 
     it('Bug #515 defense-in-depth: повертає fallback {9, 18} коли БД має інвертовані часи', async () => {
@@ -630,7 +631,7 @@ describe('Settings — HTTP Contract', () => {
       const res = await app.inject({ method: 'GET', url: '/settings/work-hours' });
       expect(res.statusCode).toBe(200);
       // workEndHour <= workStartHour → service повертає fallback щоб уникнути NaN на frontend.
-      expect(res.json()).toEqual({ workStartHour: 9, workEndHour: 18 });
+      expect(res.json()).toEqual({ workStartHour: 9, workEndHour: 18, workDays: [1, 2, 3, 4, 5] });
     });
 
     it('повертає fallback коли workStartTime — невалідний рядок (legacy data до Bug #515 regex)', async () => {
@@ -639,7 +640,7 @@ describe('Settings — HTTP Contract', () => {
         .mockResolvedValue({ workStartTime: 'foo', workEndTime: 'bar' });
       const res = await app.inject({ method: 'GET', url: '/settings/work-hours' });
       expect(res.statusCode).toBe(200);
-      expect(res.json()).toEqual({ workStartHour: 9, workEndHour: 18 });
+      expect(res.json()).toEqual({ workStartHour: 9, workEndHour: 18, workDays: [1, 2, 3, 4, 5] });
     });
 
     // Одне джерело годин із календарем (`workHoursOf`, рішення 2026-10-16): години конкретної
@@ -655,12 +656,12 @@ describe('Settings — HTTP Contract', () => {
         url: `/settings/work-hours?branchId=${branchId}`,
       });
       expect(res.statusCode).toBe(200);
-      expect(res.json()).toEqual({ workStartHour: 8, workEndHour: 17 });
+      expect(res.json()).toEqual({ workStartHour: 8, workEndHour: 17, workDays: [1, 2, 3, 4, 5] });
       const where = (prismaMock.branchSettings.findFirst as ReturnType<typeof vi.fn>).mock
         .calls[0]![0].where as Record<string, unknown>;
       expect(where).toMatchObject({ orgId: 'org-1', branchId, branch: { deletedAt: null } });
       expect(redisMock.set).toHaveBeenCalledWith(
-        `settings:work-hours:org-1:${branchId}`,
+        `settings:work-hours:v2:org-1:${branchId}`,
         expect.any(String),
         'EX',
         60,
@@ -675,7 +676,51 @@ describe('Settings — HTTP Contract', () => {
         url: '/settings/work-hours?branchId=11111111-1111-4111-8111-222222222222',
       });
       expect(res.statusCode).toBe(200);
-      expect(res.json()).toEqual({ workStartHour: 9, workEndHour: 18 });
+      expect(res.json()).toEqual({
+        workStartHour: 9,
+        workEndHour: 18,
+        workDays: [1, 2, 3, 4, 5, 6, 7],
+      });
+    });
+
+    // Вихідні філії (рішення власника 2026-10-30): пікер і автокінець беруть робочі дні звідси.
+    // guards: BR-WO-019
+    it('workDays — з рядка філії (пн–сб); порожній перелік → усі сім; select читає колонку', async () => {
+      prismaMock.branchSettings.findFirst = vi.fn().mockResolvedValue({
+        workStartTime: '09:00',
+        workEndTime: '18:00',
+        workDays: [6, 1, 2, 3, 4, 5],
+      });
+      const res = await app.inject({ method: 'GET', url: '/settings/work-hours' });
+      expect(res.json()).toEqual({
+        workStartHour: 9,
+        workEndHour: 18,
+        workDays: [1, 2, 3, 4, 5, 6],
+      });
+      const select = (prismaMock.branchSettings.findFirst as ReturnType<typeof vi.fn>).mock
+        .calls[0]![0].select as Record<string, unknown>;
+      expect(select).toMatchObject({ workDays: true });
+
+      prismaMock.branchSettings.findFirst = vi
+        .fn()
+        .mockResolvedValue({ workStartTime: '09:00', workEndTime: '18:00', workDays: [] });
+      const empty = await app.inject({
+        method: 'GET',
+        url: '/settings/work-hours?branchId=11111111-1111-4111-8111-333333333333',
+      });
+      expect(empty.json()).toEqual({
+        workStartHour: 9,
+        workEndHour: 18,
+        workDays: [1, 2, 3, 4, 5, 6, 7],
+      });
+    });
+
+    // guards: BR-WO-019
+    it('кеш старої збірки (без workDays) не читається: ключ має версію v2', async () => {
+      prismaMock.branchSettings.findFirst = vi.fn().mockResolvedValue(null);
+      await app.inject({ method: 'GET', url: '/settings/work-hours' });
+      expect(redisMock.get).toHaveBeenCalledWith('settings:work-hours:v2:org-1');
+      expect(redisMock.get).not.toHaveBeenCalledWith('settings:work-hours:org-1');
     });
 
     it('?branchId=не-uuid → 400, без читання БД', async () => {
@@ -752,8 +797,33 @@ describe('Settings — HTTP Contract', () => {
       expect(res.statusCode).toBe(200);
       // Кеш годин скидається і для основної філії, і для цієї (`?branchId=`).
       expect(redisMock.del).toHaveBeenCalledWith(
-        'settings:work-hours:org-1',
-        `settings:work-hours:org-1:${branchId}`,
+        'settings:work-hours:v2:org-1',
+        `settings:work-hours:v2:org-1:${branchId}`,
+      );
+    });
+
+    // GET /settings/work-hours віддає й робочі дні — їх зміна теж скидає кеш годин.
+    // guards: BR-WO-019
+    it('PATCH лише workDays → кеш годин скинуто (основна філія й ця)', async () => {
+      prismaMock.garageBranch.findFirst.mockResolvedValue({ id: branchId });
+      prismaMock.branchSettings.upsert = vi.fn().mockResolvedValue({
+        branchId,
+        orgId: 'org-1',
+        workStartTime: '09:00',
+        workEndTime: '18:00',
+        workDays: [1, 2, 3, 4, 5, 6],
+        slotDurationMinutes: 60,
+        updatedAt: new Date(),
+      });
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/settings/branch/${branchId}`,
+        payload: { workDays: [1, 2, 3, 4, 5, 6] },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(redisMock.del).toHaveBeenCalledWith(
+        'settings:work-hours:v2:org-1',
+        `settings:work-hours:v2:org-1:${branchId}`,
       );
     });
 

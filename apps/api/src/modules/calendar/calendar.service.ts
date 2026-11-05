@@ -10,15 +10,10 @@ import { DEFAULT_WORK_HOURS, formatPersonName, TRANSACTION_TIMEOUT_MS } from '@s
 import { PrismaService } from '../../prisma/prisma.service';
 import { err } from '../../common/utils/err';
 import { throwIfExclusionConflict } from '../../common/utils/prisma-errors';
-import {
-  addDaysKyiv,
-  isCalendarDate,
-  kyivDayEnd,
-  kyivDayStart,
-  kyivYmd,
-} from '../../common/utils/kyiv-date';
+import { isCalendarDate, kyivDayEnd, kyivDayStart, kyivYmd } from '../../common/utils/kyiv-date';
 import {
   kyivHourOnDay,
+  nextWorkDay,
   splitByWorkHours,
   workHoursOf,
   type TimeSegment,
@@ -169,8 +164,8 @@ export class CalendarService {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
-   * §13 config-over-hardcode: межі робочого дня філії з BranchSettings
-   * (workStartTime/workEndTime "HH:mm"). Типові години (`DEFAULT_WORK_HOURS`, 09–18 — ті самі,
+   * §13 config-over-hardcode: межі робочого дня й робочі дні філії з BranchSettings
+   * (workStartTime/workEndTime "HH:mm", workDays — BR-CAL-016). Типові години (кожен день робочий) (`DEFAULT_WORK_HOURS`, 09–18 — ті самі,
    * що в `GET /settings/work-hours`), коли:
    *  - філію не визначено (запис без підйомника),
    *  - BranchSettings ще не створені для філії,
@@ -183,7 +178,7 @@ export class CalendarService {
     try {
       const bs = await this.prisma.branchSettings.findFirst({
         where: { branchId, orgId },
-        select: { workStartTime: true, workEndTime: true },
+        select: { workStartTime: true, workEndTime: true, workDays: true },
       });
       return workHoursOf(bs);
     } catch {
@@ -381,7 +376,8 @@ export class CalendarService {
 
     // §13: межі робочого дня per-branch (BranchSettings.workStartTime/workEndTime).
     // Резолвимо філію через lift.zone.branchId; без підйомника → типові години.
-    const { startHour, endHour } = await this.resolveWorkHours(orgId, lift?.zone?.branchId ?? null);
+    const hours = await this.resolveWorkHours(orgId, lift?.zone?.branchId ?? null);
+    const { startHour, endHour } = hours;
 
     // Determine if slot overflows the working day end (endHour Kyiv, per-branch)
     const workDayEnd = kyivHourOnDay(kyivYmd(startAt), endHour);
@@ -392,7 +388,10 @@ export class CalendarService {
     const isSplit = startAt < workDayEnd && endAt > workDayEnd;
 
     const slot1End = isSplit ? workDayEnd : endAt;
-    const slot2Start = isSplit ? kyivHourOnDay(kyivYmd(addDaysKyiv(startAt, 1)), startHour) : null;
+    // Залишок — від відкриття наступного РОБОЧОГО дня філії: вихідні пропускаються (BR-CAL-016).
+    const slot2Start = isSplit
+      ? kyivHourOnDay(nextWorkDay(kyivYmd(startAt), hours), startHour)
+      : null;
     const slot2End = isSplit
       ? new Date(slot2Start!.getTime() + (endAt.getTime() - workDayEnd.getTime()))
       : null;

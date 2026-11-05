@@ -172,7 +172,12 @@ export function buildSlotStorePrisma(rows: FakeSlot[]) {
     counterparty: { findFirst: exists() },
     vehicle: { findFirst: exists() },
     branchSettings: {
-      findFirst: vi.fn().mockResolvedValue({ workStartTime: '08:00', workEndTime: '20:00' }),
+      // Кожен день робочий: продовження з пт (22.05.2026) переходить на сб; вихідні — BR-CAL-016.
+      findFirst: vi.fn().mockResolvedValue({
+        workStartTime: '08:00',
+        workEndTime: '20:00',
+        workDays: [1, 2, 3, 4, 5, 6, 7],
+      }),
     },
     $transaction: vi.fn((cb: (tx: unknown) => unknown) => cb({ calendarSlot })),
     _rows: rows,

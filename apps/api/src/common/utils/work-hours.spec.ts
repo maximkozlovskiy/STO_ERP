@@ -1,8 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { DEFAULT_WORK_HOURS } from '@sto/shared';
 import {
+  effectiveWorkDays,
+  isWorkDay,
   kyivHourOnDay,
   kyivMinuteOfDay,
+  nextWorkDay,
   splitByWorkHours,
   workCapacityHours,
   workDayHoursOf,
@@ -16,20 +19,70 @@ import {
 const iso = (d: Date) => d.toISOString();
 
 describe('workHoursOf — години з BranchSettings', () => {
-  it('рядок філії → його години', () => {
+  it('рядок філії → його години й робочі дні (без поля — пн–пт, як @default колонки)', () => {
     expect(workHoursOf({ workStartTime: '08:00', workEndTime: '20:00' })).toEqual({
       startHour: 8,
       endHour: 20,
+      workDays: [1, 2, 3, 4, 5],
     });
+    expect(
+      workHoursOf({ workStartTime: '08:00', workEndTime: '20:00', workDays: [1, 2, 3, 4, 5, 6] }),
+    ).toEqual({ startHour: 8, endHour: 20, workDays: [1, 2, 3, 4, 5, 6] });
   });
 
   it.each([
-    ['рядка немає', null],
     ['невалідний час', { workStartTime: 'foo', workEndTime: 'bar' }],
     ['кінець не пізніше початку', { workStartTime: '20:00', workEndTime: '09:00' }],
-  ])('%s → типові 09–18 (ті самі, що @default BranchSettings)', (_l, row) => {
-    expect(workHoursOf(row)).toEqual({ startHour: 9, endHour: 18 });
+  ])('%s → типові 09–18 (ті самі, що @default BranchSettings), дні рядка лишаються', (_l, row) => {
+    expect(workHoursOf(row)).toEqual({ startHour: 9, endHour: 18, workDays: [1, 2, 3, 4, 5] });
     expect(DEFAULT_WORK_HOURS).toEqual({ startHour: 9, endHour: 18 });
+  });
+
+  // guards: BR-WO-019
+  it('рядка немає → типові 09–18 без переліку днів: кожен день робочий', () => {
+    expect(workHoursOf(null)).toEqual({ startHour: 9, endHour: 18 });
+  });
+
+  // guards: BR-WO-019
+  it('дні поза 1..7 відкидаються; лише такі → порожній перелік, тобто кожен день робочий', () => {
+    expect(workHoursOf({ workDays: [0, 6, 8, 7] }).workDays).toEqual([6, 7]);
+    expect(workHoursOf({ workDays: [0, 8] }).workDays).toEqual([]);
+  });
+});
+
+// Вихідні філії (рішення власника 2026-10-30): 21.11.2026 — сб, 22.11 — нд, 23.11 — пн.
+describe('isWorkDay / nextWorkDay / effectiveWorkDays — робочі дні філії (BR-WO-019, BR-CAL-016)', () => {
+  const MON_SAT = { workDays: [1, 2, 3, 4, 5, 6] };
+
+  // guards: BR-WO-019
+  it('день тижня — ISO з самої дати; неділя (7) — вихідний пн–сб', () => {
+    expect(isWorkDay('2026-11-21', MON_SAT)).toBe(true);
+    expect(isWorkDay('2026-11-22', MON_SAT)).toBe(false);
+    expect(isWorkDay('2026-11-22', { workDays: [7] })).toBe(true);
+    // DST-неділя 25.10.2026 — так само неділя.
+    expect(isWorkDay('2026-10-25', MON_SAT)).toBe(false);
+  });
+
+  // guards: BR-WO-019
+  it('переліку немає чи він порожній → кожен день робочий', () => {
+    expect(isWorkDay('2026-11-22', {})).toBe(true);
+    expect(isWorkDay('2026-11-22', { workDays: [] })).toBe(true);
+  });
+
+  // guards: BR-CAL-016
+  it('наступний робочий день: сб → пн (пн–сб), пт → пн (пн–пт), без переліку — завтра', () => {
+    expect(nextWorkDay('2026-11-21', MON_SAT)).toBe('2026-11-23');
+    expect(nextWorkDay('2026-11-20', { workDays: [1, 2, 3, 4, 5] })).toBe('2026-11-23');
+    expect(nextWorkDay('2026-11-21', {})).toBe('2026-11-22');
+    // Робочий лише понеділок — пошук не довший за тиждень.
+    expect(nextWorkDay('2026-11-23', { workDays: [1] })).toBe('2026-11-30');
+  });
+
+  // guards: BR-WO-019
+  it('для відповіді API: перелік відсортований без повторів, «кожен день» — усі сім', () => {
+    expect(effectiveWorkDays({ workDays: [6, 1, 1, 2] })).toEqual([1, 2, 6]);
+    expect(effectiveWorkDays({})).toEqual([1, 2, 3, 4, 5, 6, 7]);
+    expect(effectiveWorkDays({ workDays: [] })).toEqual([1, 2, 3, 4, 5, 6, 7]);
   });
 });
 
@@ -139,6 +192,44 @@ describe('splitByWorkHours — запис наряду по днях робоч�
     ).toEqual([]);
     expect(
       splitByWorkHours(new Date('2026-05-22T09:00:00Z'), new Date('2026-05-22T09:00:00Z'), H),
+    ).toEqual([]);
+  });
+});
+
+// Рішення власника 2026-10-30 (TECH-DEBT (б) №65): розбиття запису по днях пропускає вихідні.
+describe('splitByWorkHours — вихідні філії (BR-CAL-016)', () => {
+  const H = { startHour: 9, endHour: 18, workDays: [1, 2, 3, 4, 5, 6] };
+
+  // guards: BR-CAL-016
+  it('сб 17:00 → пн 11:00 при пн–сб: відрізки сб 17–18 і пн 09–11, неділі немає', () => {
+    const s = splitByWorkHours(
+      new Date('2026-11-21T15:00:00Z'), // сб 17:00 Києва (+02)
+      new Date('2026-11-23T09:00:00Z'), // пн 11:00
+      H,
+    );
+    expect(s.map(x => [iso(x.startAt), iso(x.endAt)])).toEqual([
+      ['2026-11-21T15:00:00.000Z', '2026-11-21T16:00:00.000Z'],
+      ['2026-11-23T07:00:00.000Z', '2026-11-23T09:00:00.000Z'],
+    ]);
+  });
+
+  // guards: BR-CAL-016
+  it('той самий проміжок без переліку днів → неділя теж має відрізок (кожен день робочий)', () => {
+    const s = splitByWorkHours(new Date('2026-11-21T15:00:00Z'), new Date('2026-11-23T09:00:00Z'), {
+      startHour: 9,
+      endHour: 18,
+    });
+    expect(s.map(x => iso(x.startAt))).toEqual([
+      '2026-11-21T15:00:00.000Z',
+      '2026-11-22T07:00:00.000Z',
+      '2026-11-23T07:00:00.000Z',
+    ]);
+  });
+
+  // guards: BR-CAL-016
+  it('проміжок цілком на вихідному → порожньо', () => {
+    expect(
+      splitByWorkHours(new Date('2026-11-22T08:00:00Z'), new Date('2026-11-22T10:00:00Z'), H),
     ).toEqual([]);
   });
 });

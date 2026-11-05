@@ -6629,6 +6629,18 @@ export interface components {
              * @example 18
              */
             workEndHour: number;
+            /**
+             * @description Робочі дні філії, ISO (1 = пн … 7 = нд): вихідні пропускають пікер планових дат, автокінець і розбиття запису (BR-WO-019, BR-CAL-016). Філія без налаштувань — усі сім
+             * @example [
+             *       1,
+             *       2,
+             *       3,
+             *       4,
+             *       5,
+             *       6
+             *     ]
+             */
+            workDays: number[];
         };
         UpdateBranchSettingsDto: {
             /** @example 09:00 */

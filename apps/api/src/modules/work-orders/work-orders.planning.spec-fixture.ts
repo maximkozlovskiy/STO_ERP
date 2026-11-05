@@ -126,6 +126,8 @@ export function planningHarness(
     slots?: MemRow[];
     invoices?: MemRow[];
     warranties?: MemRow[];
+    /** Робочі дні філії BRANCH (ISO); типово — кожен день. */
+    workDays?: number[];
   } = {},
 ) {
   const workOrder = memoryTable(opts.workOrders ?? [woRow()], () => {
@@ -147,8 +149,16 @@ export function planningHarness(
   });
   const slots = { ...calendarSlot, createMany };
 
+  // Типово кожен день робочий: сценарії спеків ідуть через вихідні (22.05.2026 — пт) і перевіряють
+  // інші правила; вихідні філії (BR-WO-019, BR-CAL-016) — `opts.workDays`, work-orders.days-off.spec.ts.
   const branchSettings = memoryTable([
-    { branchId: BRANCH, orgId: ORG, workStartTime: '08:00', workEndTime: '18:00' },
+    {
+      branchId: BRANCH,
+      orgId: ORG,
+      workStartTime: '08:00',
+      workEndTime: '18:00',
+      workDays: opts.workDays ?? [1, 2, 3, 4, 5, 6, 7],
+    },
   ]);
   const employee = {
     findFirst: vi.fn(({ where }: { where: Record<string, unknown> }) =>

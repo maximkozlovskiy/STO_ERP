@@ -276,6 +276,44 @@ describe('CalendarService', () => {
       // Немає branchId → resolveWorkHours коротить на fallback ДО будь-якого branchSettings read.
       expect(branchSettingsFindFirst).not.toHaveBeenCalled();
     });
+
+    // Рішення власника 2026-10-30: залишок ручного запису — на наступний РОБОЧИЙ день філії.
+    // 21.11.2026 — сб, 23.11 — пн; листопад → +02:00.
+    // guards: BR-CAL-016
+    it.each([
+      [
+        'пн–сб: сб 17:00–19:00 → продовження в пн 09:00–10:00, неділі немає',
+        [1, 2, 3, 4, 5, 6],
+        '2026-11-23T07:00:00.000Z',
+        '2026-11-23T08:00:00.000Z',
+      ],
+      [
+        'кожен день робочий (порожній перелік) → продовження в нд',
+        [],
+        '2026-11-22T07:00:00.000Z',
+        '2026-11-22T08:00:00.000Z',
+      ],
+    ])('%s', async (_label, workDays, day2Start, day2End) => {
+      const prisma = buildCreateMock('18:00');
+      prisma.branchSettings.findFirst = vi
+        .fn()
+        .mockResolvedValue({ workStartTime: '09:00', workEndTime: '18:00', workDays });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const service = new CalendarService(prisma as any);
+      await service.createSlot(orgId, {
+        liftId,
+        startAt: '2026-11-21T15:00:00.000Z', // сб 17:00 Kyiv
+        endAt: '2026-11-21T17:00:00.000Z', // сб 19:00 Kyiv > 18:00 → split
+      } as never);
+      expect(prisma._create).toHaveBeenCalledTimes(2);
+      const day1 = prisma._create.mock.calls[0][0].data as { startAt: Date; endAt: Date };
+      const day2 = prisma._create.mock.calls[1][0].data as { startAt: Date; endAt: Date };
+      expect(day1.endAt.toISOString()).toBe('2026-11-21T16:00:00.000Z');
+      expect([day2.startAt.toISOString(), day2.endAt.toISOString()]).toEqual([day2Start, day2End]);
+      expect(prisma.branchSettings.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({ select: expect.objectContaining({ workDays: true }) }),
+      );
+    });
   });
 });
 

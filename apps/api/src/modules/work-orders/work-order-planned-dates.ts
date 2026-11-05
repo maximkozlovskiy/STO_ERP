@@ -1,4 +1,5 @@
-import { kyivMinuteOfDay, type WorkHours } from '../../common/utils/work-hours';
+import { kyivYmd } from '../../common/utils/kyiv-date';
+import { isWorkDay, kyivMinuteOfDay, type WorkHours } from '../../common/utils/work-hours';
 
 /** Планові дати наряду: `plannedAt` — початок, `dueDate` — завершення. */
 export interface PlannedDates {
@@ -9,6 +10,7 @@ export interface PlannedDates {
 export type PlannedDatesError =
   | { key: 'err.workOrder.plannedInPast' }
   | { key: 'err.workOrder.plannedOutsideWorkHours'; params: { start: string; end: string } }
+  | { key: 'err.workOrder.plannedOnDayOff' }
   | { key: 'err.workOrder.plannedEndBeforeStart' };
 
 const pad2 = (h: number): string => String(h).padStart(2, '0');
@@ -41,8 +43,16 @@ function withinWorkHours(d: Date, hours: WorkHours, edge: 'start' | 'end'): bool
 }
 
 /**
- * BR-WO-019: планові початок і завершення — не раніше поточного моменту і в робочих годинах філії
- * наряду (київський час), завершення пізніше за початок. Перевіряються лише значення, що
+ * День, якому належить планова дата: для завершення — день останньої робочої миті перед ним
+ * (`[start, end)`), тож завершення о 24:00 (00:00 наступної доби) лежить у дні, що закінчився.
+ */
+function dayOf(d: Date, edge: 'start' | 'end'): string {
+  return kyivYmd(edge === 'end' ? new Date(d.getTime() - 1) : d);
+}
+
+/**
+ * BR-WO-019: планові початок і завершення — не раніше поточного моменту, у робочий день філії
+ * (`hours.workDays`) і в її робочих годинах (київський час), завершення пізніше за початок. Перевіряються лише значення, що
  * змінюються відносно збережених: старий наряд із минулими датами зберігається, якщо їх не
  * чіпали. Повертає першу порушену умову або `null`.
  */
@@ -60,6 +70,9 @@ export function plannedDatesError(
 
   if (touched.some(([d]) => d.getTime() < now.getTime())) {
     return { key: 'err.workOrder.plannedInPast' };
+  }
+  if (touched.some(([d, edge]) => !isWorkDay(dayOf(d, edge), hours))) {
+    return { key: 'err.workOrder.plannedOnDayOff' };
   }
   if (touched.some(([d, edge]) => !withinWorkHours(d, hours, edge))) {
     return {

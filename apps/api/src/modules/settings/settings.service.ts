@@ -24,7 +24,7 @@ import {
 } from '../../common/utils/url-guard';
 import { HOST_LOOKUP } from '../../common/utils/host-lookup.token';
 import { sameApiUrl } from '../../common/utils/trim-trailing-slashes';
-import { workHoursOf } from '../../common/utils/work-hours';
+import { effectiveWorkDays, workHoursOf } from '../../common/utils/work-hours';
 import { PNL_SETTINGS_DEFAULTS, translateError } from '@sto/shared';
 import { getLocale } from '../../common/tenant/tenant-context';
 import {
@@ -70,9 +70,24 @@ function branchSettingsCacheKey(orgId: string, branchId: string): string {
   return `settings:branch:${BRANCH_SETTINGS_CACHE_VERSION}:${orgId}:${branchId}`;
 }
 
+/**
+ * Версія відповіді `GET /settings/work-hours` у ключі кешу: v2 додала `workDays` (BR-WO-019) —
+ * об'єкт без поля, що лишився в Redis від попередньої збірки, не читається, а зникає за TTL.
+ */
+const WORK_HOURS_CACHE_VERSION = 'v2';
+
 /** Ключ кешу годин: основна філія організації або конкретна філія. */
 function workHoursCacheKey(orgId: string, branchId?: string): string {
-  return branchId ? `settings:work-hours:${orgId}:${branchId}` : `settings:work-hours:${orgId}`;
+  const base = `settings:work-hours:${WORK_HOURS_CACHE_VERSION}:${orgId}`;
+  return branchId ? `${base}:${branchId}` : base;
+}
+
+/** Робочі години філії у відповіді `GET /settings/work-hours` (і в кеші). */
+export interface WorkHoursResponse {
+  workStartHour: number;
+  workEndHour: number;
+  /** Робочі дні ISO (1 = пн … 7 = нд); «кожен день» — усі сім явно. */
+  workDays: number[];
 }
 
 /**
@@ -312,30 +327,32 @@ export class SettingsService {
    * Робочі години філії (`branchId`) або основної — першої створеної — філії організації.
    * Розбір і типові години — ті самі, що в календарі (`workHoursOf`, 09–18): сітка, пікер
    * планових дат наряду й сервер, що ділить запис на дні та перевіряє BR-WO-019, бачать однакові
-   * межі. Філія чужої організації чи без налаштувань — типові години, не 404: години не секрет,
-   * а відповідь не каже, чи існує чужа філія.
+   * межі. Робочі дні — ті, що пропускають пікер, автокінець і розбиття запису (BR-WO-019,
+   * BR-CAL-016). Філія чужої організації чи без налаштувань — типові години й кожен день робочий,
+   * не 404: години не секрет, а відповідь не каже, чи існує чужа філія.
    */
-  async getWorkHours(
-    orgId: string,
-    branchId?: string,
-  ): Promise<{ workStartHour: number; workEndHour: number }> {
+  async getWorkHours(orgId: string, branchId?: string): Promise<WorkHoursResponse> {
     const cacheKey = workHoursCacheKey(orgId, branchId);
     try {
       const cached = await this.redis.get(cacheKey);
-      if (cached) return JSON.parse(cached) as { workStartHour: number; workEndHour: number };
+      if (cached) return JSON.parse(cached) as WorkHoursResponse;
     } catch {
       // Redis unavailable — continue without cache (offline-first)
     }
 
     const settings = await this.prisma.branchSettings.findFirst({
       where: { orgId, ...(branchId ? { branchId } : {}), branch: { deletedAt: null } },
-      select: { workStartTime: true, workEndTime: true },
+      select: { workStartTime: true, workEndTime: true, workDays: true },
       orderBy: { branch: { createdAt: 'asc' } },
     });
     // Невалідний час чи кінець не пізніше початку (дані до валідації DTO, Bug #515) → типові
     // години цілком: інакше сітка календаря отримала б від'ємну кількість годин.
-    const { startHour, endHour } = workHoursOf(settings);
-    const result = { workStartHour: startHour, workEndHour: endHour };
+    const hours = workHoursOf(settings);
+    const result: WorkHoursResponse = {
+      workStartHour: hours.startHour,
+      workEndHour: hours.endHour,
+      workDays: effectiveWorkDays(hours),
+    };
 
     try {
       await this.redis.set(cacheKey, JSON.stringify(result), 'EX', WORK_HOURS_TTL_SECONDS);
@@ -409,9 +426,13 @@ export class SettingsService {
     });
 
     await this.invalidateBranchCache(orgId, branchId);
-    // Invalidate the work-hours cache only when workStartTime/workEndTime actually changed — not on
-    // every PATCH (smsEnabled, fiscalEnabled, etc.).
-    if (dto.workStartTime !== undefined || dto.workEndTime !== undefined) {
+    // Кеш годин скидається лише коли змінились години чи робочі дні (`GET /settings/work-hours`
+    // віддає і те, й те) — не на кожен PATCH (smsEnabled, fiscalEnabled тощо).
+    if (
+      dto.workStartTime !== undefined ||
+      dto.workEndTime !== undefined ||
+      dto.workDays !== undefined
+    ) {
       await this.invalidateWorkHoursCache(orgId, branchId);
     }
 

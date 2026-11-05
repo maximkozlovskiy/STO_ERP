@@ -684,6 +684,14 @@ export class WorkHoursDto {
   workStartHour!: number;
   @ApiProperty({ example: 18, description: 'Година кінця роботи (0-23)' })
   workEndHour!: number;
+  @ApiProperty({
+    type: [Number],
+    example: [1, 2, 3, 4, 5, 6],
+    description:
+      'Робочі дні філії, ISO (1 = пн … 7 = нд): вихідні пропускають пікер планових дат, ' +
+      'автокінець і розбиття запису (BR-WO-019, BR-CAL-016). Філія без налаштувань — усі сім',
+  })
+  workDays!: number[];
 }
 
 /** ІПН платника ПДВ: 10 цифр (фізична особа) або 12 цифр (юридична). */

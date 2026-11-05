@@ -1,8 +1,9 @@
 import { BadRequestException } from '@nestjs/common';
 import { err } from '../../common/utils/err';
-import { addDaysKyiv, kyivYmd } from '../../common/utils/kyiv-date';
+import { kyivYmd } from '../../common/utils/kyiv-date';
 import {
   kyivHourOnDay,
+  nextWorkDay,
   splitByWorkHours,
   type TimeSegment,
   type WorkHours,
@@ -110,19 +111,20 @@ export function slotWindow(
 
 /**
  * Кінець запису, що починається в робочий день і закінчується після його закриття: форма шле
- * «початок + тривалість» на тому ж дні, а залишок переходить на наступний день від відкриття —
- * так само, як `CalendarService.createSlot` ділить новий запис (BR-CAL-007). Запис наряду інакше
- * отримав би завершення поза робочими годинами (400 BR-WO-019).
+ * «початок + тривалість» на тому ж дні, а залишок переходить на наступний РОБОЧИЙ день від
+ * відкриття (вихідні філії пропускаються, BR-CAL-016) — так само, як `CalendarService.createSlot`
+ * ділить новий запис (BR-CAL-007). Запис наряду інакше отримав би завершення поза робочими
+ * годинами чи на вихідному (400 BR-WO-019).
  */
 export function overflowEnd(startAt: Date, endAt: Date, hours: WorkHours): Date {
   const close = kyivHourOnDay(kyivYmd(startAt), hours.endHour);
   if (!(startAt < close && endAt > close)) return endAt;
-  const nextOpen = kyivHourOnDay(kyivYmd(addDaysKyiv(startAt, 1)), hours.startHour);
+  const nextOpen = kyivHourOnDay(nextWorkDay(kyivYmd(startAt), hours), hours.startHour);
   return new Date(nextOpen.getTime() + (endAt.getTime() - close.getTime()));
 }
 
 /**
- * Робочі години між датами (у межах годин філії), до сотих — те, що картка наряду показує в
+ * Робочі години між датами (у межах годин філії, без вихідних філії — BR-WO-019), до сотих — те, що картка наряду показує в
  * «Нормогодин» і перераховує при зміні дат (`calcPlannedHours` у web). Зміна меж запису змінює
  * тривалість наряду, тож і його планові нормогодини (Bug #903).
  */
