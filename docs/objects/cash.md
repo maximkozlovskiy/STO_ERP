@@ -381,7 +381,7 @@ cd apps/api && npx vitest run src/modules/cash/<файл>.spec.ts
 | сторно: рядок у журналі — курс оригіналу, `reversalOfId`, P2002 → 400 (BR-CASH-023)                                                                           | `cash.reversal-record.spec.ts`                                                   | 10     |
 | каса-диригент: сторно — рядок протилежного напряму, відмови, одна транзакція (BR-CASH-023)                                                                    | `../cash-registers/cash-desk.reverse.spec.ts`                                    | 34     |
 | каса-диригент: відкат за приводом — оплати, повернення, прості приводи (BR-CASH-024, 025)                                                                     | `../cash-registers/cash-desk.reverse-branches.spec.ts`                           | 21     |
-| сторно оплати контрагента: CAS, `PAYMENT_CANCEL`/`PREPAYMENT_CANCEL`, «сплачено», чек, бонуси, події outbox, черга ПРРО (BR-CASH-024, BR-AUT-060, BR-PAY-029) | `../payments/payments.reverse.spec.ts`                                           | 39     |
+| сторно оплати контрагента: CAS, `PAYMENT_CANCEL`/`PREPAYMENT_CANCEL`, «сплачено», чек, бонуси, події outbox, черга ПРРО (BR-CASH-024, BR-AUT-060, BR-PAY-029) | `../payments/payments.reverse.spec.ts`                                           | 42     |
 | сторно валютної оплати клієнта й курсова різниця; «Прострочено» рахунку (BR-PAY-028, BR-INV-025)                                                              | `../payments/payments.reverse-fx.spec.ts`                                        | 8      |
 | сторнована оплата поза нічною звіркою і фіскальною чергою (BR-CASH-024)                                                                                       | `../payments/payments.reversal-excluded.spec.ts`                                 | 7      |
 | сторно оплати постачальнику: REVERSED, `SUPPLIER_PAYMENT_CANCEL`, «сплачено» замовлення, валютна оплата й FX (BR-CASH-024, BR-SUPPAY-012)                     | `../supplier-payments/supplier-payments.reverse.spec.ts`                         | 18     |
@@ -389,7 +389,7 @@ cd apps/api && npx vitest run src/modules/cash/<файл>.spec.ts
 | причина сторно в zod-схемі (BR-CASH-023)                                                                                                                      | `../../../../../packages/shared/src/schemas/forms/cash-reversal.schema.spec.ts`  | 11     |
 | каса з відкритою зміною: не видалити й не зняти «фіскальна» (BR-CASH-028)                                                                                     | `../cash-registers/cash-registers.open-shift-guard.spec.ts`                      | 5      |
 
-Разом: **695** кейсів (цифри з `vitest --reporter=json`, не з grep). Спільний harness спеків `CashService` — `cash.spec-fixture.ts` (у ньому ж таблиця в пам'яті `memoryTable` для спеків, написаних до коду); harness каси-диригента — `../cash-registers/cash-desk.spec-fixture.ts`.
+Разом: **698** кейсів (цифри з `vitest --reporter=json`, не з grep). Спільний harness спеків `CashService` — `cash.spec-fixture.ts` (у ньому ж таблиця в пам'яті `memoryTable` для спеків, написаних до коду); harness каси-диригента — `../cash-registers/cash-desk.spec-fixture.ts`.
 
 **Межі сторожів.** Мітка `// guards:` означає «порушення правила в коді валить цей тест» (кожну перевірено мутацією 2026-10-08), але не «правило стережеться повністю»:
 

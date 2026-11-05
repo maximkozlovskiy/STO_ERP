@@ -27,6 +27,7 @@ import { describe, it, expect } from 'vitest';
 import { BadRequestException } from '@nestjs/common';
 import {
   CLIENT,
+  INV,
   ORG,
   OTHER_ORG,
   PAY,
@@ -339,6 +340,54 @@ describe('PaymentsService.reverse — бонуси', () => {
     expect(h.loyalty.reverseEarn).toHaveBeenCalledTimes(1);
     expect(h.loyalty.reverseEarn.mock.calls[0][0]).toBe(ORG);
     expect(h.loyalty.reverseEarn.mock.calls[0][1]).toBe(PAY);
+  });
+});
+
+describe('PaymentsService.reverse — порядок блокувань як в оплаті (TECH-DEBT §12 п. 9)', () => {
+  type RawCall = [TemplateStringsArray, ...unknown[]];
+  const sqlOf = (call: RawCall) => call[0].join('?');
+  const first = (fn: { mock: { invocationCallOrder: number[] } }) =>
+    fn.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY;
+
+  // Оплата блокує наряд → рахунок → рахунок розрахунків. Сторно брало рахунок розрахунків, а наряд
+  // лише наприкінці: одночасні оплата й сторно одного наряду чекали одна одну (deadlock).
+  // guards: BR-PAY-005
+  it('оплата за нарядом: наряд блокується ПЕРШИМ — до CAS оплати, проводки сторно й запису наряду', async () => {
+    const h = makeHarness({ payment: { invoiceId: null }, invoice: null });
+    await h.reverse();
+    const raw = h.tx.$queryRaw.mock.calls as RawCall[];
+    expect(raw).toHaveLength(1);
+    expect(sqlOf(raw[0])).toMatch(/FROM work_orders[\s\S]*FOR UPDATE/);
+    expect(raw[0]).toContainEqual([WO]);
+    const lock = first(h.tx.$queryRaw);
+    expect(lock).toBeLessThan(first(h.tables.payment.updateMany));
+    expect(lock).toBeLessThan(first(h.settlements.createTransaction));
+    expect(lock).toBeLessThan(first(h.tables.workOrder.updateMany));
+  });
+
+  // guards: BR-PAY-005
+  it('оплата рахунку без наряду: блокується рахунок — до CAS оплати й проводки сторно', async () => {
+    const h = makeHarness({ payment: { workOrderId: null } });
+    await h.reverse();
+    const raw = h.tx.$queryRaw.mock.calls as RawCall[];
+    expect(raw).toHaveLength(1);
+    expect(sqlOf(raw[0])).toMatch(/FROM invoices[\s\S]*FOR UPDATE/);
+    expect(raw[0]).toContain(INV);
+    const lock = first(h.tx.$queryRaw);
+    expect(lock).toBeLessThan(first(h.tables.payment.updateMany));
+    expect(lock).toBeLessThan(first(h.settlements.createTransaction));
+  });
+
+  // guards: BR-PAY-005
+  it('аванс без рахунку й наряду — документа немає, блокування документа теж', async () => {
+    const h = makeHarness({
+      payment: { workOrderId: null, invoiceId: null },
+      invoice: null,
+      workOrder: null,
+      postingType: 'PREPAYMENT',
+    });
+    await h.reverse();
+    expect(h.tx.$queryRaw).not.toHaveBeenCalled();
   });
 });
 

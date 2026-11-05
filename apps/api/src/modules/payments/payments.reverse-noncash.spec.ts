@@ -167,7 +167,7 @@ function makeHarness(seed: Seed = {}) {
   };
 
   // Відкат транзакції: знімок кожного рядка (за ідентичністю об'єкта) і переліку проводок.
-  const tx = { ...tables };
+  const tx = { ...tables, $queryRaw: vi.fn().mockResolvedValue([]) };
   const transaction = vi.fn(
     async (fn: (client: typeof tx) => Promise<unknown>, _opts?: unknown) => {
       const snapshot = Object.values(tables).map(t => ({

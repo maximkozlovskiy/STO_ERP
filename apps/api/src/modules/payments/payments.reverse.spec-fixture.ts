@@ -141,7 +141,9 @@ export function makeHarness(seed: Seed = {}) {
       upsert: vi.fn(forbidWrite(name)),
     };
   }
-  const tx = { ...tables };
+  // Блокування документа оплати (`SELECT … FOR UPDATE`, BR-PAY-005) — порядок викликів видно в
+  // `mock.invocationCallOrder`.
+  const tx = { ...tables, $queryRaw: vi.fn().mockResolvedValue([]) };
 
   const settlementRows: MemRow[] = [];
   const settlements = {

@@ -39,6 +39,7 @@ import {
   type WorkOrderStatusStep,
 } from '../work-orders/work-order-status';
 import { postWorkOrderFxInTx, workOrderFxDocuments } from '../work-orders/work-order-fx';
+import { lockWorkOrdersForUpdate } from '../work-orders/work-order-stock-requirements';
 import { syncWorkOrderInvoicePaid } from '../invoices/work-order-invoice-mirror';
 import { invoiceStatusForPaid } from '../invoices/invoice-paid-status';
 import { hasNetFx, netFxBalanceEffect, reverseNetFxInTx } from '../settlements/fx-net';
@@ -943,6 +944,20 @@ export class PaymentsService {
     // відхилено → сторно знімає чек).
     if (payment.fiscalStatus === FiscalReceiptStatus.QUEUED) {
       throw new BadRequestException(translateError('err.cash.reversalFiscalQueued', locale));
+    }
+
+    // BR-PAY-005: документ оплати — ПЕРШЕ блокування сторно, як в оплаті (наряд → рахунок →
+    // рахунок розрахунків). Раніше сторно брало рахунок розрахунків, а наряд лише наприкінці, і
+    // одночасні оплата й сторно одного наряду ловили deadlock (TECH-DEBT §12 п. 9). Читання нижче —
+    // уже під блокуванням, тож CAS наряду й рахунку не програє паралельній оплаті.
+    if (payment.workOrderId) {
+      await lockWorkOrdersForUpdate(tx, orgId, [payment.workOrderId]);
+    } else if (payment.invoiceId) {
+      await tx.$queryRaw`
+        SELECT id FROM invoices
+        WHERE "orgId" = ${orgId}::uuid AND id = ${payment.invoiceId}::uuid
+        FOR UPDATE
+      `;
     }
 
     const [workOrder, invoice] = await Promise.all([
