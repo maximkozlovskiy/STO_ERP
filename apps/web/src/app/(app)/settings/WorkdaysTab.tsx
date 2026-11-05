@@ -82,10 +82,14 @@ export default function WorkdaysTab() {
   const saveBranchSettings = async () => {
     if (!branchSettings || !selectedBranch) return;
     setSavingBranch(true);
+    setError('');
     try {
+      // Лише поля вкладки: `GET` віддає ще branchId, orgId, updatedAt, фіскалізацію й SMS, а сервер
+      // (`forbidNonWhitelisted`) відкидає незнайомі поля — увесь об'єкт давав 400 (Bug #1047).
+      const { workStartTime, workEndTime, workDays, slotDurationMinutes } = branchSettings;
       await apiFetch(`/settings/branch/${selectedBranch}`, {
         method: 'PATCH',
-        body: JSON.stringify(branchSettings),
+        body: JSON.stringify({ workStartTime, workEndTime, workDays, slotDurationMinutes }),
       });
       // Сітка календаря й пікер планових дат наряду мають побачити нові години одразу, а не
       // через хвилину кешу (сервер свій кеш годин скидає сам).
