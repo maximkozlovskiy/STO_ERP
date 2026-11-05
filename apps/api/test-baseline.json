@@ -3050,8 +3050,11 @@
    "MECHANIC — читання довідників картки наряду (employee.md, рішення 2026-10-16) GET /counterparties/:id/contracts: OWNER — повний договір, як раніше",
    "MECHANIC — читання довідників картки наряду (employee.md, рішення 2026-10-16) GET /counterparties/:id/contracts: RECEPTIONIST — повний договір, як раніше",
    "MECHANIC — читання довідників картки наряду (employee.md, рішення 2026-10-16) GET /counterparties/:id/contracts: механіку — лише id, номер і тип",
+   "MECHANIC — читання довідників картки наряду (employee.md, рішення 2026-10-16) GET /employees: ADMIN бачить схему нарахування в рядку списку",
    "MECHANIC — читання довідників картки наряду (employee.md, рішення 2026-10-16) GET /employees: ADMIN — повні дані механіків, як раніше (контроль звуження)",
+   "MECHANIC — читання довідників картки наряду (employee.md, рішення 2026-10-16) GET /employees: OWNER бачить схему нарахування в рядку списку",
    "MECHANIC — читання довідників картки наряду (employee.md, рішення 2026-10-16) GET /employees: RECEPTIONIST — повні дані механіків, як раніше (контроль звуження)",
+   "MECHANIC — читання довідників картки наряду (employee.md, рішення 2026-10-16) GET /employees: бухгалтер схеми в списку не бачить",
    "MECHANIC — читання довідників картки наряду (employee.md, рішення 2026-10-16) GET /employees: механік отримує лише живих механіків без ставок — навіть із role=OWNER і showDeleted",
    "MECHANIC — читання довідників картки наряду (employee.md, рішення 2026-10-16) GET /employees: механіку — без звільнених і тих, хто у відпустці",
    "MECHANIC — читання довідників картки наряду (employee.md, рішення 2026-10-16) GET /employees: механіку — лише id, ім'я, прізвище активних механіків",
@@ -3995,9 +3998,14 @@
    "InvoicesService — transition-settlements transition — manual PAID + дзеркальний PAYMENT для standalone (Bug #675) іновалютний ручний →PAID, чиста FX ≠ 0 (FX_GAIN 30 не відкочено) → повторно НЕ бронюється (Bug #745 idempotency)"
   ],
   "apps/api/src/modules/invoices/invoices.update-clear-notes.spec.ts": [
+   "InvoicesService — update: очищення нотаток documentDate '' / null → не чіпається (колонка NOT NULL)",
+   "InvoicesService — update: очищення нотаток dueDate \"\" з картки → dueDate: null у prisma.invoice.update",
+   "InvoicesService — update: очищення нотаток dueDate null з картки → dueDate: null у prisma.invoice.update",
+   "InvoicesService — update: очищення нотаток dueDate не передано → термін не чіпається",
    "InvoicesService — update: очищення нотаток notes \"\" з картки → notes: null у prisma.invoice.update",
    "InvoicesService — update: очищення нотаток notes null з картки → notes: null у prisma.invoice.update",
    "InvoicesService — update: очищення нотаток notes не передано → поле не чіпається (undefined у data)",
+   "InvoicesService — update: очищення нотаток нова дата терміну → Date",
    "InvoicesService — update: очищення нотаток нове значення нотаток пишеться як є"
   ],
   "apps/api/src/modules/invoices/invoices.update-counterparty.spec.ts": [
@@ -7808,16 +7816,26 @@
    "VehiclesService restore — марка й модель авто живі (BR-VEH-014) пара читається в транзакції під спільним блокуванням довідника, до гаража; обидві живі → відновлено"
   ],
   "apps/api/src/modules/vehicles/vehicles.update-clear.spec.ts": [
-   "VehiclesService.update — очищення текстових полів bodyType: '' з картки → null у prisma.vehicle.update",
-   "VehiclesService.update — очищення текстових полів color: '' з картки → null у prisma.vehicle.update",
-   "VehiclesService.update — очищення текстових полів driveType: '' з картки → null у prisma.vehicle.update",
-   "VehiclesService.update — очищення текстових полів engineCode: '' з картки → null у prisma.vehicle.update",
-   "VehiclesService.update — очищення текстових полів fuelType: '' з картки → null у prisma.vehicle.update",
-   "VehiclesService.update — очищення текстових полів licensePlate: '' з картки → null у prisma.vehicle.update",
-   "VehiclesService.update — очищення текстових полів notes: '' з картки → null у prisma.vehicle.update",
-   "VehiclesService.update — очищення текстових полів transmissionType: '' з картки → null у prisma.vehicle.update",
-   "VehiclesService.update — очищення текстових полів vin: '' з картки → null у prisma.vehicle.update",
-   "VehiclesService.update — очищення текстових полів колір і нотатки очищено (null) — решта полів не потрапляє в data"
+   "VehiclesService.update — очищення полів bodyType: '' з картки → null у prisma.vehicle.update",
+   "VehiclesService.update — очищення полів color: '' з картки → null у prisma.vehicle.update",
+   "VehiclesService.update — очищення полів currentMileage: '' з картки → null у prisma.vehicle.update",
+   "VehiclesService.update — очищення полів driveType: '' з картки → null у prisma.vehicle.update",
+   "VehiclesService.update — очищення полів engineCode: '' з картки → null у prisma.vehicle.update",
+   "VehiclesService.update — очищення полів engineVolume: '' з картки → null у prisma.vehicle.update",
+   "VehiclesService.update — очищення полів fuelType: '' з картки → null у prisma.vehicle.update",
+   "VehiclesService.update — очищення полів inspectionExpiry: '' з картки → null у prisma.vehicle.update",
+   "VehiclesService.update — очищення полів insuranceExpiry: '' з картки → null у prisma.vehicle.update",
+   "VehiclesService.update — очищення полів licensePlate: '' з картки → null у prisma.vehicle.update",
+   "VehiclesService.update — очищення полів notes: '' з картки → null у prisma.vehicle.update",
+   "VehiclesService.update — очищення полів transmissionType: '' з картки → null у prisma.vehicle.update",
+   "VehiclesService.update — очищення полів vin: '' з картки → null у prisma.vehicle.update",
+   "VehiclesService.update — очищення полів year: '' з картки → null у prisma.vehicle.update",
+   "VehiclesService.update — очищення полів дата страховки YYYY-MM-DD → Date у prisma.vehicle.update; нечіпаний техогляд відсутній",
+   "VehiclesService.update — очищення полів дата техогляду очищена → null",
+   "VehiclesService.update — очищення полів колір і нотатки очищено (null) — решта полів не потрапляє в data",
+   "VehiclesService.update — очищення полів пробіг, рік, обʼєм очищено (null) — пробіг не стає 0",
+   "VehiclesService.update — очищення полів створення: дата техогляду YYYY-MM-DD → Date у prisma.vehicle.create",
+   "VehiclesService.update — очищення полів числа з картки — числами"
   ],
   "apps/api/src/modules/warehouses/warehouses.contract.spec.ts": [
    "Warehouses — HTTP Contract DELETE /warehouses/:id 204 — soft delete",

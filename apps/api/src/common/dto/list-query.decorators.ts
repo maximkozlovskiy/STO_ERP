@@ -9,6 +9,7 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  IsUUID,
   Matches,
   Max,
   Min,
@@ -95,4 +96,22 @@ export const ClearableTextParam = () =>
     ApiPropertyOptional({ type: String, nullable: true, description: 'null / "" → очистити' }),
     IsOptional(),
     IsString(),
+  );
+
+/** Дата документа в PATCH (YYYY-MM-DD): '' → не чіпати; колонка NOT NULL — очищення немає. */
+export const DocumentDateParam = () =>
+  applyDecorators(
+    ApiPropertyOptional({ description: 'Дата документа (YYYY-MM-DD)' }),
+    IsOptional(),
+    Transform(emptyToUndefined),
+    IsDateString(),
+  );
+
+/** Валюта чернетки документа в PATCH: '' → не чіпати; редагування — лише DRAFT (guard у сервісі). */
+export const DocumentCurrencyParam = () =>
+  applyDecorators(
+    ApiPropertyOptional({ description: 'Валюта документа' }),
+    IsOptional(),
+    Transform(emptyToUndefined),
+    IsUUID(),
   );

@@ -22,7 +22,12 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { InvoiceStatus, WorkOrderStatus } from '@prisma/client';
 import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
 import { csvArray } from '../../common/transforms/csv-array';
-import { ClearableTextParam, CalendarDateParam } from '../../common/dto/list-query.decorators';
+import {
+  ClearableTextParam,
+  DocumentCurrencyParam,
+  DocumentDateParam,
+  CalendarDateParam,
+} from '../../common/dto/list-query.decorators';
 import { LinkedPaymentRowDto } from '../../common/dto/linked-payment-row.dto';
 
 export class CreateInvoiceDto {
@@ -79,19 +84,13 @@ export class UpdateInvoiceDto {
   @ClearableTextParam()
   notes?: string | null;
 
-  @ApiPropertyOptional({ description: 'Дата документа (YYYY-MM-DD)' })
-  @IsOptional()
-  @Transform(emptyToUndefined)
-  @IsDateString()
+  @DocumentDateParam()
   documentDate?: string;
 
   // Мультивалюта (Фаза 3): дозволяє зміну валюти чернетки з UI. Редагувати можна лише
   // DRAFT (guard у service.update) — CHARGE ще не нарахований, тож totalAmountBase/rateUsed
   // перерахує transition() при виставленні (DRAFT→SENT), той самий lazy-патерн.
-  @ApiPropertyOptional({ description: 'Валюта документа' })
-  @IsOptional()
-  @Transform(emptyToUndefined)
-  @IsUUID()
+  @DocumentCurrencyParam()
   currencyId?: string;
 }
 

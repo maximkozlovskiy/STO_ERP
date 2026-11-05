@@ -21,7 +21,12 @@ import { Type, Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { PurchaseOrderStatus, DeliveryStatus } from '@prisma/client';
 import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
-import { ClearableTextParam, CalendarDateParam } from '../../common/dto/list-query.decorators';
+import {
+  ClearableTextParam,
+  DocumentCurrencyParam,
+  DocumentDateParam,
+  CalendarDateParam,
+} from '../../common/dto/list-query.decorators';
 
 export class TransitionPurchaseOrderDto {
   @ApiProperty({ enum: PurchaseOrderStatus })
@@ -124,19 +129,13 @@ export class UpdatePurchaseOrderDto {
   @ClearableTextParam()
   notes?: string | null;
 
-  @ApiPropertyOptional({ description: 'Дата документа (YYYY-MM-DD)' })
-  @IsOptional()
-  @Transform(emptyToUndefined)
-  @IsDateString()
+  @DocumentDateParam()
   documentDate?: string;
 
   // Мультивалюта (Фаза 3): дозволяє зміну валюти чернетки з UI. Редагувати можна лише
   // DRAFT (guard у service.update); якщо разом з валютою прийшли lines — service рахує
   // base-конвертацію по ЕФЕКТИВНІЙ валюті (dto.currencyId ?? po.currencyId), не по старій.
-  @ApiPropertyOptional({ description: 'Валюта документа' })
-  @IsOptional()
-  @Transform(emptyToUndefined)
-  @IsUUID()
+  @DocumentCurrencyParam()
   currencyId?: string;
 
   @ApiPropertyOptional({ description: 'Планова дата оплати постачальнику (YYYY-MM-DD)' })
