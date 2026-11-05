@@ -315,7 +315,8 @@ export class PricingService {
    *
    * Рівні від точнішого до загальнішого; у межах рівня перемагає менше число `priority`
    * (правила в контексті вже впорядковані):
-   *  0. правило постачальника — якщо постачальника передано;
+   *  0. правило постачальника — якщо постачальника передано; серед правил постачальника — ті самі
+   *     рівні 1–5, і правило з областю поза нею не діє (BR-GOOD-012);
    *  1. товар є у списку правила (BR-GOOD-009);
    *  2. бренд;
    *  3. категорія з довідника — категорія товару або її предок, БЛИЖЧИЙ предок перемагає
@@ -336,12 +337,30 @@ export class PricingService {
   }
 
   private pickRule(ctx: PricingContext, good: PricingGood, supplierId?: string): RuleEntry | null {
+    // BR-GOOD-012: правила постачальника обираються тим самим каскадом області, що й загальні,
+    // лише серед своїх. Правило постачальника зі списком / брендом / категорією / типом поза своєю
+    // областю не діє — товар іде далі, до загальних правил.
     if (supplierId) {
-      const supplierRule = ctx.rules.find(r => r.supplierId === supplierId);
-      if (supplierRule) return supplierRule;
+      const bySupplier = this.pickInScope(
+        ctx,
+        good,
+        ctx.rules.filter(r => r.supplierId === supplierId),
+      );
+      if (bySupplier) return bySupplier;
     }
-    const rules = ctx.rules.filter(r => !r.supplierId);
+    return this.pickInScope(
+      ctx,
+      good,
+      ctx.rules.filter(r => !r.supplierId),
+    );
+  }
 
+  /** Найточніше правило з `rules`, чия область накриває товар (рівні 1–5 з `resolveRule`). */
+  private pickInScope(
+    ctx: PricingContext,
+    good: PricingGood,
+    rules: RuleEntry[],
+  ): RuleEntry | null {
     const listed = ctx.ruleIdsByGood.get(good.id);
     const hasGoods = (r: RuleEntry) => r._count.goods > 0;
     const hasCategory = (r: RuleEntry) => !!r.goodCategoryId || !!r.goodCategory;

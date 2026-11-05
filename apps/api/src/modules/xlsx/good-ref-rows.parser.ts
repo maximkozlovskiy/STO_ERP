@@ -1,9 +1,11 @@
 import { parse as parseCSV } from 'csv-parse/sync';
+import type { Worksheet } from 'exceljs';
 import { loadXlsxWorkbook, tableFileUnreadable } from './load-workbook';
+import { decodeTextFile } from './decode-text-file';
 
 /** Рядок файла-переліку товарів: усе, за чим товар можна впізнати (BR-GOOD-008). */
 export interface GoodRefRow {
-  /** Номер рядка у файлі, як його бачить користувач (заголовок — рядок 1). */
+  /** Номер рядка у файлі, як його бачить користувач (у CSV — номер запису, як рядок Excel). */
   rowIndex: number;
   code: string | null;
   article: string | null;
@@ -44,27 +46,46 @@ const HEADER_ALIASES: Record<string, Field> = {
 
 const headerKey = (s: string): string => s.toLocaleLowerCase('uk').replace(/[^\p{L}\p{N}]/gu, '');
 
-/** Колонка (0-based) → поле. Жодного впізнаного заголовка → порядок шаблону. */
-function mapColumns(headers: string[]): Map<number, Field> {
+/** Скільки рядків від початку аркуша шукати рядок заголовків (шапка прайсу над таблицею). */
+const HEADER_SCAN_ROWS = 20;
+
+/** Рядок сітки з номером, як його бачить користувач (1-based). */
+type GridRow = { rowNo: number; cells: string[] };
+
+/** Колонка (0-based) → поле — лише за впізнаними заголовками. */
+function recognisedColumns(cells: string[]): Map<number, Field> {
   const map = new Map<number, Field>();
-  headers.forEach((h, i) => {
+  cells.forEach((h, i) => {
     const key = headerKey(h);
     // Лише власні ключі: заголовок «constructor» чи «toString» інакше дав би «поле»-функцію
-    // з прототипа, порядок шаблону не ввімкнувся б і файл читався б як порожній.
+    // з прототипа і рядок даних прийнявся б за заголовок.
     const field = Object.hasOwn(HEADER_ALIASES, key) ? HEADER_ALIASES[key] : undefined;
     if (field && !Array.from(map.values()).includes(field)) map.set(i, field);
   });
-  if (map.size === 0) DEFAULT_ORDER.forEach((field, i) => map.set(i, field));
   return map;
 }
 
-function toRows(grid: string[][]): GoodRefRow[] {
-  if (grid.length === 0) return [];
-  const columns = mapColumns(grid[0]);
+/**
+ * Рядок заголовків — перший із перших `HEADER_SCAN_ROWS`, де впізнано хоч одну назву колонки
+ * (BR-GOOD-013). Рядки над ним — шапка прайсу, не дані. Не знайдено → файл без заголовків:
+ * усі рядки — дані в порядку шаблону, і перший товар не губиться.
+ */
+function findHeader(grid: GridRow[]): { index: number; columns: Map<number, Field> } | null {
+  const limit = Math.min(grid.length, HEADER_SCAN_ROWS);
+  for (let i = 0; i < limit; i++) {
+    const columns = recognisedColumns(grid[i].cells);
+    if (columns.size > 0) return { index: i, columns };
+  }
+  return null;
+}
+
+function toRows(grid: GridRow[]): GoodRefRow[] {
+  const header = findHeader(grid);
+  const columns = header?.columns ?? new Map(DEFAULT_ORDER.map((field, i) => [i, field]));
   const rows: GoodRefRow[] = [];
-  grid.slice(1).forEach((cells, i) => {
+  for (const { rowNo, cells } of grid.slice(header ? header.index + 1 : 0)) {
     const row: GoodRefRow = {
-      rowIndex: i + 2,
+      rowIndex: rowNo,
       code: null,
       article: null,
       brand: null,
@@ -76,67 +97,83 @@ function toRows(grid: string[][]): GoodRefRow[] {
       if (value) row[field] = value;
     }
     if (row.code || row.article || row.barcode || row.name) rows.push(row);
-  });
+  }
   return rows;
 }
 
 /**
- * Роздільник CSV — ОДИН на файл, за рядком заголовків: якого знака поза лапками більше.
- * Обидва одразу (`[',', ';']`) різали значення: Excel в українській локалі пише через «;» і
- * коми в назві («Фільтр, масляний») у лапки не бере — колонки з'їжджали, і в поле артикула чи
- * штрихкоду потрапляв шматок назви.
+ * Роздільник CSV — ОДИН на файл, за першими рядками (рядок заголовків може стояти під шапкою):
+ * якого знака поза лапками більше. Обидва одразу (`[',', ';']`) різали значення: Excel в
+ * українській локалі пише через «;» і коми в назві («Фільтр, масляний») у лапки не бере —
+ * колонки з'їжджали, і в поле артикула чи штрихкоду потрапляв шматок назви.
  */
 function detectDelimiter(text: string): ',' | ';' {
-  const header = text.split(/\r?\n/, 1)[0];
   let commas = 0;
   let semicolons = 0;
-  let quoted = false;
-  for (const ch of header) {
-    if (ch === '"') quoted = !quoted;
-    else if (!quoted && ch === ',') commas++;
-    else if (!quoted && ch === ';') semicolons++;
+  for (const line of text.split(/\r?\n/, HEADER_SCAN_ROWS)) {
+    let quoted = false;
+    for (const ch of line) {
+      if (ch === '"') quoted = !quoted;
+      else if (!quoted && ch === ',') commas++;
+      else if (!quoted && ch === ';') semicolons++;
+    }
   }
   return semicolons > commas ? ';' : ',';
 }
 
+/** Сітка аркуша з номерами рядків Excel; ширина — щонайменше колонки шаблону. */
+function sheetGrid(sheet: Worksheet): GridRow[] {
+  const grid: GridRow[] = [];
+  sheet.eachRow({ includeEmpty: true }, (row, rowNo) => {
+    const cells: string[] = [];
+    for (let c = 1; c <= Math.max(row.cellCount, DEFAULT_ORDER.length); c++) {
+      cells.push(row.getCell(c).text ?? '');
+    }
+    grid.push({ rowNo, cells });
+  });
+  return grid;
+}
+
 /**
- * Читає перелік товарів із XLSX або CSV. Перший рядок — заголовки; колонки впізнаються за назвою
- * («Код», «Артикул», «Бренд», «Штрихкод», «Назва» та їхні англійські відповідники) у будь-якому
- * порядку. Рядки без жодного ключа товару пропускаються.
+ * Читає перелік товарів із XLSX або CSV (BR-GOOD-008, BR-GOOD-013). Колонки впізнаються за
+ * назвою («Код», «Артикул», «Бренд», «Штрихкод», «Назва» та їхні англійські відповідники) у
+ * будь-якому порядку; рядок заголовків шукається в перших рядках (над ним може бути шапка), а
+ * файл без заголовків читається з першого рядка в порядку шаблону. CSV — у UTF-8 або
+ * Windows-1251. З книги береться видимий аркуш із рядком заголовків, а якщо такого немає —
+ * перший видимий аркуш, де є дані. Рядки без жодного ключа товару пропускаються.
  */
 export async function parseGoodRefRows(
   buffer: Buffer | Uint8Array,
   fileType: 'xlsx' | 'csv',
 ): Promise<GoodRefRow[]> {
   if (fileType === 'csv') {
-    const text = Buffer.from(buffer).toString('utf-8').replace(/^﻿/, '');
-    let grid: string[][];
+    const text = decodeTextFile(buffer);
+    let records: string[][];
     try {
       // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion -- parseCSV повертає unknown[]; каст потрібен tsc
-      grid = parseCSV(text, {
-        skip_empty_lines: true,
+      records = parseCSV(text, {
+        // Порожні рядки лишаються записами: номер запису = номер рядка, який покаже Excel.
+        skip_empty_lines: false,
         relax_column_count: true,
         trim: true,
         // Excel в українській локалі зберігає CSV через «;».
         delimiter: detectDelimiter(text),
       }) as string[][];
     } catch {
-      // Не CSV (наприклад, xlsx із розширенням .csv): csv-parse кидає на «лапках» у двійковому вмісті.
+      // Не CSV: csv-parse кидає на «лапках» усередині значення.
       throw tableFileUnreadable();
     }
-    return toRows(grid.map(r => r.map(c => String(c ?? ''))));
+    return toRows(records.map((r, i) => ({ rowNo: i + 1, cells: r.map(c => String(c ?? '')) })));
   }
 
   const workbook = await loadXlsxWorkbook(buffer);
-  const sheet = workbook.worksheets[0];
-  if (!sheet) return [];
-  const grid: string[][] = [];
-  sheet.eachRow({ includeEmpty: true }, row => {
-    const cells: string[] = [];
-    for (let c = 1; c <= Math.max(row.cellCount, DEFAULT_ORDER.length); c++) {
-      cells.push(row.getCell(c).text ?? '');
-    }
-    grid.push(cells);
-  });
-  return toRows(grid);
+  let firstWithData: GoodRefRow[] = [];
+  for (const sheet of workbook.worksheets) {
+    // Прихований аркуш — довідник чи службові дані книги, не перелік товарів.
+    if (sheet.state !== 'visible') continue;
+    const grid = sheetGrid(sheet);
+    if (findHeader(grid)) return toRows(grid);
+    if (firstWithData.length === 0) firstWithData = toRows(grid);
+  }
+  return firstWithData;
 }
