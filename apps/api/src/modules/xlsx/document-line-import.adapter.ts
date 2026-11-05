@@ -8,6 +8,10 @@ import { withOrderedStamps } from '../../common/utils/line-order';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
 import { PurchaseListLinkService } from '../purchase-lists/purchase-list-link.service';
+import {
+  reconcileDraftLists,
+  replaceDraftLines,
+} from '../purchase-orders/purchase-order-lifecycle';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 
 export type ImportDocType = 'PURCHASE_ORDER' | 'STOCK_DOCUMENT';
@@ -82,7 +86,8 @@ export class PurchaseOrderImportAdapter implements DocumentLineImportAdapter {
     private readonly prisma: PrismaService,
     private readonly settings: SettingsService,
     private readonly exchangeRates: ExchangeRatesService,
-    // BR-PL-009: рядки чернетки переписано імпортом — позиції списків купівлі звіряються.
+    // BR-PL-009: рядки чернетки записано імпортом — позиції списків купівлі звіряються
+    // (`replaceDraftLines` / `reconcileDraftLists` домену замовлень).
     private readonly purchaseLists: PurchaseListLinkService,
   ) {}
 
@@ -129,26 +134,13 @@ export class PurchaseOrderImportAdapter implements DocumentLineImportAdapter {
       true,
     );
 
-    // Line-replace: soft-delete наявних + createMany нових (той самий патерн, що PO.update).
-    await tx.purchaseOrderLine.updateMany({
-      where: { purchaseOrderId: docId, orgId },
-      data: { deletedAt: new Date() },
+    // Та сама заміна рядків, що й PATCH картки (BR-PL-009 — звірка списків усередині); тотали —
+    // після неї: порядок блокувань «позиції → замовлення».
+    await replaceDraftLines(tx, this.purchaseLists, {
+      orgId,
+      purchaseOrderId: docId,
+      lines: computed,
     });
-    if (computed.length) {
-      await tx.purchaseOrderLine.createMany({
-        data: withOrderedStamps(
-          computed.map(l => ({
-            orgId,
-            purchaseOrderId: docId,
-            goodId: l.goodId,
-            quantity: l.quantity,
-            price: l.price,
-            vatRate: l.vatRate,
-            vatAmount: l.vatAmount,
-          })),
-        ),
-      });
-    }
     await tx.purchaseOrder.updateMany({
       where: { id: docId, orgId, deletedAt: null },
       data: {
@@ -158,7 +150,6 @@ export class PurchaseOrderImportAdapter implements DocumentLineImportAdapter {
         rateUsed: conv.rateUsed,
       },
     });
-    await this.purchaseLists.reconcileDraftOrder(tx, orgId, docId);
   }
 
   async appendLines(
@@ -212,10 +203,10 @@ export class PurchaseOrderImportAdapter implements DocumentLineImportAdapter {
       });
     }
 
+    await reconcileDraftLists(tx, this.purchaseLists, orgId, docId);
     // Тотали — по ВСІХ активних рядках ПІСЛЯ вставки (не лише по нових), інакше наявні позиції
     // зникли б із суми документа.
     await this.recalcTotals(tx, orgId, docId);
-    await this.purchaseLists.reconcileDraftOrder(tx, orgId, docId);
   }
 
   /**
@@ -251,9 +242,9 @@ export class PurchaseOrderImportAdapter implements DocumentLineImportAdapter {
       if (batch.length < SYNC_BATCH) break;
       cursor = batch[batch.length - 1].id;
     }
-    await this.recalcTotals(tx, orgId, docId);
     // Швидкий імпорт міг змінити кількості наявних рядків (BR-PL-009).
-    await this.purchaseLists.reconcileDraftOrder(tx, orgId, docId);
+    await reconcileDraftLists(tx, this.purchaseLists, orgId, docId);
+    await this.recalcTotals(tx, orgId, docId);
   }
 
   /** Сума й ПДВ замовлення по всіх активних рядках + сума в базовій валюті. */

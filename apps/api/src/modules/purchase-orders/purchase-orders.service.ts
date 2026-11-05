@@ -39,6 +39,12 @@ import {
 } from './purchase-orders.dto';
 import { numberOrSupplierSearch } from '../../common/utils/like-pattern';
 import { LINE_ORDER_BY_CREATED, orderedLineStamps } from '../../common/utils/line-order';
+import {
+  closeOrderForPurchaseLists,
+  reconcileDraftLists,
+  replaceDraftLines,
+  setStatus,
+} from './purchase-order-lifecycle';
 
 type POStatus = PurchaseOrderStatus;
 
@@ -590,39 +596,19 @@ export class PurchaseOrdersService {
 
     const updated = await this.prisma.$transaction(
       async tx => {
-        if (computedLines !== undefined) {
-          await tx.purchaseOrderLine.updateMany({
-            where: { purchaseOrderId: id, orgId },
-            data: { deletedAt: new Date() },
-          });
-          if (computedLines.length) {
-            const stamps = orderedLineStamps(computedLines.length);
-            await tx.purchaseOrderLine.createMany({
-              data: computedLines.map((l, i) => ({
-                createdAt: stamps[i],
-                orgId,
-                purchaseOrderId: id,
-                goodId: l.goodId,
-                quantity: l.quantity,
-                price: l.price,
-                vatRate: l.vatRate,
-                vatAmount: l.vatAmount,
-                ...(l.pricedSalePrice != null ? { pricedSalePrice: l.pricedSalePrice } : {}),
-              })),
-            });
-          }
-        }
         // BR-PL-009: рядки чернетки переписано чи змінено склад — позиції списків купівлі
-        // звіряються за товаром і складом. До запису самого замовлення: порядок блокувань
-        // «позиції → замовлення» той самий, що в прийманні, скасуванні й видаленні.
+        // звіряються за товаром і складом, до запису самого замовлення (порядок блокувань).
+        const warehouseId = dto.warehouseId ?? po.warehouseId ?? undefined;
         const warehouseChanged = !!dto.warehouseId && dto.warehouseId !== po.warehouseId;
-        if (computedLines !== undefined || warehouseChanged) {
-          await this.purchaseLists.reconcileDraftOrder(
-            tx,
+        if (computedLines !== undefined) {
+          await replaceDraftLines(tx, this.purchaseLists, {
             orgId,
-            id,
-            dto.warehouseId ?? po.warehouseId ?? undefined,
-          );
+            purchaseOrderId: id,
+            lines: computedLines,
+            warehouseId,
+          });
+        } else if (warehouseChanged) {
+          await reconcileDraftLists(tx, this.purchaseLists, orgId, id, warehouseId);
         }
         return tx.purchaseOrder.update({
           where: { id, orgId },
@@ -672,38 +658,20 @@ export class PurchaseOrdersService {
         const fromStatus = po.status;
         assertFsmTransition(PO_TRANSITIONS, po.status, newStatus);
 
-        // BR-PL-010: скасоване замовлення повертає неотримане в позиції списків купівлі. Позиції —
-        // ДО рядка замовлення: приймання блокує позиції (розподіл) раніше за замовлення (статус),
-        // і зворотний порядок тут давав би deadlock паралельних «Прийняти» і «Скасувати».
+        // BR-PO-012: замовлення, вже передане постачальнику через API, скасовується лише з force —
+        // перевірка до повернення позицій у списки (`setStatus`).
         if (newStatus === PurchaseOrderStatus.CANCELLED) {
-          // BR-PO-012: замовлення, вже передане постачальнику через API, — лише з force.
           await this.supplierOutbox.assertCancellable(tx, orgId, id, opts.force === true);
-          await this.purchaseLists.onOrderClosed(tx, orgId, id);
         }
-        // BR-PL-012 (Bug #885): замовлення закрито кнопкою «Отримано» (постачальник більше не
-        // привезе) — остача позицій повертається в OPEN так само, як при повному прийманні.
-        // Інакше позиції лишались ORDERED на закритому замовленні, а нестача рахувала їхнє
-        // недоотримане покриттям.
-        if (newStatus === PurchaseOrderStatus.RECEIVED) {
-          await this.purchaseLists.onOrderClosed(tx, orgId, id);
-        }
-        // CAS за прочитаним статусом: два паралельні переходи з того самого статусу (DRAFT →
-        // ORDERED і DRAFT → CANCELLED) інакше обидва проходили FSM, а `fromStatus` події брехав.
-        const moved = await tx.purchaseOrder.updateMany({
-          where: { id, orgId, deletedAt: null, status: fromStatus },
-          data: { status: newStatus },
-        });
-        if (moved.count === 0) {
-          throw new BadRequestException(err('err.purchaseOrder.statusChanged'));
-        }
-        await recordDocumentEvent(tx, {
+        // Скасування (BR-PL-010) і «Отримано» без приймання (BR-PL-012) повертають неотримане в
+        // позиції списків; CAS за прочитаним статусом — два паралельні переходи з того самого
+        // статусу (DRAFT → ORDERED і DRAFT → CANCELLED) інакше обидва проходили FSM.
+        await setStatus(tx, this.purchaseLists, {
           orgId,
-          documentType: 'PURCHASE_ORDER',
-          documentId: id,
-          kind: 'STATUS_CHANGED',
-          fromStatus,
-          toStatus: newStatus,
-          actorId: opts.actorId ?? null,
+          id,
+          from: fromStatus,
+          to: newStatus,
+          actorId: opts.actorId,
         });
         // BR-PO-011 / BR-SCON-009: режим «автоматично при «Замовлено»» — outbox у цій же транзакції.
         return newStatus === PurchaseOrderStatus.ORDERED
@@ -1012,33 +980,19 @@ export class PurchaseOrdersService {
           po.contract && po.contract.deletedAt == null ? po.contract.paymentDeferDays : null;
         const shouldSetPaymentDate =
           newStatus === PurchaseOrderStatus.RECEIVED && !po.paymentDate && defer != null;
-        const fromStatus = po.status;
-        // CAS за прочитаним статусом (Bug #995, BR-AUT-060): перечитування вище лише швидка
-        // відмова — паралельне «Скасувати» між ним і цим записом інакше мовчки перезаписувалось
-        // на «Отримано», а подія мала неправдивий `fromStatus`. Програли — відкат усього прийому.
-        const moved = await tx.purchaseOrder.updateMany({
-          where: { id, orgId, deletedAt: null, status: fromStatus },
-          data: {
-            status: newStatus,
-            ...(shouldSetPaymentDate ? { paymentDate: addDaysKyiv(kyivToday(), defer) } : {}),
-          },
-        });
-        if (moved.count === 0) {
-          throw new BadRequestException(err('err.purchaseOrder.statusChanged'));
-        }
-        await recordDocumentEvent(tx, {
+        // CAS за прочитаним статусом (BR-AUT-060): перечитування вище лише швидка відмова —
+        // паралельне «Скасувати» між ним і цим записом інакше мовчки перезаписувалось на
+        // «Отримано». Програли — відкат усього прийому. Повне приймання (RECEIVED) повертає
+        // недоотримане за позиціями в OPEN (BR-PL-012) — у `setStatus`, до запису статусу:
+        // хук читає лише позиції (їх `receivedQty` уже записав розподіл вище), не замовлення.
+        await setStatus(tx, this.purchaseLists, {
           orgId,
-          documentType: 'PURCHASE_ORDER',
-          documentId: id,
-          kind: 'STATUS_CHANGED',
-          fromStatus,
-          toStatus: newStatus,
-          actorId: userId ?? null,
+          id,
+          from: po.status,
+          to: newStatus,
+          actorId: userId,
+          data: shouldSetPaymentDate ? { paymentDate: addDaysKyiv(kyivToday(), defer) } : {},
         });
-        // BR-PL-012: замовлення прийнято повністю — недоотримане за позиціями повертається в OPEN.
-        if (newStatus === PurchaseOrderStatus.RECEIVED) {
-          await this.purchaseLists.onOrderClosed(tx, orgId, id);
-        }
         // Відповідь — з цієї ж транзакції (маршрут під ключем ідемпотентності): читання після
         // коміту, що впало, зняло б резервацію ключа, і повтор ЧАСТКОВОГО прийому оприбуткував
         // би товар удруге — CAS рядків порівнює з `receivedQty`, уже прочитаним повтором.
@@ -1064,7 +1018,7 @@ export class PurchaseOrdersService {
         // Позиції — до рядка замовлення (порядок блокувань той самий, що в update і transition);
         // замовлення вже не DRAFT → CAS нижче кидає, і повернення позицій відкочується.
         await this.supplierOutbox.assertCancellable(tx, orgId, id, force);
-        await this.purchaseLists.onOrderClosed(tx, orgId, id);
+        await closeOrderForPurchaseLists(tx, this.purchaseLists, orgId, id);
         const res = await tx.purchaseOrder.updateMany({
           where: { id, orgId, deletedAt: null, status: PurchaseOrderStatus.DRAFT },
           data: { deletedAt: new Date() },
