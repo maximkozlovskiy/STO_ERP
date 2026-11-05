@@ -77,17 +77,18 @@ DRAFT → ORDERED → PARTIAL → RECEIVED
 
 ## API Endpoints (`/api/purchase-orders`)
 
-| Метод  | URL                                      | Дія                                                                                                                                                                                                                         |
-| ------ | ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/api/purchase-orders`                   | Список (фільтри: status, supplierId, dateFrom, dateTo, `payable=true` — лише статуси оплати, BR-SUPPAY-015; sort: documentDate/createdAt/totalAmount/paymentDate; DTO += `paidAmount`/`outstanding`/`isFullyPaid`/`paidAt`) |
-| GET    | `/api/purchase-orders/:id`               | Деталь з lines (той самий `toDto()` → `paidAmount`/`outstanding`/`isFullyPaid`/`paidAt` присутні й тут, персистентні з `PurchaseOrder.paidAmount`, Фаза 5)                                                                  |
-| GET    | `/api/purchase-orders/:id/lines-summary` | Зведення по рядках замовлення (BR-WO-009 у `work-order.md`); ролі — як у списку. Те саме для повернення: `/api/supplier-returns/:id/lines-summary`                                                                          |
-| POST   | `/api/purchase-orders`                   | Створити (lines у body)                                                                                                                                                                                                     |
-| PATCH  | `/api/purchase-orders/:id`               | Оновити (тільки DRAFT)                                                                                                                                                                                                      |
-| DELETE | `/api/purchase-orders/:id`               | Soft-delete (тільки DRAFT; позиції списків купівлі → OPEN, BR-PO-010)                                                                                                                                                       |
-| POST   | `/api/purchase-orders/:id/transition`    | FSM перехід (DRAFT → ORDERED)                                                                                                                                                                                               |
-| POST   | `/api/purchase-orders/:id/receive`       | Приймання товару → StockMovement(RECEIPT) + CHARGE; `Idempotency-Key` обов'язковий (BR-PO-014)                                                                                                                              |
-| POST   | `/api/purchase-orders/:id/apply-pricing` | Застосувати ціни закупки до Good.purchasePrice                                                                                                                                                                              |
+| Метод  | URL                                       | Дія                                                                                                                                                                                                                         |
+| ------ | ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/api/purchase-orders`                    | Список (фільтри: status, supplierId, dateFrom, dateTo, `payable=true` — лише статуси оплати, BR-SUPPAY-015; sort: documentDate/createdAt/totalAmount/paymentDate; DTO += `paidAmount`/`outstanding`/`isFullyPaid`/`paidAt`) |
+| GET    | `/api/purchase-orders/:id`                | Деталь з lines (той самий `toDto()` → `paidAmount`/`outstanding`/`isFullyPaid`/`paidAt` присутні й тут, персистентні з `PurchaseOrder.paidAmount`, Фаза 5)                                                                  |
+| GET    | `/api/purchase-orders/:id/lines-summary`  | Зведення по рядках замовлення (BR-WO-009 у `work-order.md`); ролі — як у списку. Те саме для повернення: `/api/supplier-returns/:id/lines-summary`                                                                          |
+| POST   | `/api/purchase-orders`                    | Створити (lines у body)                                                                                                                                                                                                     |
+| PATCH  | `/api/purchase-orders/:id`                | Оновити (тільки DRAFT)                                                                                                                                                                                                      |
+| DELETE | `/api/purchase-orders/:id`                | Soft-delete (тільки DRAFT; позиції списків купівлі → OPEN, BR-PO-010)                                                                                                                                                       |
+| POST   | `/api/purchase-orders/:id/transition`     | FSM перехід (DRAFT → ORDERED)                                                                                                                                                                                               |
+| POST   | `/api/purchase-orders/:id/receive`        | Приймання товару → StockMovement(RECEIPT) + CHARGE; `Idempotency-Key` обов'язковий (BR-PO-014)                                                                                                                              |
+| POST   | `/api/purchase-orders/:id/apply-pricing`  | Застосувати ціни закупки до Good.purchasePrice                                                                                                                                                                              |
+| GET    | `/api/purchase-orders/:id/export/:format` | Друк і «Зберегти як»: `pdf` / `xlsx` / `docx` (BR-PO-016, модуль `document-export`); видалене — з позначкою «ВИДАЛЕНО»                                                                                                      |
 
 ---
 
@@ -103,6 +104,11 @@ DRAFT → ORDERED → PARTIAL → RECEIVED
 | Вкладка «Графік оплат» | `app/(app)/purchase-orders/SupplierPaymentScheduleTab.tsx` (`?tab=schedule`; ролі `GET /supplier-payments/schedule`)                                  |
 | Кнопка «Оплатити»      | `components/ui/PurchaseOrderCreateModal.tsx` → `SupplierPaymentCreateModal` (створює й проводить оплату)                                              |
 | Передача в API         | `components/ui/purchase-order/SupplierApiOrderBlock.tsx` у картці (BR-PO-011); скасування / видалення відправленого — `useSentOrderForce` (BR-PO-012) |
+
+**Друк і «Зберегти як» у картці** (BR-PO-016): «Друк» — серверний PDF, «Зберегти як» — PDF / Excel /
+Word з іменем із `Content-Disposition` (`DocumentExportActions`). Рядки картки й друку — у порядку
+`createdAt, id` (`LINE_ORDER_BY_CREATED`); створення й зміна рядків у картці ставлять `createdAt` зі зсувом
+1 мс на рядок (`orderedLineStamps`), тож порядок — як їх надіслали.
 
 **Вкладки сторінки «Купівлі»:** «Замовлення» · «Повернення» · «Графік оплат» (колишня сторінка оплат
 постачальникам; бухгалтер бачить лише її). Старі адреси `/supplier-payments*` ведуть на `?tab=schedule`.
@@ -234,6 +240,24 @@ else → newContractId = po.contractId                         // unchanged
 - **BR-PO-016**: **Друк і «Зберегти як»** (рішення власника 2026-11-05, TECH-DEBT (а) §8 L745 / L785). `GET /purchase-orders/:id/export/:format`, формат `pdf | xlsx | docx` (інший — 400 з українським текстом); ролі — OWNER, ADMIN, STOREKEEPER, ACCOUNTANT — ті самі, що читають замовлення. Бланк один для трьох форматів (спільна модель `PrintableDocument`, модуль `document-export`): реквізити організації (`OrgPrintInfoService`), назва й номер документа, дата документа, постачальник, склад, договір (якщо є), дата оплати, рядки в порядку картки (сервер задає явний `orderBy`, а не порядок БД — клас Bug #814) з одиницею рядка (одиниця рядка → базова одиниця товару), сума, ПДВ і разом у валюті документа (UAH — «грн»), як у картці; примітка. Документ, позначений на видалення, друкується з позначкою «ВИДАЛЕНО» (рішення власника 2026-10-30, TECH-DEBT (б) №24); документ іншої організації чи неіснуючий — 404. Ім'я файла — `Замовлення-<номер>.<формат>` (символи `/\:*?"<>|` → `-`), у `Content-Disposition` — `filename*=UTF-8''…` (кирилиця). Excel: кількості й суми — числа з форматом, текст, що починається з `= + - @`, — з апострофом (`xlsxSafe`, захист від формул). Картка: «Друк» — серверний PDF (вікно друку відкривається до запиту), «Зберегти як» — файл обраного формату з іменем із заголовка відповіді.
 
 ---
+
+Правило → тест для BR-PO-016 — друк і «Зберегти як» (мітки `// guards:`; модуль `document-export`, спільний для
+рахунку, замовлення, складського документа й повернення):
+
+- `apps/api/src/modules/document-export/document-export.printable.spec.ts` (20) — мапер бланка: назва, номер,
+  дата, сторони, реквізити, рядки в порядку картки (рядки у двійнику Prisma перемішані), одиниця рядка,
+  підсумки, «ВИДАЛЕНО», 404 для чужої організації, ім'я файла. Мутації: без `orderBy` у мапері замовлення,
+  без `orgId` у `where` рахунку → червоніє;
+- `document-export.renderers.spec.ts` (10) — PDF / XLSX / DOCX однієї моделі: «ВИДАЛЕНО», числа XLSX з
+  форматом, `xlsxSafe` (мутація: без нього → червоніє), екранування DOCX, ті самі підсумки у трьох форматах;
+- `document-export.controller.spec.ts` (25) — ролі кожного маршруту, 400 на невідомий формат без читання
+  документа (мутація: без `parseExportFormat` → червоніє), 404 чужий, `filename*=UTF-8''…`, `Content-Length`;
+- `apps/api/src/common/http/send-file.spec.ts` (2) — ім'я файла й `Content-Disposition`;
+- web: `components/ui/__tests__/DocumentExportActions.test.tsx` (4) — «Зберегти як → Excel» кличе
+  `…/export/xlsx` і зберігає файл з іменем із заголовка, «Друк» — `printPdf` (мутація: повернути заглушку
+  меню → червоніє);
+- E2E `apps/web/e2e/document-save-as.spec.ts` — документ створюється в картці, «Зберегти як» кожного формату
+  дає файл `<Тип>-<номер>.<формат>`.
 
 ## Аспекти і тести, що їх стережуть
 

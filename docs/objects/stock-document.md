@@ -65,15 +65,16 @@ DRAFT → CONFIRMED
 
 ## API Endpoints (`/api/stock-documents`)
 
-| Метод  | URL                                      | Дія                                                                            |
-| ------ | ---------------------------------------- | ------------------------------------------------------------------------------ |
-| GET    | `/api/stock-documents`                   | Список (фільтри: type, status, q — номер або примітка, dateFrom/To)            |
-| GET    | `/api/stock-documents/:id`               | Деталь з lines                                                                 |
-| GET    | `/api/stock-documents/:id/lines-summary` | Зведення по рядках документа (BR-WO-009 у `work-order.md`); ролі — як у списку |
-| POST   | `/api/stock-documents`                   | Створити (lines у body; опц. `purchaseOrderId` — джерело, Phase D2)            |
-| PATCH  | `/api/stock-documents/:id`               | Оновити (тільки DRAFT)                                                         |
-| DELETE | `/api/stock-documents/:id`               | Soft-delete (тільки DRAFT)                                                     |
-| POST   | `/api/stock-documents/:id/transition`    | FSM перехід (DRAFT → CONFIRMED або CANCELLED)                                  |
+| Метод  | URL                                       | Дія                                                                                 |
+| ------ | ----------------------------------------- | ----------------------------------------------------------------------------------- |
+| GET    | `/api/stock-documents`                    | Список (фільтри: type, status, q — номер або примітка, dateFrom/To)                 |
+| GET    | `/api/stock-documents/:id`                | Деталь з lines                                                                      |
+| GET    | `/api/stock-documents/:id/lines-summary`  | Зведення по рядках документа (BR-WO-009 у `work-order.md`); ролі — як у списку      |
+| POST   | `/api/stock-documents`                    | Створити (lines у body; опц. `purchaseOrderId` — джерело, Phase D2)                 |
+| PATCH  | `/api/stock-documents/:id`                | Оновити (тільки DRAFT)                                                              |
+| DELETE | `/api/stock-documents/:id`                | Soft-delete (тільки DRAFT)                                                          |
+| POST   | `/api/stock-documents/:id/transition`     | FSM перехід (DRAFT → CONFIRMED або CANCELLED)                                       |
+| GET    | `/api/stock-documents/:id/export/:format` | Друк і «Зберегти як»: `pdf` / `xlsx` / `docx` (BR-SDOC-009); видалений — «ВИДАЛЕНО» |
 
 ---
 
@@ -107,6 +108,10 @@ OWNER/ADMIN/STOREKEEPER (документи й рухи містять ціни 
 | Detail Panel schema    | `lib/panel-schema.ts` → `STOCK_DOC_PANEL_SCHEMA`                                                      |
 | Блок «Зведення» панелі | `components/ui/LinesSummarySection.tsx` + `hooks/api/useLinesSummary.ts` (спільний для п'яти списків) |
 | Hook (TanStack Query)  | `hooks/api/useStockDocuments.ts`                                                                      |
+| Друк і «Зберегти як»   | `components/ui/document-card-actions.tsx` → `DocumentExportActions` (BR-SDOC-009)                     |
+
+Рядки картки й друку — у порядку `createdAt, id` (`LINE_ORDER_BY_CREATED`); створення й зміна рядків у
+картці ставлять `createdAt` зі зсувом 1 мс на рядок (`orderedLineStamps`).
 
 ---
 
@@ -141,6 +146,24 @@ OWNER/ADMIN/STOREKEEPER (документи й рухи містять ціни 
 - **BR-SDOC-009**: **Друк і «Зберегти як»** (рішення власника 2026-11-05, TECH-DEBT (а) §8 L745 / L785). `GET /stock-documents/:id/export/:format`, формат `pdf | xlsx | docx` (інший — 400 з українським текстом); ролі — OWNER, ADMIN, STOREKEEPER — ті самі, що читають складський документ. Бланк один для трьох форматів (спільна модель `PrintableDocument`, модуль `document-export`): реквізити організації (`OrgPrintInfoService`), назва й номер документа, дата документа, тип документа в назві (списання, переміщення, введення залишків, оприбуткування), склад, склад призначення для переміщення, замовлення-джерело (якщо є), дата проведення, рядки в порядку картки (сервер задає явний `orderBy`, а не порядок БД — клас Bug #814) з одиницею рядка (одиниця рядка → базова одиниця товару), сум у схемі немає, тож сума рядка = кількість × ціна, а «Разом» — сума рядків із ціною; рядок без ціни друкується без ціни й суми; документ, у якому жоден рядок не має ціни, — без «Разом»; примітка. Документ, позначений на видалення, друкується з позначкою «ВИДАЛЕНО» (рішення власника 2026-10-30, TECH-DEBT (б) №24); документ іншої організації чи неіснуючий — 404. Ім'я файла — `Списання / Переміщення / Залишки / Оприбуткування (за типом)-<номер>.<формат>` (символи `/\:*?"<>|` → `-`), у `Content-Disposition` — `filename*=UTF-8''…` (кирилиця). Excel: кількості й суми — числа з форматом, текст, що починається з `= + - @`, — з апострофом (`xlsxSafe`, захист від формул). Картка: «Друк» — серверний PDF (вікно друку відкривається до запиту), «Зберегти як» — файл обраного формату з іменем із заголовка відповіді.
 
 ---
+
+Правило → тест для BR-SDOC-009 — друк і «Зберегти як» (мітки `// guards:`; модуль `document-export`, спільний для
+рахунку, замовлення, складського документа й повернення):
+
+- `apps/api/src/modules/document-export/document-export.printable.spec.ts` (20) — мапер бланка: назва, номер,
+  дата, сторони, реквізити, рядки в порядку картки (рядки у двійнику Prisma перемішані), одиниця рядка,
+  підсумки, «ВИДАЛЕНО», 404 для чужої організації, ім'я файла. Мутації: без `orderBy` у мапері замовлення,
+  без `orgId` у `where` рахунку → червоніє;
+- `document-export.renderers.spec.ts` (10) — PDF / XLSX / DOCX однієї моделі: «ВИДАЛЕНО», числа XLSX з
+  форматом, `xlsxSafe` (мутація: без нього → червоніє), екранування DOCX, ті самі підсумки у трьох форматах;
+- `document-export.controller.spec.ts` (25) — ролі кожного маршруту, 400 на невідомий формат без читання
+  документа (мутація: без `parseExportFormat` → червоніє), 404 чужий, `filename*=UTF-8''…`, `Content-Length`;
+- `apps/api/src/common/http/send-file.spec.ts` (2) — ім'я файла й `Content-Disposition`;
+- web: `components/ui/__tests__/DocumentExportActions.test.tsx` (4) — «Зберегти як → Excel» кличе
+  `…/export/xlsx` і зберігає файл з іменем із заголовка, «Друк» — `printPdf` (мутація: повернути заглушку
+  меню → червоніє);
+- E2E `apps/web/e2e/document-save-as.spec.ts` — документ створюється в картці, «Зберегти як» кожного формату
+  дає файл `<Тип>-<номер>.<формат>`.
 
 ## Аспекти і тести, що їх стережуть
 

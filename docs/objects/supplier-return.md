@@ -94,6 +94,7 @@ DRAFT → CONFIRMED
 | GET    | `/api/supplier-returns/:id`                  | картка; `?withDeleted=true` — перегляд видаленого (BR-WO-012)                                       | OWNER, ADMIN, STOREKEEPER, ACCOUNTANT |
 | PATCH  | `/api/supplier-returns/:id`                  | правка чернетки; `lines` — повна заміна рядків                                                      | OWNER, ADMIN, STOREKEEPER             |
 | DELETE | `/api/supplier-returns/:id`                  | м'яке видалення чернетки, 204                                                                       | OWNER, ADMIN, STOREKEEPER             |
+| GET    | `/api/supplier-returns/:id/export/:format`   | друк і «Зберегти як»: `pdf` / `xlsx` / `docx` (BR-SRET-014, модуль `document-export`)               | OWNER, ADMIN, STOREKEEPER, ACCOUNTANT |
 
 Підмаршрути оголошено перед `:id` (порядок маршрутів Fastify — стереже `contract.spec`).
 Відповідь — `SupplierReturnResponseDto` (`supplierName`, `warehouseName`, `purchaseOrderNumber`,
@@ -112,12 +113,14 @@ DRAFT → CONFIRMED
 | --------------------- | ------------------------------------------------------------------------------------------- |
 | Список (вкладка)      | `app/(app)/purchase-orders/page.tsx` — вкладка `returns`, `useListPage('supplier-returns')` |
 | Картка / створення    | `components/ui/SupplierReturnCreateModal.tsx` (провести, скасувати, перегляд видаленого)    |
+| Друк і «Зберегти як»  | `SupplierReturnCreateModal.tsx` → `DocumentExportActions` (BR-SRET-014; меню — Escape-шар)  |
 | Hook (TanStack Query) | `hooks/api/useSupplierReturns.ts`                                                           |
 | Detail Panel schema   | `lib/panel-schema.ts` → `SUPPLIER_RETURN_PANEL_SCHEMA`                                      |
 | «Пов'язані документи» | `lib/linked-configs.tsx` → `supplierReturnLinkedConfig`                                     |
 | Перехід до повернення | `lib/linked-nav.ts` → `toSupplierReturn` (`/purchase-orders?openReturn=<id>`)               |
 
 Web-тести: `components/ui/__tests__/SupplierReturnCreateModal.test.tsx`,
+`SupplierReturnCreateModal.file-actions.test.tsx` (друк і «Зберегти як», BR-SRET-014),
 `SupplierReturnCreateModal.error-visible.test.tsx`, `SupplierReturnDirtyGuard.test.tsx`,
 `app/(app)/purchase-orders/__tests__/PurchaseOrdersPage.returns-panel.test.tsx`.
 E2E: `apps/web/e2e/supplier-returns.spec.ts` — вкладка й кнопка створення, повернення через API
@@ -171,6 +174,26 @@ E2E: `apps/web/e2e/supplier-returns.spec.ts` — вкладка й кнопка 
 - **BR-SRET-014**: **Друк і «Зберегти як»** (рішення власника 2026-11-05, TECH-DEBT (а) §8 L745 / L785). `GET /supplier-returns/:id/export/:format`, формат `pdf | xlsx | docx` (інший — 400 з українським текстом); ролі — OWNER, ADMIN, STOREKEEPER, ACCOUNTANT — ті самі, що читають повернення. Бланк один для трьох форматів (спільна модель `PrintableDocument`, модуль `document-export`): реквізити організації (`OrgPrintInfoService`), назва й номер документа, дата документа, постачальник, склад, замовлення-джерело (якщо є), рядки в порядку картки (сервер задає явний `orderBy`, а не порядок БД — клас Bug #814) з одиницею рядка (одиниця рядка → базова одиниця товару), «Разом» = `totalAmount` (без ПДВ — у поверненні його немає); примітка. Документ, позначений на видалення, друкується з позначкою «ВИДАЛЕНО» (рішення власника 2026-10-30, TECH-DEBT (б) №24); документ іншої організації чи неіснуючий — 404. Ім'я файла — `Повернення-<номер>.<формат>` (символи `/\:*?"<>|` → `-`), у `Content-Disposition` — `filename*=UTF-8''…` (кирилиця). Excel: кількості й суми — числа з форматом, текст, що починається з `= + - @`, — з апострофом (`xlsxSafe`, захист від формул). Картка: «Друк» — серверний PDF (вікно друку відкривається до запиту), «Зберегти як» — файл обраного формату з іменем із заголовка відповіді. До цього правила картка повернення не мала ні друку, ні «Зберегти як».
 
 ---
+
+Правило → тест для BR-SRET-014 — друк і «Зберегти як» (мітки `// guards:`; модуль `document-export`, спільний для
+рахунку, замовлення, складського документа й повернення):
+
+- `apps/api/src/modules/document-export/document-export.printable.spec.ts` (20) — мапер бланка: назва, номер,
+  дата, сторони, реквізити, рядки в порядку картки (рядки у двійнику Prisma перемішані), одиниця рядка,
+  підсумки, «ВИДАЛЕНО», 404 для чужої організації, ім'я файла. Мутації: без `orderBy` у мапері замовлення,
+  без `orgId` у `where` рахунку → червоніє;
+- `document-export.renderers.spec.ts` (10) — PDF / XLSX / DOCX однієї моделі: «ВИДАЛЕНО», числа XLSX з
+  форматом, `xlsxSafe` (мутація: без нього → червоніє), екранування DOCX, ті самі підсумки у трьох форматах;
+- `document-export.controller.spec.ts` (25) — ролі кожного маршруту, 400 на невідомий формат без читання
+  документа (мутація: без `parseExportFormat` → червоніє), 404 чужий, `filename*=UTF-8''…`, `Content-Length`;
+- `apps/api/src/common/http/send-file.spec.ts` (2) — ім'я файла й `Content-Disposition`;
+- web: `components/ui/__tests__/DocumentExportActions.test.tsx` (4) — «Зберегти як → Excel» кличе
+  `…/export/xlsx` і зберігає файл з іменем із заголовка, «Друк» — `printPdf` (мутація: повернути заглушку
+  меню → червоніє);
+  `components/ui/__tests__/SupplierReturnCreateModal.file-actions.test.tsx` (4) — дії в картці повернення,
+  зокрема видаленого; Escape закриває меню форматів, не картку;
+- E2E `apps/web/e2e/document-save-as.spec.ts` — документ створюється в картці, «Зберегти як» кожного формату
+  дає файл `<Тип>-<номер>.<формат>`.
 
 ## Аспекти і тести, що їх стережуть
 

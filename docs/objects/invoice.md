@@ -109,6 +109,7 @@ WO-шлях `returnPartsAndCredit`.
 | POST   | `/api/invoices/:id/transition`                       | FSM перехід                                                                                                                                                            |
 | POST   | `/api/invoices/:id/clone`                            | Клонувати рахунок                                                                                                                                                      |
 | GET    | `/api/invoices/:id/pdf`                              | PDF рахунку: шапка з логотипом і реквізитами організації; «Реквізити для оплати» (одержувач, ЄДРПОУ, IBAN, банк, МФО) — коли в НДІ задано основний банківський рахунок |
+| GET    | `/api/invoices/:id/export/:format`                   | Друк і «Зберегти як»: `pdf` / `xlsx` / `docx` (BR-INV-028, модуль `document-export`); видалений — з позначкою «ВИДАЛЕНО»                                               |
 | DELETE | `/api/invoices/:id`                                  | Soft-delete                                                                                                                                                            |
 | POST   | `/api/invoices/:id/lines`                            | Додати рядок                                                                                                                                                           |
 | PATCH  | `/api/invoices/:id/lines/:lineId`                    | Оновити рядок (лише DRAFT): опис, кількість, ціна, ставка ПДВ, порядок; товар, робота й одиниця не міняються (BR-INV-017, BR-INV-024)                                  |
@@ -131,6 +132,11 @@ WO-шлях `returnPartsAndCredit`.
 (див. [work-order.md](work-order.md), BR-WO-013). Шапку й реквізити PDF будує
 `OrgPrintInfoService` (модуль `pdf`) — та сама шапка, що в наряді й актах. Дата друкованого
 рахунку — дата документа (`documentDate`, як у списку), а не мітка створення запису.
+
+**Друк і «Зберегти як» у картці** (BR-INV-028): «Друк» — серверний PDF `GET /invoices/:id/export/pdf`
+(вікно друку відкривається до запиту), «Зберегти як» — PDF / Excel / Word з іменем файла з
+`Content-Disposition` (`DocumentExportActions` у `components/ui/document-card-actions.tsx`). Видалений
+рахунок друкується з позначкою «ВИДАЛЕНО»; незнайдений — без цих кнопок.
 
 **Рядки чернетки.** У картці рахунку в статусі «Чернетка» кількість і ціна кожного рядка — поля
 вводу; змінений збережений рядок іде `PATCH`-ем (той самий рядок, BR-INV-024), сума рядка й «Разом»
@@ -315,6 +321,24 @@ cd apps/api && npx vitest run src/modules/invoices/<файл>.spec.ts
 | одиниця рядка як у наряді (Bug #868), робота — «год»; порядок рядків (BR-INV-024)                                                                             | `invoices.line-units.spec.ts`              | 9      |
 
 Разом: **291** кейс (цифри з `vitest --reporter=json`, не з grep).
+
+Правило → тест для BR-INV-028 — друк і «Зберегти як» (мітки `// guards:`; модуль `document-export`, спільний для
+рахунку, замовлення, складського документа й повернення):
+
+- `apps/api/src/modules/document-export/document-export.printable.spec.ts` (20) — мапер бланка: назва, номер,
+  дата, сторони, реквізити, рядки в порядку картки (рядки у двійнику Prisma перемішані), одиниця рядка,
+  підсумки, «ВИДАЛЕНО», 404 для чужої організації, ім'я файла. Мутації: без `orderBy` у мапері замовлення,
+  без `orgId` у `where` рахунку → червоніє;
+- `document-export.renderers.spec.ts` (10) — PDF / XLSX / DOCX однієї моделі: «ВИДАЛЕНО», числа XLSX з
+  форматом, `xlsxSafe` (мутація: без нього → червоніє), екранування DOCX, ті самі підсумки у трьох форматах;
+- `document-export.controller.spec.ts` (25) — ролі кожного маршруту, 400 на невідомий формат без читання
+  документа (мутація: без `parseExportFormat` → червоніє), 404 чужий, `filename*=UTF-8''…`, `Content-Length`;
+- `apps/api/src/common/http/send-file.spec.ts` (2) — ім'я файла й `Content-Disposition`;
+- web: `components/ui/__tests__/DocumentExportActions.test.tsx` (4) — «Зберегти як → Excel» кличе
+  `…/export/xlsx` і зберігає файл з іменем із заголовка, «Друк» — `printPdf` (мутація: повернути заглушку
+  меню → червоніє);
+- E2E `apps/web/e2e/document-save-as.spec.ts` — документ створюється в картці, «Зберегти як» кожного формату
+  дає файл `<Тип>-<номер>.<формат>`.
 
 Правило → тест для BR-INV-027 — число застосованої ставки ПДВ (мітки `// guards:`):
 
