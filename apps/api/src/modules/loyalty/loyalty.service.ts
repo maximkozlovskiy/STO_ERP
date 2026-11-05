@@ -254,6 +254,15 @@ export class LoyaltyService {
     const result: LoyaltyEarnReversal = { earned: 0, deducted: 0 };
     for (const earn of earned) {
       const points = roundPoints(Number(earn.points));
+      // Рахунок блокується ДО читання залишку: нарахування за іншу оплату клієнта (джоб після
+      // коміту) інакше змінювало залишок між читанням і CAS нижче, і все сторно падало 400
+      // «Документ оплати змінився» (Bug #1049). Нарахування чекає коміту сторно; CAS лишається
+      // другим рубежем (виклик без транзакції блокування не тримає).
+      await db.$queryRaw`
+        SELECT id FROM loyalty_accounts
+        WHERE id = ${earn.accountId}::uuid AND "orgId" = ${orgId}::uuid
+        FOR UPDATE
+      `;
       const acc = await db.loyaltyAccount.findFirst({
         where: { id: earn.accountId, orgId },
         select: { id: true, balance: true },

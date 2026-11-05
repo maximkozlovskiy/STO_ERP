@@ -79,6 +79,8 @@ function makeHarness(seed: Seed = {}) {
   };
   const prisma = {
     ...tables,
+    // Блокування рахунку перед читанням залишку (Bug #1049) — у пам'яті нічого не робить.
+    $queryRaw: vi.fn().mockResolvedValue([]),
     $transaction: vi.fn((arg: unknown) =>
       typeof arg === 'function'
         ? (arg as (c: unknown) => Promise<unknown>)(prisma)
@@ -170,7 +172,7 @@ describe('LoyaltyService.reverseEarn — списання бонусів за с
     const forbid = (m: string) => () => {
       throw new Error(`reverseEarn із tx пише через this.prisma.${m}`);
     };
-    const tx = { ...h.tables };
+    const tx = { ...h.tables, $queryRaw: vi.fn().mockResolvedValue([]) };
     for (const name of Object.keys(h.tables) as (keyof typeof h.tables)[]) {
       h.prisma[name] = {
         ...h.tables[name],
@@ -181,6 +183,26 @@ describe('LoyaltyService.reverseEarn — списання бонусів за с
       } as never;
     }
     await h.service.reverseEarn(ORG, PAY, tx as never);
+    expect(h.balance()).toBe(38);
+  });
+
+  // Нарахування за ІНШУ оплату клієнта (джоб після коміту) змінювало залишок між читанням і CAS —
+  // сторно падало 400 «Документ оплати змінився» (Bug #1049). Рахунок блокується через tx сторно
+  // ДО читання залишку, тож нарахування чекає коміту сторно.
+  // guards: BR-CASH-024
+  it('рахунок бонусів блокується (FOR UPDATE) у транзакції сторно до читання залишку', async () => {
+    const h = makeHarness({ balance: 50, earnedForPay: 12 });
+    const $queryRaw = vi.fn().mockResolvedValue([]);
+    const tx = { ...h.tables, $queryRaw };
+    await h.service.reverseEarn(ORG, PAY, tx as never);
+    expect($queryRaw).toHaveBeenCalledTimes(1);
+    const [sql, ...params] = $queryRaw.mock.calls[0] as [TemplateStringsArray, ...unknown[]];
+    expect(sql.join('?')).toMatch(/FROM loyalty_accounts[\s\S]*FOR UPDATE/);
+    expect(params).toEqual([ACC, ORG]);
+    expect($queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
+      h.tables.loyaltyAccount.findFirst.mock.invocationCallOrder[0] ?? Infinity,
+    );
+    expect(h.prisma.$queryRaw).not.toHaveBeenCalled();
     expect(h.balance()).toBe(38);
   });
 });
