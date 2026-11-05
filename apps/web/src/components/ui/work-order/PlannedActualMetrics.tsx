@@ -42,7 +42,7 @@ export interface PlannedActualMetricsProps {
   onPlannedEndChange: (v: string) => void;
   onPlannedHoursChange: (e: ChangeEvent<HTMLInputElement>) => void;
   onActualHoursChange: (e: ChangeEvent<HTMLInputElement>) => void;
-  /** Робочі години філії наряду (BR-WO-019): поза ними планові час недоступний. */
+  /** Робочі години й дні філії наряду (BR-WO-019): поза ними плановий час недоступний. */
   workHours: WorkHoursWindow;
 }
 
@@ -98,6 +98,7 @@ function PlannedActualMetricsBase({
             minDateTime={now}
             minHour={workHours.startHour}
             maxHour={workHours.endHour - 1}
+            workDays={workHours.workDays}
             clearable
           />
           <DateTimePickerInput
@@ -108,6 +109,7 @@ function PlannedActualMetricsBase({
             minDateTime={endMin}
             minHour={workHours.startHour}
             closeHour={workHours.endHour}
+            workDays={workHours.workDays}
             clearable
           />
           <div className="flex flex-col gap-1">

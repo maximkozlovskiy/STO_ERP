@@ -42,6 +42,11 @@ function kyivParts(d: Date): { ymd: string; minute: number } {
   };
 }
 
+/** День тижня дати 'YYYY-MM-DD' у нумерації `Date.getDay` (0 = нд … 6 = сб) — з UTC-півдня. */
+function weekdayOf(ymd: string): number {
+  return new Date(`${ymd}T12:00:00Z`).getUTCDay();
+}
+
 interface DateTimePickerInputProps {
   value: string; // "YYYY-MM-DDTHH:mm" або "" (у timeOnly режимі: "HH:mm" або "")
   onChange: (value: string) => void;
@@ -67,6 +72,11 @@ interface DateTimePickerInputProps {
    * вгору). Порівнюється з київським настінним часом, яким є значення пікера.
    */
   minDateTime?: Date;
+  /**
+   * Робочі дні, ISO (1 = пн … 7 = нд; BR-WO-019): інші дні тижня в календарі недоступні, а час у
+   * такий день (збережене значення) — недоступна опція. Немає чи порожній — усі дні доступні.
+   */
+  workDays?: readonly number[];
   /** Кнопка «Очистити дату» біля заповненого поля (значення стає ''). */
   clearable?: boolean;
 }
@@ -101,6 +111,7 @@ export function DateTimePickerInput({
   maxHour,
   closeHour,
   minDateTime,
+  workDays,
   clearable = false,
 }: DateTimePickerInputProps) {
   const { t } = useTranslation('common');
@@ -109,10 +120,20 @@ export function DateTimePickerInput({
     placeholder ??
     (timeOnly ? t('datePicker.timePlaceholder') : t('datePicker.dateTimePlaceholder'));
   const minParts = useMemo(() => (minDateTime ? kyivParts(minDateTime) : null), [minDateTime]);
+  // Неробочі дні тижня у нумерації react-day-picker (0 = нд … 6 = сб); `null` — обмежень немає.
+  // Ключ — рядок: масив `workDays` міг прийти новим об'єктом із тим самим вмістом.
+  const workDaysKey = workDays && workDays.length > 0 ? [...workDays].sort().join(',') : '';
+  const offWeekdays = useMemo(() => {
+    if (!workDaysKey) return null;
+    const work = new Set(workDaysKey.split(',').map(Number));
+    const off = [1, 2, 3, 4, 5, 6, 7].filter(d => !work.has(d)).map(d => d % 7);
+    return off.length > 0 ? off : null;
+  }, [workDaysKey]);
 
   /** Чи можна обрати час `h:m` у день `ymd` (`null` — день не важливий: timeOnly). */
   const isAllowed = useCallback(
     (ymd: string | null, h: number, m: number) => {
+      if (offWeekdays && ymd !== null && offWeekdays.includes(weekdayOf(ymd))) return false;
       if (minHour !== undefined && h < minHour) return false;
       if (closeHour !== undefined) {
         if (h > closeHour || (h === closeHour && m > 0)) return false;
@@ -123,7 +144,7 @@ export function DateTimePickerInput({
       }
       return true;
     },
-    [minHour, maxHour, closeHour, minParts],
+    [minHour, maxHour, closeHour, minParts, offWeekdays],
   );
   const hoursFor = useCallback(
     (ymd: string | null) => HOURS.filter(h => MINUTES.some(m => isAllowed(ymd, +h, +m))),
@@ -179,14 +200,22 @@ export function DateTimePickerInput({
     ? availableMinutes
     : [...availableMinutes, selectedMinute].sort();
   // Дні до першого дня з доступним часом — недоступні (сьогодні після закриття — теж).
-  const disabledDays = useMemo(() => {
+  const firstDay = useMemo(() => {
     if (!minParts) return undefined;
     const today = parse(minParts.ymd, 'yyyy-MM-dd', new Date());
-    if (firstTime(minParts.ymd) !== null) return { before: today };
+    if (firstTime(minParts.ymd) !== null) return today;
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
-    return { before: tomorrow };
+    return tomorrow;
   }, [minParts, firstTime]);
+  // Разом із минулими — неробочі дні тижня філії (BR-WO-019).
+  const disabledDays = useMemo(() => {
+    const matchers = [
+      ...(firstDay ? [{ before: firstDay }] : []),
+      ...(offWeekdays ? [{ dayOfWeek: offWeekdays }] : []),
+    ];
+    return matchers.length > 0 ? matchers : undefined;
+  }, [firstDay, offWeekdays]);
 
   useEffect(() => {
     setMounted(true);
@@ -347,7 +376,7 @@ export function DateTimePickerInput({
                   // Відкривається на місяці значення, а без нього — на першому доступному дні:
                   // інакше планове завершення через місяць показувало б поточний місяць, де
                   // недоступне все.
-                  defaultMonth={selectedDate ?? disabledDays?.before}
+                  defaultMonth={selectedDate ?? firstDay}
                   classNames={DAY_PICKER_CLASS_NAMES}
                 />
               </div>

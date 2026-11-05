@@ -177,6 +177,30 @@ describe('DateTimePickerInput — мінімальний момент і роб�
     await openPicker({ minDateTime: undefined });
     expect(day('2026-05-19')).not.toHaveAttribute('data-disabled');
   });
+
+  // Вихідні філії (рішення власника 2026-10-30): 24.05.2026 — неділя, 23.05 — субота.
+  // guards: BR-WO-019
+  it('workDays пн–сб: неділі недоступні (й минулі дні теж), субота й понеділок — доступні', async () => {
+    await openPicker({ workDays: [1, 2, 3, 4, 5, 6] });
+    expect(day('2026-05-24')).toHaveAttribute('data-disabled', 'true');
+    expect(day('2026-05-31')).toHaveAttribute('data-disabled', 'true');
+    expect(day('2026-05-19')).toHaveAttribute('data-disabled', 'true');
+    expect(day('2026-05-23')).not.toHaveAttribute('data-disabled');
+    expect(day('2026-05-25')).not.toHaveAttribute('data-disabled');
+  });
+
+  // guards: BR-WO-019
+  it('збережене значення на вихідному — час недоступною опцією, не підміняється', async () => {
+    await openPicker({ value: '2026-05-24T10:00', workDays: [1, 2, 3, 4, 5, 6] });
+    expect(hourOptions()).toEqual(['(10)']);
+    expect((screen.getByLabelText('Година') as HTMLSelectElement).value).toBe('10');
+  });
+
+  // guards: BR-WO-019
+  it('без workDays чи з порожнім переліком — неділя доступна', async () => {
+    await openPicker({ workDays: [] });
+    expect(day('2026-05-24')).not.toHaveAttribute('data-disabled');
+  });
 });
 
 // BR-WO-020: стерті планові дати прибирають запис календаря наряду — стерти їх можна з картки.

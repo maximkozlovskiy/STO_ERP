@@ -243,7 +243,11 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
   // Години основної філії (`GET /settings/work-hours`); до відповіді й при її збої — типові
   // 09–18, як на сервері (`DEFAULT_WORK_HOURS`): форма запису ділить запис на дні за цими ж
   // межами (BR-CAL-007).
-  const { startHour: workStartHour, endHour: workEndHour } = useBranchWorkHours(null, {
+  const {
+    startHour: workStartHour,
+    endHour: workEndHour,
+    workDays: windowWorkDays,
+  } = useBranchWorkHours(null, {
     mainBranch: true,
   });
   // Ref so `load` useCallback can read current lifts without adding them as dependency
@@ -1423,6 +1427,8 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
     hours: dynHours,
     windowStart: dynWindowStart,
     windowEnd: dynWindowEnd,
+    // Робочі дні тієї ж філії: залишок запису форми — на наступний робочий день (BR-CAL-016).
+    windowWorkDays,
     totalHours: dynTotalHours,
 
     // Month / stats

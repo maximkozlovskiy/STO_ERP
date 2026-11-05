@@ -71,6 +71,8 @@ function Harness({
   onSaved,
   windowStart = 8,
   windowEnd = 18,
+  windowWorkDays,
+  date = FUTURE,
   savedMechanic = null,
 }: {
   initial: Partial<SlotForm>;
@@ -78,6 +80,8 @@ function Harness({
   onSaved: () => void;
   windowStart?: number;
   windowEnd?: number;
+  windowWorkDays?: number[];
+  date?: string;
   savedMechanic?: SavedMechanic | null;
 }) {
   const [form, setForm] = useState<SlotForm>({
@@ -98,7 +102,7 @@ function Harness({
         onClose={() => {}}
         onSaved={onSaved}
         onDeleted={() => {}}
-        date={FUTURE}
+        date={date}
         lifts={[
           { id: L1, name: 'П1' },
           { id: L2, name: 'П2' },
@@ -117,6 +121,7 @@ function Harness({
         minHour={windowStart}
         windowStart={windowStart}
         windowEnd={windowEnd}
+        windowWorkDays={windowWorkDays}
         nowMs={new Date('2026-10-15T12:00:00+03:00').getTime()}
         error=""
         setError={() => {}}
@@ -269,6 +274,41 @@ describe('CalendarSlotModal — наряд, створений із форми �
     );
     expect(prefill().plannedEndAt).toBe('2026-10-21T08:30');
     expect(prefill().plannedHours).toBe('1.5');
+  });
+
+  // Вихідні філії (рішення власника 2026-10-30): 24.10.2026 — сб, 25.10 — нд, 26.10 — пн.
+  // guards: BR-WO-019, BR-CAL-016
+  it('пн–сб: сб 17:00 + 3 год → кінець наряду пн 11:00, «Кінець» запису й підказка — понеділок', () => {
+    render(
+      <Harness
+        initial={{ startAt: '17:00', endAt: '11:00', normoHours: '3' }}
+        onSaved={vi.fn()}
+        date="2026-10-24"
+        windowStart={9}
+        windowEnd={18}
+        windowWorkDays={[1, 2, 3, 4, 5, 6]}
+      />,
+    );
+    expect(prefill().plannedStartAt).toBe('2026-10-24T17:00');
+    expect(prefill().plannedEndAt).toBe('2026-10-26T11:00');
+    // Сервер переносить залишок ручного запису на наступний РОБОЧИЙ день — форма показує його ж.
+    expect(screen.getByDisplayValue('26.10.2026 11:00')).toBeInTheDocument();
+    expect(screen.getByText(/26\.10\.2026/)).toBeInTheDocument();
+  });
+
+  // guards: BR-CAL-016
+  it('без переліку робочих днів — як раніше: залишок у неділю', () => {
+    render(
+      <Harness
+        initial={{ startAt: '17:00', endAt: '11:00', normoHours: '3' }}
+        onSaved={vi.fn()}
+        date="2026-10-24"
+        windowStart={9}
+        windowEnd={18}
+      />,
+    );
+    expect(prefill().plannedEndAt).toBe('2026-10-25T11:00');
+    expect(screen.getByDisplayValue('25.10.2026 11:00')).toBeInTheDocument();
   });
 
   // guards: BR-WO-019

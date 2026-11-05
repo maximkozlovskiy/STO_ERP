@@ -65,6 +65,18 @@ import { calcEndFromHours } from '@/components/ui/work-order/planned-dates';
  * сервер бере для розбиття запису на два дні (BR-CAL-007) і для планових дат наряду
  * (BR-WO-019). Переповнення понад кінець дня — наступного дня від відкриття + залишок.
  */
+/**
+ * Наступний робочий день після `ymd` ('YYYY-MM-DD'): вихідні філії пропускаються, як сервер
+ * пропускає їх, переносячи залишок запису (BR-CAL-016). Без переліку днів — завтра.
+ */
+function nextWorkDayISO(ymd: string, workDays: readonly number[] | undefined): string {
+  let day = addDaysISO(ymd, 1);
+  if (!workDays || workDays.length === 0) return day;
+  const isWork = (d: string) => workDays.includes(new Date(`${d}T12:00:00Z`).getUTCDay() || 7);
+  for (let i = 0; i < 6 && !isWork(day); i++) day = addDaysISO(day, 1);
+  return day;
+}
+
 function calcEndAt(totalMin: number, dayStartH: number, dayEndH: number): string {
   const raw = Math.round(totalMin / 15) * 15; // snap to 15-min grid
   const workEndMin = dayEndH * 60;
@@ -136,6 +148,11 @@ interface CalendarSlotModalProps {
   minHour: number;
   windowStart: number;
   windowEnd: number;
+  /**
+   * Робочі дні філії, ISO (1 = пн … 7 = нд): залишок запису за кінець дня переходить на
+   * наступний РОБОЧИЙ день, як на сервері (BR-CAL-016). Немає чи порожній — кожен день робочий.
+   */
+  windowWorkDays?: readonly number[];
   nowMs: number;
 
   error: string;
@@ -173,6 +190,7 @@ export function CalendarSlotModal({
   minHour,
   windowStart,
   windowEnd,
+  windowWorkDays,
   nowMs,
   error,
   setError,
@@ -550,7 +568,8 @@ export function CalendarSlotModal({
   /**
    * Запис за початком і нормогодинами переходить за кінець робочого дня філії — сервер ділить
    * його на два дні (BR-CAL-007). `totalMin` — справжній кінець (хвилини від півночі дня запису),
-   * `nextDate` — наступний день (`null` — дати сторінки ще немає чи вона невалідна).
+   * `nextDate` — наступний РОБОЧИЙ день філії (BR-CAL-016; `null` — дати сторінки ще немає чи
+   * вона невалідна).
    */
   const dayOverflow = useMemo(() => {
     const nh = parseFloat(String(form.normoHours).replace(',', '.'));
@@ -560,12 +579,12 @@ export function CalendarSlotModal({
     if (totalMin <= windowEnd * 60) return null;
     let nextDate: string | null = null;
     try {
-      nextDate = date ? addDaysISO(date, 1) : null;
+      nextDate = date ? nextWorkDayISO(date, windowWorkDays) : null;
     } catch {
       nextDate = null;
     }
     return { totalMin, nextDate };
-  }, [form.startAt, form.normoHours, windowEnd, date]);
+  }, [form.startAt, form.normoHours, windowEnd, date, windowWorkDays]);
   // День завершення запису: наступний, коли запис переходить за кінець робочого дня.
   const endDate = dayOverflow?.nextDate ?? date;
 
@@ -1621,7 +1640,11 @@ export function CalendarSlotModal({
           // 19:00 — поза робочими годинами, 400 при збереженні наряду.
           const endFromHours =
             plannedStartAt && nh > 0
-              ? calcEndFromHours(plannedStartAt, nh, { startHour: windowStart, endHour: windowEnd })
+              ? calcEndFromHours(plannedStartAt, nh, {
+                  startHour: windowStart,
+                  endHour: windowEnd,
+                  workDays: windowWorkDays,
+                })
               : '';
           return {
             counterpartyId: form.counterpartyId || undefined,

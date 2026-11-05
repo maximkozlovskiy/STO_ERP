@@ -80,3 +80,46 @@ describe('calcPlannedHours — нормогодини між плановими 
     expect(calcPlannedHours(undefined, '2026-05-22T11:00', W818)).toBe('');
   });
 });
+
+// Вихідні філії (рішення власника 2026-10-30): 21.11.2026 — сб, 22.11 — нд, 23.11 — пн.
+describe('вихідні філії — автокінець і нормогодини (BR-WO-019)', () => {
+  const MON_SAT = { startHour: 9, endHour: 18, workDays: [1, 2, 3, 4, 5, 6] };
+
+  // guards: BR-WO-019
+  it('сб 17:00 + 3 год (вікно 9–18, пн–сб) → пн 11:00, неділя пропущена', () => {
+    expect(calcEndFromHours('2026-11-21T17:00', 3, MON_SAT)).toBe('2026-11-23T11:00');
+    // Без переліку днів — неділя робоча, як раніше.
+    expect(calcEndFromHours('2026-11-21T17:00', 3, { startHour: 9, endHour: 18 })).toBe(
+      '2026-11-22T11:00',
+    );
+  });
+
+  // guards: BR-WO-019
+  it('початок у неділю → зсув на відкриття понеділка; пт–пн при пн–пт — через обидва вихідні', () => {
+    expect(calcEndFromHours('2026-11-22T10:00', 2, MON_SAT)).toBe('2026-11-23T11:00');
+    expect(
+      calcEndFromHours('2026-11-20T17:00', 2, {
+        startHour: 9,
+        endHour: 18,
+        workDays: [1, 2, 3, 4, 5],
+      }),
+    ).toBe('2026-11-23T10:00');
+  });
+
+  // guards: BR-WO-019
+  it('порожній перелік — кожен день робочий', () => {
+    expect(calcEndFromHours('2026-11-21T17:00', 3, { ...MON_SAT, workDays: [] })).toBe(
+      '2026-11-22T11:00',
+    );
+  });
+
+  // guards: BR-WO-019
+  it('нормогодини сб 17:00 → пн 11:00 — 1 + 2 = 3, без неділі; дзеркало автокінця', () => {
+    expect(calcPlannedHours('2026-11-21T17:00', '2026-11-23T11:00', MON_SAT)).toBe('3');
+    expect(
+      calcPlannedHours('2026-11-21T17:00', '2026-11-23T11:00', { startHour: 9, endHour: 18 }),
+    ).toBe('12');
+    const end = calcEndFromHours('2026-11-20T14:15', 21.5, MON_SAT);
+    expect(calcPlannedHours('2026-11-20T14:15', end, MON_SAT)).toBe('21.5');
+  });
+});

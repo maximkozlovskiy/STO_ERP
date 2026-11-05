@@ -10,6 +10,8 @@ import {
 interface WorkHoursResponse {
   workStartHour: number;
   workEndHour: number;
+  /** Робочі дні ISO (1 = пн … 7 = нд); старий сервер поля не віддає. */
+  workDays?: unknown;
 }
 
 /**
@@ -33,20 +35,35 @@ function isHours(v: unknown): v is WorkHoursResponse {
   );
 }
 
+/**
+ * Робочі дні з відповіді: цілі 1..7 без повторів. Поля немає, воно не масив чи в ньому жодного
+ * валідного дня — `undefined`, тобто кожен день робочий (як сервер для філії без переліку).
+ */
+function parseWorkDays(raw: unknown): number[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const days = [
+    ...new Set(raw.filter((d): d is number => Number.isInteger(d) && d >= 1 && d <= 7)),
+  ].sort((a, b) => a - b);
+  return days.length > 0 ? days : undefined;
+}
+
 async function fetchWorkHours(
   branchId: string | null,
   signal: AbortSignal,
 ): Promise<WorkHoursWindow> {
   const query = branchId ? `?branchId=${encodeURIComponent(branchId)}` : '';
   const r = await apiFetch<unknown>(`/settings/work-hours${query}`, { signal });
-  return isHours(r)
-    ? { startHour: r.workStartHour, endHour: r.workEndHour }
-    : DEFAULT_WORK_HOURS_WINDOW;
+  if (!isHours(r)) return DEFAULT_WORK_HOURS_WINDOW;
+  const workDays = parseWorkDays(r.workDays);
+  return workDays
+    ? { startHour: r.workStartHour, endHour: r.workEndHour, workDays }
+    : { startHour: r.workStartHour, endHour: r.workEndHour };
 }
 
 /**
- * Робочі години філії для пікера планових дат наряду й автокінця (BR-WO-019) і сітки календаря —
- * той самий `GET /settings/work-hours`, що й сервер, який перевіряє дати й ділить запис на дні.
+ * Робочі години й робочі дні філії для пікера планових дат наряду й автокінця (BR-WO-019) і сітки
+ * календаря — той самий `GET /settings/work-hours`, що й сервер, який перевіряє дати й ділить
+ * запис на дні (вихідні — BR-CAL-016).
  * `branchId` порожній: `mainBranch` — години основної філії (сітка календаря), інакше — типові
  * 09–18 без запиту (картка наряду, доки філію не обрано). Доки не завантажено чи при збої —
  * типові 09–18, як на сервері. Години змінюються рідко (сервер тримає їх у кеші 60 с) — одне

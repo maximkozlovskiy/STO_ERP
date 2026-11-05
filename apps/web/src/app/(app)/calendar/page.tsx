@@ -292,6 +292,7 @@ function CalendarPageClient() {
           minHour={cs.minHour}
           windowStart={cs.windowStart}
           windowEnd={cs.windowEnd}
+          windowWorkDays={cs.windowWorkDays}
           nowMs={cs.nowMs}
           error={cs.error}
           setError={cs.setError}
