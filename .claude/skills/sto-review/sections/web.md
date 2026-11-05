@@ -302,6 +302,7 @@ grep -rn "<DatePickerInput" apps/web/src/app --include="*.tsx" | wc -l
       `grep -rln 'role="dialog"' apps/web/src --include=*.tsx | grep -v __tests__ | xargs -d '\n' grep -L "onBlur\|useFocusTrap\|<Modal"`
       — кандидати (повноекранні вікна з власною пасткою фокусу теж потрапляють; дивитись лише
       попапи під кнопкою) (`journal/web.md`, 2026-10-15, легенда календаря)
+- [ ] Фокус «у вікно» програмно → `focusEntry`, не `[0]` (там «×»): `grep -rnE "\)\[0\]\??\.focus" apps/web/src` (`journal/web.md`, 2026-11-05)
 - [ ] **Стан «відкрито з точки входу A» (знімок запису з місяця, джерело відкриття) скидає КОЖНА
       інша точка входу в ту саму форму, не лише закриття.** Grep: нові `useState<… | null>` у хуку
       форми → хто їх ставить і чи скидає їх кожен `open*`/`handleEdit*` (`journal/web.md`, 2026-10-15)

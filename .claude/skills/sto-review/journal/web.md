@@ -683,3 +683,12 @@ shared). Кожен винесений хелпер зсував межі СТА
 **Grep:** `grep -rnE "\? String\([a-zA-Z.?]+\) : ''" apps/web/src --include=*.tsx | grep -v "!= null\|!== null"`
 **Фікс:** `!= null ? String(x) : ''`; тест `vehicles/[id]/__tests__/PageClient.clear-fields.test.tsx`
 («обʼєм 0 … не null», мутацією червоніє). **Severity:** IMPORTANT
+
+### 2026-11-05 — Запасний фокус після закриття вкладеної — на «×» нижньої — §8
+
+**Сигнал:** `useFocusTrap` (15cbe2b4a): відкривача вкладеного вікна вже немає в документі → фокус ішов
+на `focusablesIn(lower)[0]`, а це «×» шапки нижньої модалки; Escape + Enter закривав форму правила з
+незбереженим. **Grep:** `grep -rnE "focusables?(In)?\([a-z]*\)\[0\]\??\.focus" apps/web/src`.
+**Фікс:** спільна `focusEntry(container)` (data-autofocus → поле з фокусом → перше видиме поле → перший
+фокусований → панель) для початкового фокуса і для запасного шляху; тест «відкривача вже немає» у
+`modal-initial-focus.test.tsx` перевіряє «Назва правила», мутація `[0]` — червоний. **Severity:** IMPORTANT
