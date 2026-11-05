@@ -187,7 +187,10 @@ describe('Modal — повернення фокуса після закритт�
     expect(screen.getByRole('button', { name: 'Додати товар' })).toHaveFocus();
   });
 
-  it('відкривача вже немає в документі — фокус іде в нижню модалку, не на <body>', async () => {
+  // Mutation-verify (2026-11-05, review): запасний шлях на перший фокусований елемент нижньої
+  // (`focusablesIn(lower)[0]`) замість її точки входу → фокус на «×» шапки, Enter закрив би форму
+  // з незбереженим — падає перевірка «Назва правила».
+  it('відкривача вже немає в документі — фокус у точку входу нижньої модалки, не на <body> і не на «×»', async () => {
     const user = userEvent.setup();
     render(<RuleForm hideOpener />);
     await user.click(screen.getByRole('button', { name: 'Додати товар' }));
@@ -198,6 +201,7 @@ describe('Modal — повернення фокуса після закритт�
     expect(screen.getByRole('dialog', { name: 'Нове правило' })).toContainElement(
       document.activeElement as HTMLElement,
     );
+    expect(screen.getByLabelText('Назва правила')).toHaveFocus();
   });
 
   it('чужий фокус не відбирається: поле поза вікном, що взяло фокус, його тримає', async () => {

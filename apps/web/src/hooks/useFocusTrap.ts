@@ -17,8 +17,8 @@ const FIELD =
  *     елемент, або сама панель);
  *  2. Tab/Shift+Tab циклять У МЕЖАХ панелі (фокус не «тікає» на фон);
  *  3. при закритті фокус повертається на елемент, що був активним до відкриття (кнопка, що
- *     відкрила вікно), — якщо він ще в документі й бере фокус; інакше на верхню з пасток, що
- *     лишились (нижня модалка).
+ *     відкрила вікно), — якщо він ще в документі й бере фокус; інакше в точку входу верхньої з
+ *     пасток, що лишились (нижня модалка), — ту саму, що й при її відкритті.
  *
  * Елемент «до відкриття» запам'ятовується в РЕНДЕРІ, на якому `active` став true, а не в ефекті:
  * поле з `autoFocus` бере фокус на коміті, ДО ефекту, і ефект запам'ятовував саме його — поле
@@ -46,6 +46,30 @@ const focusLost = (): boolean =>
   document.activeElement === null || document.activeElement === document.body;
 
 /**
+ * Точка входу у вікно (UX-огляд 2026-10-29: не «×» шапки): елемент з `data-autofocus`; поле, що
+ * вже взяло фокус (`autoFocus`); перше видиме поле введення; інакше перший фокусований елемент або
+ * сама панель. Поле з попапом на фокус (дата) позначене `data-no-autofocus` — його не відкриваємо.
+ */
+function focusEntry(container: HTMLElement): void {
+  const focusedNow = document.activeElement as HTMLElement | null;
+  const preferred =
+    container.querySelector<HTMLElement>('[data-autofocus]:not([disabled])') ??
+    (focusedNow && focusedNow !== container && container.contains(focusedNow)
+      ? focusedNow
+      : null) ??
+    Array.from(container.querySelectorAll<HTMLElement>(FIELD)).find(
+      el => el.offsetParent !== null && !el.closest('[data-no-autofocus]'),
+    );
+  const initial = preferred ?? focusablesIn(container)[0];
+  if (initial) {
+    initial.focus();
+  } else {
+    container.setAttribute('tabindex', '-1');
+    container.focus();
+  }
+}
+
+/**
  * Повертає фокус після закриття пастки: на елемент до відкриття, якщо він ще в документі й бере
  * фокус; інакше — у верхню з пасток, що лишились.
  */
@@ -56,13 +80,9 @@ function restoreFocus(target: HTMLElement | null): void {
   }
   // Нижня модалка, що закривається в тому ж коміті, уже поза документом — її пропускаємо.
   const lower = [...openTraps].reverse().find(el => el.isConnected);
-  if (!lower) return;
-  const first = focusablesIn(lower)[0];
-  if (first) first.focus();
-  else {
-    lower.setAttribute('tabindex', '-1');
-    lower.focus();
-  }
+  // У ту саму точку входу, що й при відкритті, а не на перший фокусований елемент: ним у шапці
+  // стоїть «×», і Enter/Пробіл після Escape закривав нижню форму разом із незбереженим.
+  if (lower) focusEntry(lower);
 }
 
 export function useFocusTrap(containerRef: RefObject<HTMLElement | null>, active: boolean): void {
@@ -87,26 +107,7 @@ export function useFocusTrap(containerRef: RefObject<HTMLElement | null>, active
 
     const focusables = (): HTMLElement[] => focusablesIn(container);
 
-    // Початковий фокус (UX-огляд 2026-10-29: стояв на «×» шапки): елемент з `data-autofocus`; поле,
-    // що вже взяло фокус (`autoFocus`); перше поле введення; інакше перший фокусований елемент або
-    // сама панель. Поле з попапом на фокус (дата) позначене `data-no-autofocus` — його не відкриваємо.
-    const focusedNow = document.activeElement as HTMLElement | null;
-    const visible = (el: HTMLElement) => el.offsetParent !== null;
-    const preferred =
-      container.querySelector<HTMLElement>('[data-autofocus]:not([disabled])') ??
-      (focusedNow && focusedNow !== container && container.contains(focusedNow)
-        ? focusedNow
-        : null) ??
-      Array.from(container.querySelectorAll<HTMLElement>(FIELD)).find(
-        el => visible(el) && !el.closest('[data-no-autofocus]'),
-      );
-    const initial = preferred ?? focusables()[0];
-    if (initial) {
-      initial.focus();
-    } else {
-      container.setAttribute('tabindex', '-1');
-      container.focus();
-    }
+    focusEntry(container);
 
     const handleKey = (e: KeyboardEvent) => {
       if (e.key !== 'Tab') return;
