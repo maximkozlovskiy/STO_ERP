@@ -90,6 +90,12 @@ interface EmployeeEditModalProps {
   employee: EmployeeForModal | null;
   onClose: () => void;
   onSaved: (emp: EmployeeForModal) => void;
+  /**
+   * OWNER / ADMIN: змінювати співробітника (`POST` / `PATCH` — лише їм) і бачити схему нарахування (її API
+   * віддає лише їм). Інша роль (RECEPTIONIST) — картка лише для перегляду, без поля схеми: інакше форма
+   * показувала вигадану схему за замовчуванням (40%), а «Зберегти» давало 403 (Bug #1042).
+   */
+  canManage?: boolean;
 }
 
 const RATE_TYPES = ['percent_normo', 'per_normo_hour', 'fixed_plus_bonus'] as const;
@@ -168,12 +174,19 @@ const CheckboxList = memo(function CheckboxList({
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function EmployeeEditModal({ open, employee, onClose, onSaved }: EmployeeEditModalProps) {
+export function EmployeeEditModal({
+  open,
+  employee,
+  onClose,
+  onSaved,
+  canManage = true,
+}: EmployeeEditModalProps) {
   const { t } = useTranslation('employees');
   const isEdit = !!employee;
   // BR-EMP-002: картка видаленого співробітника — лише перегляд (рішення власника №28):
   // поля недоступні, «Зберегти» немає, зверху смуга «Співробітника видалено».
-  const readOnly = !!employee?.deletedAt;
+  const deleted = !!employee?.deletedAt;
+  const readOnly = deleted || !canManage;
   const features = useUiFeatures();
   const dirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
 
@@ -419,7 +432,7 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
   const flatCats = useMemo(() => flattenTree(workCategories), [workCategories]);
   // Видаленого відкривають з рядка списку (GET /employees/:id для нього — 404); схему список віддає
   // лише OWNER/ADMIN. Без схеми форма показала б вигадану за замовчуванням (40%) — тож ховаємо.
-  const showRate = !readOnly || !!employee?.rateScheme;
+  const showRate = canManage && (!readOnly || !!employee?.rateScheme);
 
   return (
     <>
@@ -449,7 +462,7 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
           </>
         }
       >
-        {readOnly && (
+        {deleted && (
           <div
             role="status"
             data-testid="employee-deleted-banner"
@@ -728,7 +741,7 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
                     },
                   ]
                 : []),
-              ...(employee && !readOnly
+              ...(employee && !deleted
                 ? [
                     {
                       key: 'telegram',

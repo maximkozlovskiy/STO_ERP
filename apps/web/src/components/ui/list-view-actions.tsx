@@ -28,8 +28,8 @@ interface ListViewActionsProps {
   onSaveFilter: (name: string) => void;
   /** Власний перемикач «видалених» (типово — `list.toggleShowDeleted`). */
   onToggleDeleted?: (() => void) | undefined;
-  /** Основна кнопка «+ Документ» — остання в групі. */
-  onAdd: () => void;
+  /** Основна кнопка «+ Документ» — остання в групі; без обробника кнопки немає (роль без права створення). */
+  onAdd?: (() => void) | undefined;
   addLabel: ReactNode;
 }
 
@@ -55,9 +55,11 @@ export function ListViewActions({
       {list.features.savedFiltersEnabled && <SaveFilterButton onSave={onSaveFilter} />}
       <TableColumnsDropdown table={list.tableColumns} defaultKeysJson={defaultKeysJson} />
       <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
-      <Button onClick={onAdd} leftIcon={<Plus className="h-4 w-4" />}>
-        {addLabel}
-      </Button>
+      {onAdd && (
+        <Button onClick={onAdd} leftIcon={<Plus className="h-4 w-4" />}>
+          {addLabel}
+        </Button>
+      )}
     </>
   );
 }

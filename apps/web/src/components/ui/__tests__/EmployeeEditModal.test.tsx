@@ -244,3 +244,57 @@ describe('EmployeeEditModal — видалений співробітник ли
     expect(await screen.findByRole('checkbox', { name: 'Зона 1' })).toBeEnabled();
   });
 });
+
+// Bug #1042: приймальня (RECEPTIONIST) відкривала картку співробітника зі списку — `GET /employees/:id` їй схеми не
+// віддає, тож форма показувала вигадану «% від суми робіт 40%» (справжня — інша), а «Зберегти» давало 403
+// (`PATCH` — лише OWNER / ADMIN). Тепер `canManage={false}`: картка на перегляд, поля схеми немає, смуги
+// «видалено» теж (співробітник живий). Мутація: `showRate = !readOnly || …` без `canManage &&` → червоніє перша
+// перевірка; `readOnly = deleted` без `|| !canManage` → «Зберегти» є.
+describe('EmployeeEditModal — роль без права змін (Bug #1042)', () => {
+  const EMP = {
+    id: 'e-rec',
+    firstName: 'Олена',
+    lastName: 'Бондар',
+    role: 'RECEPTIONIST',
+    phone: null,
+    status: 'ACTIVE' as const,
+    zoneIds: [] as string[],
+    liftIds: [] as string[],
+    workCategoryIds: [] as string[],
+    branchIds: [] as string[],
+    allBranches: false,
+  };
+
+  beforeEach(() => {
+    apiFetchMock.mockReset();
+    apiFetchMock.mockImplementation((path: string) => {
+      if (['/zones', '/lifts', '/work-categories', '/branches'].includes(path)) {
+        return Promise.resolve([]);
+      }
+      return Promise.resolve({});
+    });
+  });
+
+  it('приймальня: схеми нарахування немає, поля недоступні, «Зберегти» немає, смуги «видалено» немає', () => {
+    render(
+      <EmployeeEditModal
+        open
+        employee={EMP}
+        onClose={() => {}}
+        onSaved={() => {}}
+        canManage={false}
+      />,
+    );
+
+    expect(screen.queryByText('Схема нарахування')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Відсоток/)).not.toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Іван')).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Зберегти' })).not.toBeInTheDocument();
+    expect(screen.queryByTestId('employee-deleted-banner')).not.toBeInTheDocument();
+  });
+
+  it('власник (типово): схема нарахування є', () => {
+    render(<EmployeeEditModal open employee={EMP} onClose={() => {}} onSaved={() => {}} />);
+    expect(screen.getByText('Схема нарахування')).toBeInTheDocument();
+  });
+});

@@ -91,4 +91,32 @@ describe('Співробітники — схема нарахування в п
     await openPanel();
     expect(screen.queryByText('Схема нарахування')).not.toBeInTheDocument();
   });
+
+  // Bug #1042: приймальні — без «+ Співробітник» і «Помітити на видалення» (POST / DELETE — лише OWNER / ADMIN,
+  // інакше 403). Мутація: повернути `onAdd={() => setModalEmp('create')}` → кнопка є, кейс червоніє.
+  it('приймальня: кнопок створення й видалення немає', async () => {
+    role = 'RECEPTIONIST';
+    apiFetchMock.mockImplementation((path: string) =>
+      path.startsWith('/employees?')
+        ? Promise.resolve({ items: [EMP], total: 1, page: 1, limit: 20 })
+        : Promise.resolve([]),
+    );
+    renderPage();
+    await screen.findByText('Петренко Іван');
+    expect(screen.queryByRole('button', { name: /Співробітник/ })).not.toBeInTheDocument();
+    expect(screen.queryByTitle('Помітити на видалення')).not.toBeInTheDocument();
+  });
+
+  it('власник: кнопки створення й видалення є', async () => {
+    role = 'OWNER';
+    apiFetchMock.mockImplementation((path: string) =>
+      path.startsWith('/employees?')
+        ? Promise.resolve({ items: [EMP], total: 1, page: 1, limit: 20 })
+        : Promise.resolve([]),
+    );
+    renderPage();
+    await screen.findByText('Петренко Іван');
+    expect(screen.getByRole('button', { name: /Співробітник/ })).toBeInTheDocument();
+    expect(screen.getByTitle('Помітити на видалення')).toBeInTheDocument();
+  });
 });

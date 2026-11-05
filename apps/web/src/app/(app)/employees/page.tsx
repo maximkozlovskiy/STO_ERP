@@ -119,15 +119,20 @@ const COLUMNS_DEFAULT_KEYS_JSON = JSON.stringify(COLUMN_DEFS.map(c => c.key));
 /** Колонки списку, за якими сортує сервер: ключ колонки → поле сортування. */
 const EMP_SORT_KEYS: Partial<Record<string, string>> = { name: 'lastName' };
 
+/** Приймальні масових дій немає: видаляти співробітників може лише OWNER / ADMIN. */
+const NO_BULK_ACTIONS: BulkAction[] = [];
+
 export default function EmployeesPage() {
   useRequireAuth(['OWNER', 'ADMIN', 'RECEPTIONIST']);
   const { t } = useTranslation('employees');
   const { confirm, dialogProps } = useConfirm();
 
   // Схему нарахування API віддає лише OWNER/ADMIN (і в списку, і в картці) — приймальні колонки
-  // «Ставка» й поля панелі немає, а не «—» при заданій схемі.
+  // «Ставка» й поля панелі немає, а не «—» при заданій схемі. Змінювати й видаляти співробітника теж
+  // лише OWNER/ADMIN (`@Roles` POST / PATCH / DELETE): приймальні картка — для перегляду (Bug #1042).
   const { employee: me } = useAuth();
   const canSeeRate = me?.role === 'OWNER' || me?.role === 'ADMIN';
+  const canManage = canSeeRate;
   // Колонки з перекладеними мітками (label = i18n).
   const COLUMNS = useMemo(
     () =>
@@ -515,7 +520,7 @@ export default function EmployeesPage() {
         list={listPage}
         defaultKeysJson={COLUMNS_DEFAULT_KEYS_JSON}
         onSaveFilter={handleSaveFilter}
-        onAdd={() => setModalEmp('create')}
+        onAdd={canManage ? () => setModalEmp('create') : undefined}
         addLabel={t('addButton')}
         searchLabel={t('filters.searchPlaceholder')}
         search={[search, setSearch]}
@@ -536,7 +541,7 @@ export default function EmployeesPage() {
       <ListTableLayout
         list={listPage}
         bulk={bulkSelect}
-        bulkActions={bulkActions}
+        bulkActions={canManage ? bulkActions : NO_BULK_ACTIONS}
         panel={
           <DetailPanel
             open={!!selectedEmp && detailPanel.enabled}
@@ -696,8 +701,8 @@ export default function EmployeesPage() {
                       >
                         <Pencil className="h-3.5 w-3.5" />
                       </Button>
-                      {/* BR-EMP-002: видалений — лише перегляд, дії видалення немає */}
-                      {!isDeleted && (
+                      {/* BR-EMP-002: видалений — лише перегляд, дії видалення немає; приймальні — теж */}
+                      {!isDeleted && canManage && (
                         <Button
                           variant="ghost"
                           size="icon-sm"
@@ -724,6 +729,7 @@ export default function EmployeesPage() {
         employee={modalEmp === 'create' || modalEmp === null ? null : modalEmp}
         onClose={() => setModalEmp(null)}
         onSaved={handleEmployeeSaved}
+        canManage={canManage}
       />
       <ConfirmDialog {...dialogProps} />
     </div>
