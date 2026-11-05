@@ -98,6 +98,13 @@ grep -rn "ALTER TYPE.*ADD VALUE" packages/database/prisma/migrations/ | tail -5
       `grep -rn -A2 "TYPE DATE" packages/database/prisma/migrations | grep USING | grep -v "AT TIME ZONE"` (2026-11-05,
       `employee_dates_db_date`)
 
+- [ ] Рядки документа читаються за `LINE_ORDER_BY_CREATED` (`createdAt`, `id`) → КОЖЕН `createMany` рядків
+      цього документа ставить мітки (`withOrderedStamps`, `common/utils/line-order.ts`), зокрема імпорт із
+      файла (`modules/xlsx`): без них рядки одного запису мають однаковий `createdAt`, і картка та друк
+      показують їх у порядку випадкового `id`. Grep:
+      `grep -rnE "(purchaseOrderLine|stockDocumentLine|supplierReturnLine)\.createMany" apps/api/src --include=*.ts | grep -v spec`
+      → біля кожного `withOrderedStamps` / `orderedLineStamps` (2026-11-05, імпорт XLSX у BR-PO-016)
+
 ---
 
 ### §9 Sync Readiness

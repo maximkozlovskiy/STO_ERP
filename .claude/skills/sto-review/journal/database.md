@@ -139,3 +139,17 @@ OVERDUE так само взяв у CAS лише статус: термін, п�
 `_prisma_migrations.checksum` на dev-базі (sha256 файла), інакше `migrate dev` вимагатиме reset.
 Межі «прийнятий в останній / звільнений у перший день» — `payroll.accrual.integration.spec.ts`.
 **Severity:** IMPORTANT
+
+### 2026-11-05 — Порядок рядків за `createdAt`, а запис без міток — §6
+
+**Сигнал:** блок «друк і „Зберегти як“» (BR-PO-016, BR-SDOC-009) додав `orderBy: LINE_ORDER_BY_CREATED`
+у картку й бланк замовлення та складського документа і мітки `orderedLineStamps` у `create`/`update`
+сервісів — але не в імпорт рядків із файла (`document-line-import.adapter.ts` — заміна й дописування,
+`xlsx.service.ts` — `importPOLines`/`importSDLines`). Один `createMany` дає всім рядкам однаковий `createdAt`,
+тож після імпорту картка й друк показували рядки в порядку випадкового UUID, а не файла. До блоку
+`orderBy` не було, і Postgres зазвичай віддавав порядок вставки — тобто регресія виникла саме від
+сортування. **Grep:** `grep -rnE "(purchaseOrderLine|stockDocumentLine|supplierReturnLine)\.createMany" apps/api/src --include=*.ts | grep -v spec`
+— у кожного виклику мітки. **Фікс:** `withOrderedStamps(rows)` у всіх шести місцях; тести на порядок
+у спеках адаптера, `importPOLines`, `create`/`update` замовлення і `update` складського документа
+(мутація: без міток → червоніє). Рядки, записані раніше одним `createMany`, і далі йдуть за `id` —
+виправляє лише міграція даних. **Severity:** IMPORTANT
