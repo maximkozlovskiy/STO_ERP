@@ -168,6 +168,32 @@ describe('WorkOrdersService — вихідні філії при збереже�
     expect(t(wo(h).plannedAt)).toBe(t(plannedAt));
   });
 
+  // Перетягування — інший шлях до дат наряду (BR-WO-023): години філії він читає сам.
+  // guards: BR-WO-019
+  it('перетягування запису на неділю (пн–сб) → 400 «вихідний день філії», наряд і запис не змінено', async () => {
+    const h = planningHarness({
+      workOrders: [
+        woRow({ liftId: LIFT_1, plannedAt: kyiv(SAT, '10:00'), dueDate: kyiv(SAT, '12:00') }),
+      ],
+      slots: [slotRow('anchor', { startAt: kyiv(SAT, '10:00'), endAt: kyiv(SAT, '12:00') })],
+      workDays: MON_SAT,
+    });
+    const err = await h.service
+      .reschedule(ORG, WO_ID, {
+        slotId: 'anchor',
+        startAt: kyiv(SUN, '10:00').toISOString(),
+        liftId: LIFT_1,
+      })
+      .then(
+        () => null,
+        (e: unknown) => e,
+      );
+    expect(err).toBeInstanceOf(BadRequestException);
+    expect((err as Error).message).toBe(DAY_OFF);
+    expect(t(wo(h).plannedAt)).toBe(t(kyiv(SAT, '10:00')));
+    expect(spans(h)).toEqual([[t(kyiv(SAT, '10:00')), t(kyiv(SAT, '12:00'))]]);
+  });
+
   // guards: BR-CAL-016
   it('форма запису: сб 17:00 + 2 год → завершення наряду пн 09:00, записи сб і пн', async () => {
     const h = planningHarness({

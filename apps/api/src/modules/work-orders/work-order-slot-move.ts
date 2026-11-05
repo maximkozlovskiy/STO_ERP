@@ -124,9 +124,9 @@ export function overflowEnd(startAt: Date, endAt: Date, hours: WorkHours): Date 
 }
 
 /**
- * Робочі години між датами (у межах годин філії, без вихідних філії — BR-WO-019), до сотих — те, що картка наряду показує в
- * «Нормогодин» і перераховує при зміні дат (`calcPlannedHours` у web). Зміна меж запису змінює
- * тривалість наряду, тож і його планові нормогодини (Bug #903).
+ * Робочі години між датами (у межах годин філії, без вихідних філії — BR-WO-019), до сотих —
+ * те, що картка наряду показує в «Нормогодин» і перераховує при зміні дат (`calcPlannedHours`
+ * у web). Зміна меж запису змінює тривалість наряду, тож і його планові нормогодини (Bug #903).
  */
 export function workHoursBetween(start: Date, end: Date, hours: WorkHours): number {
   const ms = splitByWorkHours(start, end, hours).reduce(

@@ -60,12 +60,6 @@ import type { CreatedWorkOrder } from '@/components/ui/CreateWorkOrderModal';
 import { calcEndFromHours } from '@/components/ui/work-order/planned-dates';
 
 /**
- * Кінець запису для поля «Кінець» за початком + тривалістю (хвилини від півночі). Межі дня —
- * робочі години філії (`windowStart`/`windowEnd` з `GET /settings/work-hours`), ті самі, що
- * сервер бере для розбиття запису на два дні (BR-CAL-007) і для планових дат наряду
- * (BR-WO-019). Переповнення понад кінець дня — наступного дня від відкриття + залишок.
- */
-/**
  * Наступний робочий день після `ymd` ('YYYY-MM-DD'): вихідні філії пропускаються, як сервер
  * пропускає їх, переносячи залишок запису (BR-CAL-016). Без переліку днів — завтра.
  */
@@ -77,6 +71,12 @@ function nextWorkDayISO(ymd: string, workDays: readonly number[] | undefined): s
   return day;
 }
 
+/**
+ * Кінець запису для поля «Кінець» за початком + тривалістю (хвилини від півночі). Межі дня —
+ * робочі години філії (`windowStart`/`windowEnd` з `GET /settings/work-hours`), ті самі, що
+ * сервер бере для розбиття запису на два дні (BR-CAL-007) і для планових дат наряду
+ * (BR-WO-019). Переповнення понад кінець дня — наступного дня від відкриття + залишок.
+ */
 function calcEndAt(totalMin: number, dayStartH: number, dayEndH: number): string {
   const raw = Math.round(totalMin / 15) * 15; // snap to 15-min grid
   const workEndMin = dayEndH * 60;

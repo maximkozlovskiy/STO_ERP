@@ -165,8 +165,9 @@ export class CalendarService {
 
   /**
    * §13 config-over-hardcode: межі робочого дня й робочі дні філії з BranchSettings
-   * (workStartTime/workEndTime "HH:mm", workDays — BR-CAL-016). Типові години (кожен день робочий) (`DEFAULT_WORK_HOURS`, 09–18 — ті самі,
-   * що в `GET /settings/work-hours`), коли:
+   * (workStartTime/workEndTime "HH:mm", workDays — BR-CAL-016). Типові години
+   * (`DEFAULT_WORK_HOURS`, 09–18 — ті самі, що в `GET /settings/work-hours`; кожен день робочий),
+   * коли:
    *  - філію не визначено (запис без підйомника),
    *  - BranchSettings ще не створені для філії,
    *  - workEndTime ≤ workStartTime чи невалідний час (некоректна конфігурація),
