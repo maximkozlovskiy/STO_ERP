@@ -8,7 +8,7 @@ import {
 import type { ApiSchema } from '@sto/shared';
 import { apiFetch, apiBlobFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
-import { downloadBlob, printPdf } from '@/lib/download';
+import { downloadBlob, filenameFromDisposition, printPdf } from '@/lib/download';
 import { useEscapeLayer } from './useEscapeLayer';
 
 /**
@@ -269,13 +269,13 @@ export function useWorkOrderActions({
       const res = await fetch(`${apiBase}/api/public/work-orders/${token}/export/${format}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const blob = await res.blob();
-      const disposition = res.headers.get('content-disposition') ?? '';
-      const match =
-        disposition.match(/filename\*=UTF-8''(.+)/i) ?? disposition.match(/filename="?([^"]+)"?/i);
       // Назва — із Content-Disposition сервера («Кошторис-<номер>.<формат>»). Якщо заголовка не
       // видно (проксі чи CORS його сховали), запасна назва теж несе номер наряду.
       const safeNumber = (woNumber || workOrderId).replace(/[/\\:*?"<>|]/g, '-');
-      const filename = match ? decodeURIComponent(match[1]) : `Кошторис-${safeNumber}.${format}`;
+      const filename = filenameFromDisposition(
+        res.headers.get('content-disposition'),
+        `Кошторис-${safeNumber}.${format}`,
+      );
       downloadBlob(blob, filename);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Помилка';

@@ -852,7 +852,15 @@ export function InvoiceCreateModal({
               {isEditMode ? (
                 <DocumentEditActions
                   save={canEdit ? { label: t('card.saveChanges'), onSave: handleSave } : null}
-                  showFile={!notLoaded}
+                  file={
+                    !notLoaded && invoiceId
+                      ? {
+                          exportPath: `/invoices/${invoiceId}/export`,
+                          fallbackName: invoiceNumber || invoiceId,
+                          onError: setError,
+                        }
+                      : null
+                  }
                   showShare={!viewOnly}
                   labels={{
                     print: t('actions.print'),

@@ -10,7 +10,11 @@ vi.mock('@/lib/api-client', () => ({
   apiFetch: (...a: unknown[]) => apiFetchMock(...a),
   apiBlobFetch: vi.fn(),
 }));
-vi.mock('@/lib/download', () => ({
+vi.mock('@/lib/download', async () => ({
+  // Розбір Content-Disposition — справжній (`filenameFromDisposition`), мок лише завантаження.
+  filenameFromDisposition: (
+    await vi.importActual<typeof import('@/lib/download')>('@/lib/download')
+  ).filenameFromDisposition,
   downloadBlob: (...a: unknown[]) => downloadBlobMock(...a),
   printPdf: vi.fn(),
 }));

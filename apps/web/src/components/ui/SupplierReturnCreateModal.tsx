@@ -27,7 +27,8 @@ import { Modal } from '@/components/ui/modal';
 import { DocLinesHeader, DocLinesEmptyRow } from '@/components/ui/doc-lines-header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { DocumentCloseButton } from '@/components/ui/document-card-actions';
+import { DocumentCloseButton, DocumentExportActions } from '@/components/ui/document-card-actions';
+import { useEscapeLayer } from '@/hooks/useEscapeLayer';
 import { FieldWithError, FormWarehouseSelect } from '@/components/ui/document-card-header';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { EntityPickerField } from '@/components/ui/entity-picker-field';
@@ -216,6 +217,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
     setTransitioning(v);
   };
   const [error, setError] = useState('');
+  const [saveAsOpen, setSaveAsOpen] = useState(false);
   const [headerCollapsed, setHeaderCollapsed] = useState(false);
   const [showLineInput, setShowLineInput] = useState(false);
   const [newLine, setNewLine] = useState<LocalLine>(EMPTY_LINE);
@@ -316,6 +318,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
     autoSelectedRef.current = false;
     dirty.resetDirty();
     setError('');
+    setSaveAsOpen(false);
     setIsDeleted(false);
     setHeaderCollapsed(false);
     setShowLineInput(false);
@@ -343,6 +346,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
   const notLoaded = isEdit && loadedId !== editId;
   const allowedTransitions = isDeleted || notLoaded ? [] : (STATUS_TRANSITIONS[status] ?? []);
   const statusPrevStep: string | null = null;
+  useEscapeLayer(saveAsOpen, () => setSaveAsOpen(false));
   const statusNextStep =
     allowedTransitions.find(s => s !== 'CANCELLED') ?? allowedTransitions[0] ?? null;
 
@@ -594,7 +598,20 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
                 </Button>
               )}
             </div>
-            <div className="flex gap-2 items-center">
+            <div className="flex gap-2 items-center flex-wrap">
+              {/* BR-SRET-014: друк і «Зберегти як» — збереженого й завантаженого повернення, зокрема
+                  видаленого (друкується з позначкою «ВИДАЛЕНО»). */}
+              {isEdit && editId && !notLoaded && (
+                <DocumentExportActions
+                  exportPath={`/supplier-returns/${editId}/export`}
+                  fallbackName={editId}
+                  labels={{ print: t('card.print'), saveAs: t('card.saveAs') }}
+                  saveAsOpen={saveAsOpen}
+                  setSaveAsOpen={setSaveAsOpen}
+                  onError={setError}
+                  disabled={saving || transitioning}
+                />
+              )}
               {isEdit && status === 'DRAFT' && !isDeleted && !notLoaded && (
                 <Button
                   variant="outline"

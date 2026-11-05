@@ -372,5 +372,9 @@
   "dateRange": {
     "from": "From",
     "to": "To"
+  },
+  "documentFile": {
+    "printError": "Could not prepare the document for printing",
+    "saveAsError": "Could not save the file"
   }
 }

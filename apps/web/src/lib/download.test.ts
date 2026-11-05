@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { printPdf } from './download';
+import { filenameFromDisposition, printPdf } from './download';
 
 /**
  * printPdf — друк PDF із сервера (наряд-замовлення, рахунок).
@@ -114,5 +114,31 @@ describe('printPdf', () => {
     await printPdf(() => Promise.resolve(new Blob(['%PDF-1.4'])));
 
     expect((createUrl.mock.calls[0]?.[0] as Blob).type).toBe('application/pdf');
+  });
+});
+
+describe('filenameFromDisposition', () => {
+  it("filename*=UTF-8'' — кирилиця розкодовується", () => {
+    const h = `attachment; filename*=UTF-8''${encodeURIComponent('Рахунок-INV-1.xlsx')}`;
+    expect(filenameFromDisposition(h, 'x.xlsx')).toBe('Рахунок-INV-1.xlsx');
+  });
+
+  it('звичайне filename="…" і filename=… без лапок', () => {
+    expect(filenameFromDisposition('attachment; filename="a b.pdf"', 'x')).toBe('a b.pdf');
+    expect(filenameFromDisposition('attachment; filename=c.pdf', 'x')).toBe('c.pdf');
+  });
+
+  it("filename* має перевагу над filename; битий percent-код — звичайне ім'я", () => {
+    expect(
+      filenameFromDisposition(`attachment; filename="old.pdf"; filename*=UTF-8''new.pdf`, 'x'),
+    ).toBe('new.pdf');
+    expect(
+      filenameFromDisposition(`attachment; filename*=UTF-8''%E0%A4%A; filename="ok.pdf"`, 'x'),
+    ).toBe('ok.pdf');
+  });
+
+  it('заголовка немає чи імені в ньому немає — запасне', () => {
+    expect(filenameFromDisposition(null, 'Рахунок-1.pdf')).toBe('Рахунок-1.pdf');
+    expect(filenameFromDisposition('attachment', 'f.pdf')).toBe('f.pdf');
   });
 });

@@ -4,6 +4,27 @@
 // бути ВІДКЛАДЕНИМ (Chromium дропає завантаження при негайному revoke). Раніше цей блок
 // копіювався inline по 9+ сайтах — кожна нова копія ризикувала знову загубити appendChild.
 
+/**
+ * Ім'я файла з заголовка `Content-Disposition`: спершу `filename*=UTF-8''…` (кирилиця,
+ * RFC 5987), далі `filename="…"`. Заголовка немає, він порожній чи ім'я не розкодовується —
+ * `fallback`.
+ */
+export function filenameFromDisposition(header: string | null, fallback: string): string {
+  if (!header) return fallback;
+  const ext = /filename\*\s*=\s*UTF-8''([^;]+)/i.exec(header);
+  if (ext) {
+    try {
+      const name = decodeURIComponent(ext[1].trim());
+      if (name) return name;
+    } catch {
+      // Битий percent-код — пробуємо звичайне `filename=`.
+    }
+  }
+  const plain = /filename\s*=\s*"([^"]+)"|filename\s*=\s*([^;]+)/i.exec(header);
+  const name = (plain?.[1] ?? plain?.[2])?.trim();
+  return name || fallback;
+}
+
 /** Завантажити Blob як файл. Гарантує attached-anchor + відкладений revoke. */
 export function downloadBlob(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);

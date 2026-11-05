@@ -2,6 +2,7 @@
 
 import type {
   HTMLAttributes,
+  KeyboardEvent,
   MouseEvent,
   ReactNode,
   ThHTMLAttributes,
@@ -52,16 +53,38 @@ function TableBody({ className, children, ...props }: HTMLAttributes<HTMLTableSe
   );
 }
 
-function TableRow({ className, children, onClick, ...props }: HTMLAttributes<HTMLTableRowElement>) {
+/**
+ * Рядок таблиці. З `onClick` рядок доступний з клавіатури (рішення власника 2026-10-30, TECH-DEBT
+ * (б) №27): Tab фокусує його (видиме кільце), Enter — те саме, що клік (бокова панель чи картка).
+ * Enter на елементі всередині рядка (прапорець, олівець, посилання, `<select>`) рядок не відкриває:
+ * ці елементи гасять лише click, тож перевіряється, що подія прийшла від самого рядка.
+ */
+function TableRow({
+  className,
+  children,
+  onClick,
+  onKeyDown,
+  ...props
+}: HTMLAttributes<HTMLTableRowElement>) {
+  const handleKeyDown = (e: KeyboardEvent<HTMLTableRowElement>) => {
+    onKeyDown?.(e);
+    if (e.defaultPrevented || !onClick) return;
+    if (e.key !== 'Enter' || e.target !== e.currentTarget) return;
+    e.preventDefault();
+    // Справжній click рядка — обробник отримує ту саму подію, що й від миші.
+    e.currentTarget.click();
+  };
   return (
     <tr
       className={cn(
         'transition-colors duration-100',
-        onClick && 'cursor-pointer hover:bg-secondary active:bg-muted',
+        onClick &&
+          'cursor-pointer hover:bg-secondary active:bg-muted focus-visible:outline-none focus-visible:bg-secondary focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary',
         !onClick && 'hover:bg-secondary/50',
         className,
       )}
       onClick={onClick}
+      {...(onClick ? { tabIndex: 0, onKeyDown: handleKeyDown } : onKeyDown ? { onKeyDown } : {})}
       {...props}
     >
       {children}

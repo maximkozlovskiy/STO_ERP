@@ -125,6 +125,34 @@ export function itFollowsRowClickStandard(cfg: RowClickStandardConfig) {
     });
   }
 
+  // guards: TECH-DEBT (б) №27 — рядок з клавіатури (Tab по рядках + Enter)
+  it('клавіатура: рядок фокусується (tabIndex 0), Enter показує панель, як клік', async () => {
+    await renderWithPanel(true);
+    const tr = row();
+    expect(tr.tabIndex).toBe(0);
+    tr.focus();
+    expect(document.activeElement).toBe(tr);
+
+    fireEvent.keyDown(tr, { key: 'Enter' });
+
+    await waitFor(() => expect(panelShows(cfg.panelTitle)).toBe(true));
+    expect(cardOpen()).toBe(false);
+  });
+
+  // guards: TECH-DEBT (б) №27 — Enter на елементі рядка не відкриває рядок
+  it('клавіатура: Enter на прапорці чи олівці рядка панель не відкриває; інша клавіша — теж', async () => {
+    await renderWithPanel(true);
+    const tr = row();
+    const inner = within(tr).queryByRole('checkbox') ?? cfg.pencil(tr);
+
+    fireEvent.keyDown(inner, { key: 'Enter' });
+    fireEvent.keyDown(tr, { key: ' ' });
+    fireEvent.keyDown(tr, { key: 'a' });
+
+    expect(panelShows(cfg.panelTitle)).toBe(false);
+    expect(cardOpen()).toBe(false);
+  });
+
   it('вимкнули панель тоглом → вибір скинуто: після вмикання клік по тому ж рядку ПОКАЗУЄ панель', async () => {
     await renderWithPanel(true);
     fireEvent.click(row());

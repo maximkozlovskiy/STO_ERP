@@ -1,6 +1,7 @@
 import { TOKEN_KEY } from './auth';
 import { ApiError, NetworkError, fetchOrNetworkError, isApiError } from './network-error';
 import { getCurrentLocale } from '@/i18n/locale';
+import { filenameFromDisposition } from './download';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
 // API-версіонування (backend #3): усі бізнес-роути під /api/v1. Version-neutral винятки
@@ -211,9 +212,9 @@ export function apiPost<T>(
 
 /**
  * Bug #77: PDF/blob downloads must also do silent refresh on 401.
- * Same auth/refresh logic as `apiFetch`, but returns a `Blob` (no JSON parsing).
+ * Same auth/refresh logic as `apiFetch`, but returns the raw Response (no JSON parsing).
  */
-export async function apiBlobFetch(path: string, init?: RequestInit): Promise<Blob> {
+async function fetchFileResponse(path: string, init?: RequestInit): Promise<Response> {
   const res = await fetchWithRefresh(
     accessToken =>
       fetchOrNetworkError(`${API_BASE}${path}`, {
@@ -229,8 +230,26 @@ export async function apiBlobFetch(path: string, init?: RequestInit): Promise<Bl
   if (!res.ok) {
     await throwFromResponse(res, `Помилка завантаження файлу (${res.status})`);
   }
+  return res;
+}
 
+/** Файл із сервера як `Blob` (PDF для друку, вкладення). */
+export async function apiBlobFetch(path: string, init?: RequestInit): Promise<Blob> {
+  const res = await fetchFileResponse(path, init);
   return await res.blob();
+}
+
+/**
+ * Файл із сервера разом з його ім'ям із `Content-Disposition` («Рахунок-INV-1.xlsx»). Заголовка
+ * не видно (проксі чи CORS його сховали) — ім'я `fallback`.
+ */
+export async function apiFileFetch(
+  path: string,
+  fallback: string,
+): Promise<{ blob: Blob; filename: string }> {
+  const res = await fetchFileResponse(path);
+  const filename = filenameFromDisposition(res.headers.get('content-disposition'), fallback);
+  return { blob: await res.blob(), filename };
 }
 
 /**

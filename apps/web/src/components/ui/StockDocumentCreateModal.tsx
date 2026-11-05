@@ -751,7 +751,15 @@ export function StockDocumentCreateModal({
               {isEditMode ? (
                 <DocumentEditActions
                   save={canEdit ? { label: t('card.saveChanges'), onSave: onValid } : null}
-                  showFile={!notLoaded}
+                  file={
+                    !notLoaded && stockDocumentId
+                      ? {
+                          exportPath: `/stock-documents/${stockDocumentId}/export`,
+                          fallbackName: docNumber || stockDocumentId,
+                          onError: setError,
+                        }
+                      : null
+                  }
                   showShare={!viewOnly}
                   labels={{
                     print: t('card.print'),

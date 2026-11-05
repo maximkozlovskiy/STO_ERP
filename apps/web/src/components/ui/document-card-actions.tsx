@@ -1,13 +1,16 @@
 'use client';
 
-import type { Dispatch, ReactNode, SetStateAction } from 'react';
+import { useState, type Dispatch, type ReactNode, type SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChevronDown, Download, MessageSquare, Minus, Printer, Share2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useTabBarContext, type ModalTab } from '@/contexts/TabBarContext';
+import { apiBlobFetch, apiFileFetch } from '@/lib/api-client';
+import { downloadBlob, printPdf } from '@/lib/download';
 
 /**
- * Спільні дії картки документа (наряд, рахунок, замовлення постачальнику, складський документ):
+ * Спільні дії картки документа (наряд, рахунок, замовлення постачальнику, складський документ,
+ * повернення):
  * «Згорнути у вкладку» і «×» у шапці; у підвалі — скасування документа, «Друк», «Зберегти як»,
  * заглушки «Поділитись» / SMS і «Зберегти зміни». Розмітка була скопійована в чотири картки
  * (гейт jscpd, 2026-10-26); тексти й обробники передає картка — у кожної свій простір перекладу
@@ -213,9 +216,78 @@ export function DocumentFileActions({
   );
 }
 
+export interface DocumentExportActionsProps {
+  /** Адреса експорту документа без формату: `/invoices/<id>/export` (+ `/pdf`, `/xlsx`, `/docx`). */
+  exportPath: string;
+  /** Запасне ім'я файла без розширення, якщо сервер не віддав `Content-Disposition`. */
+  fallbackName: string;
+  labels: { print: string; saveAs: string };
+  saveAsOpen: boolean;
+  setSaveAsOpen: Dispatch<SetStateAction<boolean>>;
+  /** Помилка друку чи збереження — текст українською для банера картки. */
+  onError: (message: string) => void;
+  disabled?: boolean;
+}
+
+/**
+ * «Друк» і «Зберегти як» збереженого документа через сервер (BR-INV-028, BR-PO-016,
+ * BR-SDOC-009, BR-SRET-014): друк — серверний PDF у новому вікні (вікно відкривається синхронно,
+ * до запиту, інакше браузер його блокує), «Зберегти як» — файл обраного формату з іменем із
+ * `Content-Disposition`.
+ */
+export function DocumentExportActions({
+  exportPath,
+  fallbackName,
+  labels,
+  saveAsOpen,
+  setSaveAsOpen,
+  onError,
+  disabled,
+}: DocumentExportActionsProps) {
+  const { t } = useTranslation('common');
+  const [saving, setSaving] = useState(false);
+  const fail = (e: unknown, key: string) =>
+    onError(e instanceof Error && e.message ? e.message : t(key));
+
+  const print = () => {
+    // printPdf відкриває вікно до першого await — тут жодного await перед ним.
+    printPdf(() => apiBlobFetch(`${exportPath}/pdf`), fallbackName).catch((e: unknown) =>
+      fail(e, 'documentFile.printError'),
+    );
+  };
+
+  const saveAs = async (fmt: DocumentSaveAsFormat) => {
+    setSaveAsOpen(false);
+    setSaving(true);
+    try {
+      const file = await apiFileFetch(`${exportPath}/${fmt}`, `${fallbackName}.${fmt}`);
+      downloadBlob(file.blob, file.filename);
+    } catch (e: unknown) {
+      fail(e, 'documentFile.saveAsError');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <DocumentFileActions
+      printLabel={labels.print}
+      onPrint={print}
+      saveAsLabel={labels.saveAs}
+      saveAsOpen={saveAsOpen}
+      setSaveAsOpen={setSaveAsOpen}
+      onSaveAs={fmt => void saveAs(fmt)}
+      disabled={disabled || saving}
+    />
+  );
+}
+
 export interface DocumentEditActionsProps {
-  /** «Друк» і «Зберегти як» — лише для показаного документа (не для незнайденого, §9 п.4). */
-  showFile: boolean;
+  /**
+   * «Друк» і «Зберегти як» — лише для показаного документа (не для незнайденого, §9 п.4);
+   * `null` — кнопок немає. Видалений документ друкується (з позначкою «ВИДАЛЕНО»).
+   */
+  file: Pick<DocumentExportActionsProps, 'exportPath' | 'fallbackName' | 'onError'> | null;
   /** «Поділитись» і SMS — лише для документа, який можна змінювати (не видалений). */
   showShare: boolean;
   saveAsOpen: boolean;
@@ -231,12 +303,12 @@ export interface DocumentEditActionsProps {
 }
 
 /**
- * Дії підвалу збереженого рахунку, замовлення постачальнику і складського документа: друк
- * сторінки браузером, меню «Зберегти як» (формати ще не реалізовано — пункт лише закриває меню),
- * заглушки «Поділитись» / SMS і «Зберегти зміни».
+ * Дії підвалу збереженого рахунку, замовлення постачальнику і складського документа: друк і
+ * «Зберегти як» через сервер (`DocumentExportActions`), заглушки «Поділитись» / SMS і
+ * «Зберегти зміни».
  */
 export function DocumentEditActions({
-  showFile,
+  file,
   showShare,
   saveAsOpen,
   setSaveAsOpen,
@@ -249,14 +321,12 @@ export function DocumentEditActions({
   const disabled = saving || busy;
   return (
     <>
-      {showFile && (
-        <DocumentFileActions
-          printLabel={labels.print}
-          onPrint={() => window.print()}
-          saveAsLabel={labels.saveAs}
+      {file && (
+        <DocumentExportActions
+          {...file}
+          labels={labels}
           saveAsOpen={saveAsOpen}
           setSaveAsOpen={setSaveAsOpen}
-          onSaveAs={() => setSaveAsOpen(false)}
           disabled={disabled}
         />
       )}

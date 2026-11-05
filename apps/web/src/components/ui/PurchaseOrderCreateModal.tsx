@@ -1172,7 +1172,15 @@ export function PurchaseOrderCreateModal({
               {isEditMode ? (
                 <DocumentEditActions
                   save={canEdit ? { label: t('card.saveChanges'), onSave: handleSave } : null}
-                  showFile={!notLoaded}
+                  file={
+                    !notLoaded && purchaseOrderId
+                      ? {
+                          exportPath: `/purchase-orders/${purchaseOrderId}/export`,
+                          fallbackName: poNumber || purchaseOrderId,
+                          onError: setError,
+                        }
+                      : null
+                  }
                   showShare={!viewOnly}
                   labels={{
                     print: t('card.print'),
