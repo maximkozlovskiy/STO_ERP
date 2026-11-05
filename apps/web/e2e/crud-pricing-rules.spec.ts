@@ -248,6 +248,37 @@ test.describe('Правила ціноутворення — категорія 
     await expect(modal).not.toBeVisible({ timeout: 5_000 });
   });
 
+  // TECH-DEBT §8 L697: сканер штрихкоду друкує одразу після відкриття вибору — текст мусить
+  // потрапити в пошук, а після Escape фокус — повернутись на «Додати товар», а не впасти на <body>.
+  test('вибір товару: набір одразу йде в пошук, Escape повертає фокус на «Додати товар»', async ({
+    page,
+  }) => {
+    expect(goodIds, 'beforeAll має створити два товари').toHaveLength(2);
+    await gotoRules(page);
+    const modal = await openCreateForm(page);
+
+    const addGood = modal.getByRole('button', { name: 'Додати товар' });
+    await addGood.click();
+    const picker = page.getByRole('dialog', { name: 'Оберіть товар' });
+    await expect(picker).toBeVisible({ timeout: 8_000 });
+    const search = picker.getByPlaceholder('Пошук товару / штрих-код...');
+    await expect(search).toBeFocused();
+    // Без кліку в поле — як сканер.
+    await page.keyboard.type(goodA);
+    await expect(search).toHaveValue(goodA);
+    await expect(picker.getByRole('button', { name: new RegExp(goodA) })).toBeVisible({
+      timeout: 10_000,
+    });
+
+    await page.keyboard.press('Escape');
+    await expect(picker).not.toBeVisible({ timeout: 5_000 });
+    await expect(addGood).toBeFocused();
+    await expect(modal).toBeVisible();
+
+    await page.keyboard.press('Escape');
+    await expect(modal).not.toBeVisible({ timeout: 5_000 });
+  });
+
   test('правило зі списком товарів: 2 товари → прибрати один → 1 → видалити', async ({
     page,
   }, testInfo) => {
