@@ -109,21 +109,3 @@ model Comment {
   @@index([orgId, syncVersion])
   @@map("comments")
 }
-
-// F10: Work Order Templates
-model WorkOrderTemplate {
-  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  orgId       String    @db.Uuid
-  name        String
-  lines       Json      @default("[]")
-  parts       Json      @default("[]")
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  deletedAt   DateTime?
-  syncVersion BigInt    @default(0)
-
-  org Organisation @relation(fields: [orgId], references: [id], onDelete: Cascade)
-
-  @@index([orgId, deletedAt])
-  @@map("work_order_templates")
-}

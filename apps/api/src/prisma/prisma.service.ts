@@ -71,7 +71,6 @@ const SYNC_VERSION_MODELS = new Set([
   // Phases 16-19 additions
   'Brand',
   'UnitOfMeasure',
-  'WorkOrderTemplate',
   'Comment',
   'MaintenanceSchedule',
   'CompletionAct',

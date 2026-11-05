@@ -26,7 +26,6 @@ model Organisation {
   paymentMethods        PaymentMethodConfig[]
   employeeBranches      EmployeeBranch[]
   comments              Comment[]
-  workOrderTemplates    WorkOrderTemplate[]
   workOrderMedia        WorkOrderMedia[]
   auditEvents           AuditEvent[]
   warranties            Warranty[]

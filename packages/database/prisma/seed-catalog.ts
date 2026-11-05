@@ -5,7 +5,6 @@
  * Що робить:
  *   1. Читає sto_services_catalog_full.json → WorkCategory (71 шт.) + Work (345 шт.)
  *   2. Читає auto_parts_categories.json → GoodCategory (365 шт.)
- *   3. Будує WorkGoodCategoryLink через linked_service_codes
  *
  * Ідемпотентний: повторний запуск оновить тільки змінені поля, нових дублів не створить.
  */
@@ -232,50 +231,6 @@ async function main() {
 
   console.warn(`  GoodCategory: ${goodCatIdMap.size} оброблено`);
 
-  // ─── Step 4: WorkGoodCategoryLink ────────────────────────
-
-  // Будуємо маппінг code (верхнього рівня сервісної категорії) → [workCategoryDbId]
-  // linked_service_codes наприклад: ["ENG", "MNT"] — тобто верхньорівневі коди
-  const workCatByCode = new Map<string, string>(); // code → dbId (всі WorkCategory)
-  for (const [code, dbId] of existingWorkCatByCode) {
-    workCatByCode.set(code, dbId);
-  }
-
-  let linksCreated = 0;
-  let linksSkipped = 0;
-
-  for (const node of partsData.nodes) {
-    const goodCatDbId = goodCatIdMap.get(node.id);
-    if (!goodCatDbId) continue;
-
-    for (const serviceCode of node.linked_service_codes) {
-      const workCatDbId = workCatByCode.get(serviceCode);
-      if (!workCatDbId) {
-        linksSkipped++;
-        continue;
-      }
-
-      // Upsert link (ігнорувати якщо вже існує)
-      await prisma.workGoodCategoryLink.upsert({
-        where: {
-          orgId_workCategoryId_goodCategoryId: {
-            orgId: ORG_ID,
-            workCategoryId: workCatDbId,
-            goodCategoryId: goodCatDbId,
-          },
-        },
-        update: {},
-        create: {
-          orgId: ORG_ID,
-          workCategoryId: workCatDbId,
-          goodCategoryId: goodCatDbId,
-        },
-      });
-      linksCreated++;
-    }
-  }
-
-  console.warn(`  WorkGoodCategoryLink: ${linksCreated} записів, ${linksSkipped} пропущено`);
   console.warn('seed-catalog: завершено ✓');
 }
 

@@ -17,7 +17,6 @@ model WorkCategory {
   children               WorkCategory[]         @relation("CategoryHierarchy")
   works                  Work[]
   employeeWorkCategories EmployeeWorkCategory[]
-  goodLinks              WorkGoodCategoryLink[]
 
   @@index([orgId, deletedAt])
   @@index([orgId, syncVersion])
@@ -41,28 +40,12 @@ model GoodCategory {
   parent    GoodCategory?          @relation("GoodCatHierarchy", fields: [parentId], references: [id])
   children  GoodCategory[]         @relation("GoodCatHierarchy")
   goods     Good[]
-  workLinks WorkGoodCategoryLink[]
   pricingRules PricingRule[]
 
   @@index([orgId, deletedAt])
   @@index([orgId, parentId])
   @@index([orgId, syncVersion])
   @@map("good_categories")
-}
-
-model WorkGoodCategoryLink {
-  id             String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  orgId          String @db.Uuid
-  workCategoryId String @db.Uuid
-  goodCategoryId String @db.Uuid
-
-  workCategory WorkCategory @relation(fields: [workCategoryId], references: [id])
-  goodCategory GoodCategory @relation(fields: [goodCategoryId], references: [id])
-
-  @@unique([orgId, workCategoryId, goodCategoryId])
-  // [orgId,workCategoryId] надлишковий — префікс @@unique вище
-  @@index([orgId, goodCategoryId])
-  @@map("work_good_category_links")
 }
 
 model Work {
