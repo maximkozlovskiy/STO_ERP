@@ -267,18 +267,7 @@ export class PurchaseOrdersService {
   ): Promise<PurchaseOrderResponseDto> {
     const po = await (opts.db ?? this.prisma).purchaseOrder.findFirst({
       where: { id, orgId, ...(opts.withDeleted === true ? {} : { deletedAt: null }) },
-      include: {
-        supplier: { select: { firstName: true, lastName: true, companyName: true } },
-        warehouse: { select: { name: true } },
-        contract: { select: { id: true, number: true } },
-        currency: { select: { code: true } },
-        lines: {
-          where: { deletedAt: null },
-          orderBy: LINE_ORDER_BY_CREATED,
-          include: { good: PO_LINE_GOOD_INCLUDE },
-          take: 1000,
-        },
-      },
+      include: PO_WRITE_INCLUDE,
     });
     if (!po) throw new NotFoundException(err('err.purchaseOrder.notFound'));
     return this.toDto(po);
@@ -653,18 +642,7 @@ export class PurchaseOrdersService {
               : {}),
             ...trackingUpdate,
           },
-          include: {
-            supplier: { select: { firstName: true, lastName: true, companyName: true } },
-            warehouse: { select: { name: true } },
-            contract: { select: { id: true, number: true } },
-            currency: { select: { code: true } },
-            lines: {
-              where: { deletedAt: null },
-              orderBy: LINE_ORDER_BY_CREATED,
-              take: 1000,
-              include: { good: PO_LINE_GOOD_INCLUDE },
-            },
-          },
+          include: PO_WRITE_INCLUDE,
         });
       },
       { timeout: TRANSACTION_TIMEOUT_MS },

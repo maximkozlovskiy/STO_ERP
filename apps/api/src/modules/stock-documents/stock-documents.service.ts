@@ -50,6 +50,29 @@ const SD_SORT_FIELDS: Record<string, string> = {
   createdAt: 'createdAt',
 };
 
+/** Поля відповіді складського документа — картка, створення й зміна (одна форма DTO). */
+const SD_DETAIL_INCLUDE = {
+  branch: { select: { name: true } },
+  warehouse: { select: { name: true } },
+  targetWarehouse: { select: { name: true } },
+  purchaseOrder: { select: { number: true } },
+  lines: {
+    where: { deletedAt: null },
+    orderBy: LINE_ORDER_BY_CREATED,
+    take: 1000,
+    include: {
+      good: {
+        select: {
+          name: true,
+          sku: true,
+          unit: true,
+          unitOfMeasure: { select: { shortName: true, coefficient: true } },
+        },
+      },
+    },
+  },
+} as const satisfies Prisma.StockDocumentInclude;
+
 @Injectable()
 export class StockDocumentsService {
   constructor(
@@ -122,27 +145,7 @@ export class StockDocumentsService {
   ): Promise<StockDocumentResponseDto> {
     const doc = await this.prisma.stockDocument.findFirst({
       where: { id, orgId, ...(opts.withDeleted === true ? {} : { deletedAt: null }) },
-      include: {
-        branch: { select: { name: true } },
-        warehouse: { select: { name: true } },
-        targetWarehouse: { select: { name: true } },
-        purchaseOrder: { select: { number: true } },
-        lines: {
-          where: { deletedAt: null },
-          orderBy: LINE_ORDER_BY_CREATED,
-          take: 1000,
-          include: {
-            good: {
-              select: {
-                name: true,
-                sku: true,
-                unit: true,
-                unitOfMeasure: { select: { shortName: true, coefficient: true } },
-              },
-            },
-          },
-        },
-      },
+      include: SD_DETAIL_INCLUDE,
     });
     if (!doc)
       throw new NotFoundException(translateError('err.stockDocument.notFound', getLocale()));
@@ -283,27 +286,7 @@ export class StockDocumentsService {
         }
         return tx.stockDocument.findFirstOrThrow({
           where: { id: created.id, orgId, deletedAt: null },
-          include: {
-            branch: { select: { name: true } },
-            warehouse: { select: { name: true } },
-            targetWarehouse: { select: { name: true } },
-            purchaseOrder: { select: { number: true } },
-            lines: {
-              where: { deletedAt: null },
-              orderBy: LINE_ORDER_BY_CREATED,
-              take: 1000,
-              include: {
-                good: {
-                  select: {
-                    name: true,
-                    sku: true,
-                    unit: true,
-                    unitOfMeasure: { select: { shortName: true, coefficient: true } },
-                  },
-                },
-              },
-            },
-          },
+          include: SD_DETAIL_INCLUDE,
         });
       },
       { timeout: TRANSACTION_TIMEOUT_MS },
@@ -359,27 +342,7 @@ export class StockDocumentsService {
             notes: dto.notes,
             documentDate: dto.documentDate ? new Date(dto.documentDate) : undefined,
           },
-          include: {
-            branch: { select: { name: true } },
-            warehouse: { select: { name: true } },
-            targetWarehouse: { select: { name: true } },
-            purchaseOrder: { select: { number: true } },
-            lines: {
-              where: { deletedAt: null },
-              orderBy: LINE_ORDER_BY_CREATED,
-              take: 1000,
-              include: {
-                good: {
-                  select: {
-                    name: true,
-                    sku: true,
-                    unit: true,
-                    unitOfMeasure: { select: { shortName: true, coefficient: true } },
-                  },
-                },
-              },
-            },
-          },
+          include: SD_DETAIL_INCLUDE,
         });
       },
       { timeout: TRANSACTION_TIMEOUT_MS },
