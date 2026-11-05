@@ -312,4 +312,65 @@ test.describe('Правила ціноутворення — категорія 
 
     await deleteRuleViaUi(page, row);
   });
+
+  // BR-GOOD-013: CSV, який Excel у кириличній Windows зберігає в Windows-1251, і без рядка
+  // заголовків. Товари впізнаються лише за кириличною назвою: зламане кодування дало б «не
+  // знайдено», а перший рядок, прийнятий за заголовок, — лише один товар замість двох.
+  test('список товарів із CSV у Windows-1251 без рядка заголовків → обидва товари', async ({
+    page,
+  }, testInfo) => {
+    expect(goodIds, 'beforeAll має створити два товари').toHaveLength(2);
+    const ruleName = `${rulePrefix}-файл-${testInfo.retry}`;
+
+    await gotoRules(page);
+    const modal = await openCreateForm(page);
+    await modal.getByPlaceholder('Запчастини +35%').fill(ruleName);
+    await modal.getByLabel(/Надбавка, %/).fill('12');
+
+    // Порядок шаблону: Код; Артикул; Бренд; Штрихкод; Назва.
+    await modal.getByLabel('Файл зі списком товарів (.xlsx або .csv)').setInputFiles({
+      name: 'перелік.csv',
+      mimeType: 'text/csv',
+      buffer: cp1251(`;;;;${goodA}\r\n;;;;${goodB}\r\n`),
+    });
+
+    const panel = modal.getByRole('region', { name: 'Результат розпізнавання файла' });
+    await expect(panel).toBeVisible({ timeout: 15_000 });
+    // dt «Знайдено:» точно: підрядок без регістру зачепив би й «Не знайдено:».
+    const summary = (label: string) =>
+      panel
+        .locator('div')
+        .filter({ has: page.getByText(label, { exact: true }) })
+        .locator('dd');
+    await expect(summary('Рядків у файлі:')).toHaveText('2');
+    await expect(summary('Знайдено:')).toHaveText('2');
+    await expect(summary('Не знайдено:')).toHaveText('0');
+    await panel.getByRole('button', { name: 'Застосувати' }).click();
+    await expect(panel).not.toBeVisible({ timeout: 5_000 });
+    await expect(modal.getByText('Товари (2)')).toBeVisible();
+    await expect(modal.getByRole('cell', { name: goodA, exact: true })).toBeVisible();
+    await expect(modal.getByRole('cell', { name: goodB, exact: true })).toBeVisible();
+
+    await modal.getByRole('button', { name: 'Зберегти' }).click();
+    await expect(modal).not.toBeVisible({ timeout: 10_000 });
+    const row = await findRuleRow(page, ruleName);
+    await expect(row).toContainText('Товари: 2');
+    await deleteRuleViaUi(page, row);
+  });
 });
+
+/** Текст у Windows-1251 (латиниця, кирилиця А–я, Є І Ї Ґ). */
+function cp1251(text: string): Buffer {
+  const extra: Record<string, number> = { Ґ: 0xa5, ґ: 0xb4, Є: 0xaa, є: 0xba, І: 0xb2, і: 0xb3 };
+  Object.assign(extra, { Ї: 0xaf, ї: 0xbf });
+  return Buffer.from(
+    Array.from(text, ch => {
+      const code = ch.charCodeAt(0);
+      if (code < 0x80) return code;
+      if (code >= 0x410 && code <= 0x44f) return code - 0x410 + 0xc0;
+      const byte = extra[ch];
+      if (byte === undefined) throw new Error(`cp1251: немає символу ${ch}`);
+      return byte;
+    }),
+  );
+}

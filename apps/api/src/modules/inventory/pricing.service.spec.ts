@@ -19,6 +19,13 @@
  *  · прибрати перевірку `isActive` → кейс «вимкнене правило → 400» падає;
  *  · в історію — перше правило контексту замість переможця → кейс «правило-переможець» падає;
  *  · `break` після першої сторінки товарів (як колишня стеля) → кейс «ВСІ товари області» падає.
+ *
+ * BR-GOOD-012 — область правила постачальника (mutation-verify 2026-11-05):
+ *  · перше правило постачальника без каскаду області (як було) → кейси «поза областю не діє» і
+ *    «кілька правил постачальника» падають;
+ *  · правило постачальника не знайдено → `return null` замість загальних правил → кейс «поза
+ *    областю» падає;
+ *  · правила будь-якого постачальника замість свого → кейс «кілька правил постачальника» падає.
  */
 import { Test } from '@nestjs/testing';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
@@ -275,6 +282,67 @@ describe('PricingService.resolveRule — яке правило діє на то�
     expect(ruleFor([list, supplier], good(), {}, 's2')).toBe('list');
     // Без постачальника правило постачальника не стає загальним.
     expect(ruleFor([supplier], good())).toBeNull();
+  });
+
+  // guards: BR-GOOD-012
+  it('правило постачальника зі списком / брендом / категорією / типом поза областю не діє', () => {
+    const all = makeRule({ id: 'all', name: 'all' });
+    const parents = { brakes: null, pads: 'brakes', oils: null };
+    const supList = makeRule({ id: 'sl', name: 'sl', supplierId: 's1', goods: ['g1'] });
+    const supBrand = makeRule({ id: 'sb', name: 'sb', supplierId: 's1', brandId: 'b1' });
+    const supCat = makeRule({ id: 'sc', name: 'sc', supplierId: 's1', goodCategoryId: 'brakes' });
+    const supType = makeRule({ id: 'st', name: 'st', supplierId: 's1', goodType: 'SPARE_PART' });
+
+    // У своїй області — перемагає загальне правило.
+    expect(ruleFor([all, supList], good(), parents, 's1')).toBe('sl');
+    expect(ruleFor([all, supBrand], good({ brandId: 'b1' }), parents, 's1')).toBe('sb');
+    expect(ruleFor([all, supCat], good({ goodCategoryId: 'pads' }), parents, 's1')).toBe('sc');
+    expect(ruleFor([all, supType], good({ goodType: 'SPARE_PART' }), parents, 's1')).toBe('st');
+
+    // Поза областю — товар розцінює загальне правило, а не перше правило постачальника.
+    expect(ruleFor([supList, all], good({ id: 'g2' }), parents, 's1')).toBe('all');
+    expect(ruleFor([supBrand, all], good({ brandId: 'b2' }), parents, 's1')).toBe('all');
+    expect(ruleFor([supCat, all], good({ goodCategoryId: 'oils' }), parents, 's1')).toBe('all');
+    expect(ruleFor([supType, all], good({ goodType: 'CONSUMABLE' }), parents, 's1')).toBe('all');
+    // Загального правила немає → жодне не діє (ціна = собівартість), а не правило постачальника.
+    expect(ruleFor([supBrand], good({ brandId: 'b2' }), parents, 's1')).toBeNull();
+  });
+
+  // guards: BR-GOOD-012
+  it('правило постачальника без області діє на всі товари його закупівлі', () => {
+    const list = makeRule({ id: 'list', name: 'list', goods: ['g1'] });
+    const supAll = makeRule({ id: 'sa', name: 'sa', supplierId: 's1' });
+    expect(ruleFor([list, supAll], good(), {}, 's1')).toBe('sa');
+    expect(ruleFor([supAll], good({ id: 'g9', brandId: 'b7', goodType: 'OIL' }), {}, 's1')).toBe(
+      'sa',
+    );
+  });
+
+  // guards: BR-GOOD-012
+  it('кілька правил постачальника: точніша область перемагає, у межах рівня — пріоритет', () => {
+    const parents = { brakes: null, pads: 'brakes' };
+    // Порядок у масиві «від загального»: рівень важить більше за пріоритет — як для загальних.
+    const supAll = makeRule({ id: 'sa', name: 'sa', supplierId: 's1' });
+    const supType = makeRule({ id: 'st', name: 'st', supplierId: 's1', goodType: 'SPARE_PART' });
+    const supRoot = makeRule({ id: 'sr', name: 'sr', supplierId: 's1', goodCategoryId: 'brakes' });
+    const supNear = makeRule({ id: 'sn', name: 'sn', supplierId: 's1', goodCategoryId: 'pads' });
+    const supBrand = makeRule({ id: 'sb', name: 'sb', supplierId: 's1', brandId: 'b1' });
+    const supList = makeRule({ id: 'sl', name: 'sl', supplierId: 's1', goods: ['g1'] });
+    const g = good({ goodCategoryId: 'pads', goodType: 'SPARE_PART', brandId: 'b1' });
+
+    expect(ruleFor([supAll, supType, supRoot, supNear, supBrand, supList], g, parents, 's1')).toBe(
+      'sl',
+    );
+    expect(ruleFor([supAll, supType, supRoot, supNear, supBrand], g, parents, 's1')).toBe('sb');
+    // Ближча категорія перемагає дальшу, навіть якщо дальша вище за пріоритетом.
+    expect(ruleFor([supAll, supType, supRoot, supNear], g, parents, 's1')).toBe('sn');
+    expect(ruleFor([supAll, supType], g, parents, 's1')).toBe('st');
+    // Два правила одного рівня — перше в контексті (менший `priority`).
+    const supAll2 = makeRule({ id: 'sa2', name: 'sa2', supplierId: 's1' });
+    expect(ruleFor([supAll, supAll2], g, parents, 's1')).toBe('sa');
+    // Правило іншого постачальника не бере участі навіть зі списком, де є товар.
+    const otherList = makeRule({ id: 'ol', name: 'ol', supplierId: 's2', goods: ['g1'] });
+    expect(ruleFor([otherList, supAll], g, parents, 's1')).toBe('sa');
   });
 });
 
