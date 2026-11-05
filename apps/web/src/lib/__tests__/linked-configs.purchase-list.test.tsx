@@ -10,9 +10,11 @@ import { describe, it, expect, vi } from 'vitest';
 import { ClipboardList, ListChecks, ShoppingCart } from 'lucide-react';
 import { purchaseListLinkedConfig } from '../linked-configs';
 import type { LinkedNav } from '../linked-nav';
+import { canOpen } from '../nav';
 
-function makeNav() {
+function makeNav(role = 'OWNER') {
   return {
+    canOpen: (kind: Parameters<LinkedNav['canOpen']>[0]) => canOpen(kind, role),
     toWorkOrder: vi.fn(),
     toCounterparty: vi.fn(),
     toInvoice: vi.fn(),
@@ -93,11 +95,7 @@ describe('purchaseListLinkedConfig (BR-PL-020)', () => {
 
   // guards: BR-PL-020
   it('приймальня: замовлення без переходу (картка замовлення їй закрита) і без суми (§2.1)', () => {
-    const nav = makeNav();
-    const s = sectionOf(
-      purchaseListLinkedConfig(nav, { canOpenPurchaseOrders: false }),
-      'purchaseOrders',
-    );
+    const s = sectionOf(purchaseListLinkedConfig(makeNav('RECEPTIONIST')), 'purchaseOrders');
     const row = s.mapRow({
       id: 'po-1',
       number: 'ЗП-1',

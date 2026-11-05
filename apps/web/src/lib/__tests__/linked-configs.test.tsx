@@ -9,10 +9,13 @@ import {
   counterpartyLinkedConfig,
 } from '../linked-configs';
 import type { LinkedNav } from '../linked-nav';
+import { canOpen } from '../nav';
 
-// Мок-навігація: кожен метод — spy, щоб перевірити куди веде navigate().
-function makeNav(): LinkedNav & Record<string, ReturnType<typeof vi.fn>> {
+// Мок-навігація: кожен метод — spy, щоб перевірити куди веде navigate(); доступ — справжній
+// `canOpen` для ролі (типово власник — відкриває все).
+function makeNav(role = 'OWNER'): LinkedNav & Record<string, ReturnType<typeof vi.fn>> {
   return {
+    canOpen: vi.fn(kind => canOpen(kind, role)),
     toWorkOrder: vi.fn(),
     toCounterparty: vi.fn(),
     toInvoice: vi.fn(),
@@ -81,10 +84,9 @@ describe('linked-configs — behaviour parity of parametrized builders', () => {
   // guards: BR-WAR-005
   it('work-order → гарантія веде на вкладку «Гарантії» з відкритою гарантією', () => {
     const nav = makeNav();
-    const warranty = section(
-      workOrderLinkedConfig(nav, { canOpenWarranties: true }),
-      'warranties',
-    ).mapRow(WARRANTY_ROW as never);
+    const warranty = section(workOrderLinkedConfig(nav), 'warranties').mapRow(
+      WARRANTY_ROW as never,
+    );
     expect(warranty.navigate).toBeTypeOf('function');
     warranty.navigate?.();
     expect(nav.toWarranty).toHaveBeenCalledWith('w1');
@@ -92,10 +94,53 @@ describe('linked-configs — behaviour parity of parametrized builders', () => {
 
   // guards: BR-WAR-005
   it('work-order → гарантія без переходу для ролі без вкладки «Гарантії» (механік)', () => {
-    const warranty = section(workOrderLinkedConfig(makeNav()), 'warranties').mapRow(
+    const warranty = section(workOrderLinkedConfig(makeNav('MECHANIC')), 'warranties').mapRow(
       WARRANTY_ROW as never,
     );
     expect(warranty.navigate).toBeUndefined();
+  });
+
+  // Перехід у рядку «Пов'язаних документів» — лише ролі, яку пускає сторінка документа
+  // (`nav.canOpen`); інакше рядок без переходу, а не посилання на 403 (техборг §15 п. 4).
+  it.each([
+    [
+      'ACCOUNTANT',
+      'calendarSlots',
+      { id: 's1', startAt: '2026-06-10T16:00:00.000Z', status: 'BOOKED' },
+    ],
+    ['MECHANIC', 'invoices', INV_ROW],
+    [
+      'MECHANIC',
+      'purchaseLists',
+      { id: 'pl1', number: '1', status: 'OPEN', createdAt: '2026-06-10' },
+    ],
+  ] as const)('наряд: %s — %s без переходу', (role, key, row) => {
+    const mapped = section(workOrderLinkedConfig(makeNav(role)), key).mapRow(row as never);
+    expect(mapped.navigate).toBeUndefined();
+    const owner = section(workOrderLinkedConfig(makeNav()), key).mapRow(row as never);
+    expect(owner.navigate).toBeTypeOf('function');
+  });
+
+  it('постачальник у замовленні й поверненні: комірнику без переходу (картки контрагента немає)', () => {
+    const cp = { id: 'cp1', name: 'Постачальник', phone: null };
+    for (const factory of [purchaseOrderLinkedConfig, supplierReturnLinkedConfig]) {
+      const nav = makeNav('STOREKEEPER');
+      expect(section(factory(nav), 'counterparty').mapRow(cp as never).navigate).toBeUndefined();
+      const ownerNav = makeNav();
+      section(factory(ownerNav), 'counterparty')
+        .mapRow(cp as never)
+        .navigate?.();
+      expect(ownerNav.toCounterparty).toHaveBeenCalledWith('cp1');
+    }
+  });
+
+  it('картка контрагента: приймальні замовлення й повернення без переходу', () => {
+    const nav = makeNav('RECEPTIONIST');
+    const config = counterpartyLinkedConfig(nav);
+    expect(section(config, 'purchaseOrders').mapRow(PO_ROW as never).navigate).toBeUndefined();
+    const sr = { id: 'sr1', number: 'ПП-1', status: 'DRAFT', totalAmount: 1, documentDate: null };
+    expect(section(config, 'supplierReturns').mapRow(sr as never).navigate).toBeUndefined();
+    expect(section(config, 'invoices').mapRow(INV_ROW as never).navigate).toBeTypeOf('function');
   });
 
   describe('invoiceSection: secondary — DATE у наряді, AMOUNT у картці контрагента', () => {

@@ -28,8 +28,18 @@ vi.mock('@/lib/format', () => ({
 }));
 vi.mock('@/components/ui/date-picker-input', () => ({ DatePickerInput: () => null }));
 
-const nav = vi.hoisted(() => ({ toWorkOrder: vi.fn(), toPurchaseOrder: vi.fn() }));
-vi.mock('@/lib/linked-nav', () => ({ useLinkedNav: () => nav }));
+// Роль каси: власник відкриває і наряд, і замовлення; приймальні замовлення закрите (BR-PO-015).
+const nav = vi.hoisted(() => ({
+  role: 'OWNER',
+  toWorkOrder: vi.fn(),
+  toPurchaseOrder: vi.fn(),
+  canOpen: (_kind: string): boolean => true,
+}));
+vi.mock('@/lib/linked-nav', async () => {
+  const { canOpen } = await vi.importActual<typeof import('@/lib/nav')>('@/lib/nav');
+  nav.canOpen = kind => canOpen(kind as Parameters<typeof canOpen>[0], nav.role);
+  return { useLinkedNav: () => nav };
+});
 
 let operations: CashOperation[] = [];
 const retryMutateAsync = vi.fn();
@@ -100,6 +110,7 @@ const rowOf = (text: string) => screen.getByText(text).closest('tr') as HTMLElem
 describe('CashOperationsTab — історія операцій', () => {
   beforeEach(() => {
     operations = [];
+    nav.role = 'OWNER';
     nav.toWorkOrder.mockReset();
     nav.toPurchaseOrder.mockReset();
     retryMutateAsync.mockReset();
@@ -156,7 +167,7 @@ describe('CashOperationsTab — історія операцій', () => {
         baseDocumentNumber: 'ЗП-000003',
       }),
     ];
-    render(<CashOperationsTab canOperate canOpenPurchaseOrders />);
+    render(<CashOperationsTab canOperate />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Відкрити документ НЗ-000012' }));
     expect(nav.toWorkOrder).toHaveBeenCalledWith(WORK_ORDER);
@@ -170,6 +181,7 @@ describe('CashOperationsTab — історія операцій', () => {
   // Бухгалтер у «Купівлі» бачить лише графік оплат, приймальню звідти веде на /403: посилання
   // на картку замовлення для них вело б у нікуди. Наряд відкривають обидві ролі.
   it('роль без доступу до замовлень: номер замовлення-підстави — текст, наряд — далі посилання', () => {
+    nav.role = 'RECEPTIONIST';
     operations = [
       salePayment(),
       op({

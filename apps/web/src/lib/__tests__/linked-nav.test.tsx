@@ -10,11 +10,29 @@ const router = { push };
 vi.mock('next/navigation', () => ({
   useRouter: () => router,
 }));
+const auth = vi.hoisted(() => ({ role: 'OWNER' as string | null }));
+vi.mock('@/lib/auth', () => ({
+  useAuth: () => ({ employee: auth.role ? { role: auth.role } : null }),
+}));
 
 const ID = '11111111-1111-4111-8111-111111111111';
 
 describe('useLinkedNav — URL-контракт deep-link навігації', () => {
-  beforeEach(() => push.mockReset());
+  beforeEach(() => {
+    push.mockReset();
+    auth.role = 'OWNER';
+  });
+
+  // Доступ — роль поточного співробітника через `canOpen` з lib/nav (техборг §15 п. 4).
+  it('canOpen — за роллю з auth: комірнику склад так, наряд ні; без сесії — нічого', () => {
+    auth.role = 'STOREKEEPER';
+    const { result, rerender } = renderHook(() => useLinkedNav());
+    expect(result.current.canOpen('stockDocument')).toBe(true);
+    expect(result.current.canOpen('workOrder')).toBe(false);
+    auth.role = null;
+    rerender();
+    expect(result.current.canOpen('stockDocument')).toBe(false);
+  });
 
   it('routed detail-сторінки: work-order / counterparty', () => {
     const { result } = renderHook(() => useLinkedNav());
@@ -29,7 +47,7 @@ describe('useLinkedNav — URL-контракт deep-link навігації', (
     const { result } = renderHook(() => useLinkedNav());
     expect(Object.keys(result.current)).not.toContain('toSupplierPayment');
     for (const [name, go] of Object.entries(result.current)) {
-      if (name !== 'toCalendarDay') go(ID);
+      if (name.startsWith('to') && name !== 'toCalendarDay') (go as (id: string) => void)(ID);
     }
     const targets = push.mock.calls.map(c => String(c[0]));
     expect(targets.filter(u => /^\/(supplier-)?payments(\/|\?|$)/.test(u))).toEqual([]);

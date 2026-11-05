@@ -19,6 +19,7 @@ vi.mock('next/navigation', () => ({
   usePathname: () => '/reports',
 }));
 vi.mock('next/dynamic', () => ({ default: () => () => null }));
+vi.mock('@/lib/auth', () => ({ useAuth: () => ({ employee: { role: 'OWNER' } }) }));
 
 import {
   LoadReportView,

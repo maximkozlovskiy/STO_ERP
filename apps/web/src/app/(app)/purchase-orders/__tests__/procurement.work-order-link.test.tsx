@@ -10,9 +10,17 @@ import { vi, it, expect, describe, beforeEach } from 'vitest';
 import type { PurchaseListItem, ShortageRow } from '@/hooks/api/usePurchaseLists';
 
 const toWorkOrder = vi.fn();
-vi.mock('@/lib/linked-nav', () => ({
-  useLinkedNav: () => ({ toWorkOrder, toPurchaseOrder: vi.fn() }),
-}));
+// Доступ — справжній `canOpen` для ролі тесту (`<LinkedDocRef>` читає його з useLinkedNav).
+vi.mock('@/lib/linked-nav', async () => {
+  const { canOpen } = await vi.importActual<typeof import('@/lib/nav')>('@/lib/nav');
+  return {
+    useLinkedNav: () => ({
+      toWorkOrder,
+      toPurchaseOrder: vi.fn(),
+      canOpen: (kind: Parameters<typeof canOpen>[0]) => canOpen(kind, role),
+    }),
+  };
+});
 vi.mock('@/lib/api-client', () => ({
   apiFetch: (path: string) =>
     path.startsWith('/counterparties')
