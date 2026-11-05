@@ -5,6 +5,8 @@ import type { FastifyReply } from 'fastify';
 import { Public } from '../../auth/decorators/public.decorator';
 import { WorkOrderShareService } from './work-order-share.service';
 import { EstimateExportService } from './work-orders-export.service';
+import { sendFile } from '../../common/http/send-file';
+import { DOCX_MIME, PDF_MIME, XLSX_MIME } from '../../common/office/mime';
 
 /**
  * Публічний (без auth) endpoint для перегляду кошторису за share-токеном.
@@ -37,12 +39,7 @@ export class WorkOrdersPublicController {
   @ApiProduces('application/pdf')
   async exportPdf(@Param('token') token: string, @Res() reply: FastifyReply) {
     const { buffer, filename } = await this.exportService.generatePdf(token);
-    const encoded = encodeURIComponent(filename);
-    void reply
-      .header('Content-Type', 'application/pdf')
-      .header('Content-Disposition', `attachment; filename*=UTF-8''${encoded}`)
-      .header('Content-Length', buffer.length)
-      .send(buffer);
+    sendFile(reply, buffer, filename, PDF_MIME);
   }
 
   @Get(':token/export/xlsx')
@@ -51,12 +48,7 @@ export class WorkOrdersPublicController {
   @ApiProduces('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
   async exportXlsx(@Param('token') token: string, @Res() reply: FastifyReply) {
     const { buffer, filename } = await this.exportService.generateXlsx(token);
-    const encoded = encodeURIComponent(filename);
-    void reply
-      .header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-      .header('Content-Disposition', `attachment; filename*=UTF-8''${encoded}`)
-      .header('Content-Length', buffer.length)
-      .send(buffer);
+    sendFile(reply, buffer, filename, XLSX_MIME);
   }
 
   @Get(':token/export/docx')
@@ -65,15 +57,7 @@ export class WorkOrdersPublicController {
   @ApiProduces('application/vnd.openxmlformats-officedocument.wordprocessingml.document')
   async exportDocx(@Param('token') token: string, @Res() reply: FastifyReply) {
     const { buffer, filename } = await this.exportService.generateDocx(token);
-    const encoded = encodeURIComponent(filename);
-    void reply
-      .header(
-        'Content-Type',
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      )
-      .header('Content-Disposition', `attachment; filename*=UTF-8''${encoded}`)
-      .header('Content-Length', buffer.length)
-      .send(buffer);
+    sendFile(reply, buffer, filename, DOCX_MIME);
   }
 
   @Get(':token')

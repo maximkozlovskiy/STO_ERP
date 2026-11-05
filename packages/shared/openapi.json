@@ -2336,7 +2336,7 @@
         ],
         "responses": {
           "200": {
-            "description": "EmployeeLookupListDto — для ролі MECHANIC, EmployeeListDto — для решти",
+            "description": "EmployeeLookupListDto — для ролі MECHANIC, EmployeeListDto — для решти; `rateScheme` у рядку — лише для OWNER/ADMIN (як EmployeeDetailDto)",
             "content": {
               "application/json": {
                 "schema": {
@@ -14826,6 +14826,258 @@
         "summary": "Видалити рядок рахунку",
         "tags": [
           "Invoices"
+        ]
+      }
+    },
+    "/api/v1/invoices/{id}/export/{format}": {
+      "get": {
+        "operationId": "DocumentExportController_invoice_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "format",
+            "required": true,
+            "in": "path",
+            "description": "Формат файла; інший — 400",
+            "schema": {
+              "enum": [
+                "pdf",
+                "xlsx",
+                "docx"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Файл документа; ім'я — у Content-Disposition (filename*=UTF-8''…)",
+            "content": {
+              "application/pdf": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "application/vnd.openxmlformats-officedocument.wordprocessingml.document": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Рахунок у PDF / Excel / Word (BR-INV-028)",
+        "tags": [
+          "Document export"
+        ]
+      }
+    },
+    "/api/v1/purchase-orders/{id}/export/{format}": {
+      "get": {
+        "operationId": "DocumentExportController_purchaseOrder_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "format",
+            "required": true,
+            "in": "path",
+            "description": "Формат файла; інший — 400",
+            "schema": {
+              "enum": [
+                "pdf",
+                "xlsx",
+                "docx"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Файл документа; ім'я — у Content-Disposition (filename*=UTF-8''…)",
+            "content": {
+              "application/pdf": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "application/vnd.openxmlformats-officedocument.wordprocessingml.document": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Замовлення постачальнику у PDF / Excel / Word (BR-PO-016)",
+        "tags": [
+          "Document export"
+        ]
+      }
+    },
+    "/api/v1/stock-documents/{id}/export/{format}": {
+      "get": {
+        "operationId": "DocumentExportController_stockDocument_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "format",
+            "required": true,
+            "in": "path",
+            "description": "Формат файла; інший — 400",
+            "schema": {
+              "enum": [
+                "pdf",
+                "xlsx",
+                "docx"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Файл документа; ім'я — у Content-Disposition (filename*=UTF-8''…)",
+            "content": {
+              "application/pdf": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "application/vnd.openxmlformats-officedocument.wordprocessingml.document": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Складський документ у PDF / Excel / Word (BR-SDOC-009)",
+        "tags": [
+          "Document export"
+        ]
+      }
+    },
+    "/api/v1/supplier-returns/{id}/export/{format}": {
+      "get": {
+        "operationId": "DocumentExportController_supplierReturn_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "format",
+            "required": true,
+            "in": "path",
+            "description": "Формат файла; інший — 400",
+            "schema": {
+              "enum": [
+                "pdf",
+                "xlsx",
+                "docx"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Файл документа; ім'я — у Content-Disposition (filename*=UTF-8''…)",
+            "content": {
+              "application/pdf": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "application/vnd.openxmlformats-officedocument.wordprocessingml.document": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Повернення постачальнику у PDF / Excel / Word (BR-SRET-014)",
+        "tags": [
+          "Document export"
         ]
       }
     },

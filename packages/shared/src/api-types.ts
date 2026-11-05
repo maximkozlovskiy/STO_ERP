@@ -4521,6 +4521,74 @@ export interface paths {
         patch: operations["InvoicesController_updateLine_v1"];
         trace?: never;
     };
+    "/api/v1/invoices/{id}/export/{format}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Рахунок у PDF / Excel / Word (BR-INV-028) */
+        get: operations["DocumentExportController_invoice_v1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/purchase-orders/{id}/export/{format}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Замовлення постачальнику у PDF / Excel / Word (BR-PO-016) */
+        get: operations["DocumentExportController_purchaseOrder_v1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stock-documents/{id}/export/{format}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Складський документ у PDF / Excel / Word (BR-SDOC-009) */
+        get: operations["DocumentExportController_stockDocument_v1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/supplier-returns/{id}/export/{format}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Повернення постачальнику у PDF / Excel / Word (BR-SRET-014) */
+        get: operations["DocumentExportController_supplierReturn_v1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/payments": {
         parameters: {
             query?: never;
@@ -12722,7 +12790,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description EmployeeLookupListDto — для ролі MECHANIC, EmployeeListDto — для решти */
+            /** @description EmployeeLookupListDto — для ролі MECHANIC, EmployeeListDto — для решти; `rateScheme` у рядку — лише для OWNER/ADMIN (як EmployeeDetailDto) */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -19470,6 +19538,110 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["InvoiceLineResponseDto"];
+                };
+            };
+        };
+    };
+    DocumentExportController_invoice_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                /** @description Формат файла; інший — 400 */
+                format: "pdf" | "xlsx" | "docx";
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Файл документа; ім'я — у Content-Disposition (filename*=UTF-8''…) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": string;
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": string;
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": string;
+                };
+            };
+        };
+    };
+    DocumentExportController_purchaseOrder_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                /** @description Формат файла; інший — 400 */
+                format: "pdf" | "xlsx" | "docx";
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Файл документа; ім'я — у Content-Disposition (filename*=UTF-8''…) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": string;
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": string;
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": string;
+                };
+            };
+        };
+    };
+    DocumentExportController_stockDocument_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                /** @description Формат файла; інший — 400 */
+                format: "pdf" | "xlsx" | "docx";
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Файл документа; ім'я — у Content-Disposition (filename*=UTF-8''…) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": string;
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": string;
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": string;
+                };
+            };
+        };
+    };
+    DocumentExportController_supplierReturn_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                /** @description Формат файла; інший — 400 */
+                format: "pdf" | "xlsx" | "docx";
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Файл документа; ім'я — у Content-Disposition (filename*=UTF-8''…) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": string;
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": string;
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": string;
                 };
             };
         };

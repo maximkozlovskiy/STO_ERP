@@ -27,6 +27,7 @@ import {
   StockDocumentResponseDto,
   PaginatedStockDocumentsDto,
 } from './stock-documents.dto';
+import { LINE_ORDER_BY_CREATED, orderedLineStamps } from '../../common/utils/line-order';
 
 type DocStatus = 'DRAFT' | 'CONFIRMED' | 'CANCELLED';
 
@@ -128,6 +129,7 @@ export class StockDocumentsService {
         purchaseOrder: { select: { number: true } },
         lines: {
           where: { deletedAt: null },
+          orderBy: LINE_ORDER_BY_CREATED,
           take: 1000,
           include: {
             good: {
@@ -267,8 +269,10 @@ export class StockDocumentsService {
           actorId: userId ?? null,
         });
         if (lines.length) {
+          const stamps = orderedLineStamps(lines.length);
           await tx.stockDocumentLine.createMany({
-            data: lines.map(l => ({
+            data: lines.map((l, i) => ({
+              createdAt: stamps[i],
               orgId,
               stockDocumentId: created.id,
               goodId: l.goodId,
@@ -286,6 +290,7 @@ export class StockDocumentsService {
             purchaseOrder: { select: { number: true } },
             lines: {
               where: { deletedAt: null },
+              orderBy: LINE_ORDER_BY_CREATED,
               take: 1000,
               include: {
                 good: {
@@ -335,8 +340,10 @@ export class StockDocumentsService {
             data: { deletedAt: new Date() },
           });
           if (dto.lines.length) {
+            const stamps = orderedLineStamps(dto.lines.length);
             await tx.stockDocumentLine.createMany({
-              data: dto.lines.map(l => ({
+              data: dto.lines.map((l, i) => ({
+                createdAt: stamps[i],
                 orgId,
                 stockDocumentId: id,
                 goodId: l.goodId,
@@ -359,6 +366,7 @@ export class StockDocumentsService {
             purchaseOrder: { select: { number: true } },
             lines: {
               where: { deletedAt: null },
+              orderBy: LINE_ORDER_BY_CREATED,
               take: 1000,
               include: {
                 good: {

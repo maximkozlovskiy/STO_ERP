@@ -26,22 +26,12 @@ import {
   PaginatedSupplierReturnsDto,
 } from './supplier-returns.dto';
 import { numberOrSupplierSearch } from '../../common/utils/like-pattern';
+import { LINE_ORDER_BY_CREATED, orderedLineStamps } from '../../common/utils/line-order';
 
 type SRStatus = SupplierReturnStatus;
 
-// BR-PO-008: рядки повернення віддаються в тому порядку, в якому їх надіслали. Окремої колонки
-// порядку в таблиці немає, а `createdAt` за замовчуванням — час початку транзакції, тобто
-// однаковий для всіх рядків одного запису. Тому сервіс сам проставляє `createdAt` зі зсувом
-// 1 мс на рядок (`orderedLineStamps`), а читання сортує за ним.
-const SR_LINE_ORDER: Prisma.SupplierReturnLineOrderByWithRelationInput[] = [
-  { createdAt: 'asc' },
-  { id: 'asc' },
-];
-
-function orderedLineStamps(count: number): Date[] {
-  const base = Date.now();
-  return Array.from({ length: count }, (_, i) => new Date(base + i));
-}
+// BR-PO-008: рядки повернення віддаються в тому порядку, в якому їх надіслали (`line-order.ts`).
+const SR_LINE_ORDER: Prisma.SupplierReturnLineOrderByWithRelationInput[] = LINE_ORDER_BY_CREATED;
 
 // Поля відповіді повернення постачальнику — картка й створення (одна форма DTO).
 const SR_DETAIL_INCLUDE = {

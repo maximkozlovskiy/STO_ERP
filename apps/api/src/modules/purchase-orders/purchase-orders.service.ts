@@ -38,6 +38,7 @@ import {
   PaginatedPurchaseOrdersDto,
 } from './purchase-orders.dto';
 import { numberOrSupplierSearch } from '../../common/utils/like-pattern';
+import { LINE_ORDER_BY_CREATED, orderedLineStamps } from '../../common/utils/line-order';
 
 type POStatus = PurchaseOrderStatus;
 
@@ -94,6 +95,7 @@ const PO_WRITE_INCLUDE = {
   currency: { select: { code: true } },
   lines: {
     where: { deletedAt: null },
+    orderBy: LINE_ORDER_BY_CREATED,
     take: 1000,
     include: { good: PO_LINE_GOOD_INCLUDE },
   },
@@ -272,6 +274,7 @@ export class PurchaseOrdersService {
         currency: { select: { code: true } },
         lines: {
           where: { deletedAt: null },
+          orderBy: LINE_ORDER_BY_CREATED,
           include: { good: PO_LINE_GOOD_INCLUDE },
           take: 1000,
         },
@@ -436,8 +439,14 @@ export class PurchaseOrdersService {
       actorId,
     });
     if (prepared.lines.length) {
+      const stamps = orderedLineStamps(prepared.lines.length);
       await tx.purchaseOrderLine.createMany({
-        data: prepared.lines.map(l => ({ orgId, purchaseOrderId: created.id, ...l })),
+        data: prepared.lines.map((l, i) => ({
+          orgId,
+          purchaseOrderId: created.id,
+          ...l,
+          createdAt: stamps[i],
+        })),
       });
     }
     return created;
@@ -598,8 +607,10 @@ export class PurchaseOrdersService {
             data: { deletedAt: new Date() },
           });
           if (computedLines.length) {
+            const stamps = orderedLineStamps(computedLines.length);
             await tx.purchaseOrderLine.createMany({
-              data: computedLines.map(l => ({
+              data: computedLines.map((l, i) => ({
+                createdAt: stamps[i],
                 orgId,
                 purchaseOrderId: id,
                 goodId: l.goodId,
@@ -649,6 +660,7 @@ export class PurchaseOrdersService {
             currency: { select: { code: true } },
             lines: {
               where: { deletedAt: null },
+              orderBy: LINE_ORDER_BY_CREATED,
               take: 1000,
               include: { good: PO_LINE_GOOD_INCLUDE },
             },

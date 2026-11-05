@@ -56,6 +56,7 @@ import { SupplierReturnsModule } from './modules/supplier-returns/supplier-retur
 import { SupplierPaymentsModule } from './modules/supplier-payments/supplier-payments.module';
 import { StockDocumentsModule } from './modules/stock-documents/stock-documents.module';
 import { InvoicesModule } from './modules/invoices/invoices.module';
+import { DocumentExportModule } from './modules/document-export/document-export.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { BankStatementsModule } from './modules/bank-statements/bank-statements.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
@@ -222,6 +223,7 @@ import { TelegramBotModule } from './modules/telegram-bot/telegram-bot.module';
     SupplierPaymentsModule,
     StockDocumentsModule,
     InvoicesModule,
+    DocumentExportModule,
     PaymentsModule,
     BankStatementsModule,
     NotificationsModule,

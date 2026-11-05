@@ -369,6 +369,7 @@ export const en: Record<string, string> = {
   'err.file.tooLarge': 'The file is too large (maximum 10 MB)',
   'err.file.serviceUnavailable': 'The file service is unavailable',
   'err.file.disallowedFormat': 'Disallowed file format',
+  'err.documentExport.unknownFormat': 'Unknown file format "{{format}}". Available: {{allowed}}',
   'err.file.typeMismatch': 'File content does not match its extension',
   'err.file.importTooLarge': 'The import file is too large',
   'err.file.tooManyRows': 'Too many rows in the import file',

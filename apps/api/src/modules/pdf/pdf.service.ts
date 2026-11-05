@@ -1,6 +1,16 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { resolve } from 'path';
 import { SETTLEMENT_TX_TYPE_LABELS } from '@sto/shared';
+import type { OrgPrintInfo } from './org-print-info.types';
+import {
+  DELETED_MARK,
+  cellText,
+  currencySuffix,
+  orgDetailLines,
+  type PrintableColumn,
+  type PrintableDocument,
+  type PrintableParty,
+} from '../document-export/printable-document';
 // pdfmake v0.3.x server-side API: singleton instance with createPdf(docDef).getBuffer().
 // The legacy `pdfmake/build/pdfmake` path is a browser-only UMD bundle and has no PdfPrinter class.
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -42,30 +52,7 @@ const UA_DATE_FMT = new Intl.DateTimeFormat('uk-UA', {
   year: 'numeric',
 });
 
-/**
- * Реквізити організації для шапки друкованого документа (`OrgPrintInfoService.get`).
- * Усе, крім назви, необов'язкове: незаповнене в НДІ просто не друкується.
- */
-export interface OrgPrintInfo {
-  name: string;
-  edrpou?: string | null;
-  /** ІПН платника ПДВ. */
-  ipn?: string | null;
-  /** Фактична адреса, інакше юридична. */
-  address?: string | null;
-  phone?: string | null;
-  email?: string | null;
-  /** Логотип як data URL (PNG/JPEG) — лише перевірений `OrgPrintInfoService`. */
-  logo?: string | null;
-  /** Основний банківський рахунок організації (НДІ → «Реквізити»). */
-  bank?: {
-    iban: string;
-    bankName?: string | null;
-    mfo?: string | null;
-    /** ЄДРПОУ одержувача на рахунку, якщо відрізняється від ЄДРПОУ організації. */
-    edrpou?: string | null;
-  } | null;
-}
+export type { OrgPrintInfo } from './org-print-info.types';
 
 /** Ключ логотипа в `docDefinition.images` — сам рядок data URL в `image:` не підставляємо. */
 const LOGO_IMAGE_KEY = 'orgLogo';
@@ -365,6 +352,91 @@ export class PdfService {
     }));
   }
 
+  /**
+   * Друкований документ із нейтральної моделі (`document-export`): рахунок, замовлення
+   * постачальнику, складський документ, повернення (BR-INV-028, BR-PO-016, BR-SDOC-009,
+   * BR-SRET-014). Ті самі рядки й суми, що в XLSX і DOCX того самого документа.
+   */
+  async generateDocumentPdf(org: OrgPrintInfo, doc: PrintableDocument): Promise<Buffer> {
+    const cell = (col: PrintableColumn, v: PrintableDocument['rows'][number][number]): TableCell =>
+      col.kind === 'text'
+        ? cellText(col.kind, v)
+        : {
+            text:
+              col.kind === 'money' && typeof v === 'number'
+                ? this.fmtMoney(v, doc.currencyCode)
+                : cellText(col.kind, v),
+            alignment: 'right',
+          };
+    return this.render(org, o => ({
+      ...this.page(o),
+      content: [
+        this.header(o, `${doc.title} № ${doc.number}`),
+        ...(doc.deleted
+          ? [{ text: DELETED_MARK, bold: true, fontSize: 14, color: '#C00000', alignment: 'right' }]
+          : []),
+        { text: `Дата: ${doc.date}`, margin: [0, 4, 0, 4] },
+        ...doc.fields.map(f => ({ text: `${f.label}: ${f.value}`, margin: [0, 0, 0, 2] })),
+        ...doc.parties.map(p => this.printableParty(p)),
+        { text: ' ', margin: [0, 4] },
+        {
+          table: {
+            headerRows: 1,
+            widths: doc.columns.map((c, i) =>
+              i === 0 ? '*' : c.kind === 'money' ? 70 : c.kind === 'qty' ? 45 : 35,
+            ),
+            body: [
+              doc.columns.map(c => ({
+                text: c.label,
+                bold: true,
+                ...(c.kind === 'text' ? {} : { alignment: 'right' }),
+              })),
+              ...doc.rows.map(r => doc.columns.map((c, i) => cell(c, r[i] ?? null))),
+            ],
+          },
+          layout: 'lightHorizontalLines',
+        },
+        { text: ' ', margin: [0, 4] },
+        ...(doc.totals.length > 0
+          ? [
+              {
+                columns: [
+                  { width: '*', text: '' },
+                  {
+                    width: 220,
+                    stack: doc.totals.map(t => ({
+                      columns: [
+                        { text: `${t.label}:`, width: '*', bold: !!t.strong },
+                        {
+                          text: this.fmtMoney(t.value, doc.currencyCode),
+                          width: 100,
+                          alignment: 'right',
+                          bold: !!t.strong,
+                        },
+                      ],
+                    })),
+                  },
+                ],
+              },
+            ]
+          : []),
+        ...(doc.notes
+          ? [{ text: `Примітка: ${doc.notes}`, margin: [0, 8, 0, 0], fontSize: 9 }]
+          : []),
+      ],
+    }));
+  }
+
+  private printableParty(p: PrintableParty): Content {
+    return {
+      stack: [
+        { text: `${p.label}:`, bold: true, fontSize: 9 },
+        ...p.lines.map((text, i) => ({ text, fontSize: i === 0 ? 10 : 9 })),
+      ],
+      margin: [0, 2, 0, 2],
+    };
+  }
+
   /** Спільні параметри сторінки; логотип реєструється в `images` лише коли він є. */
   private page(org: OrgPrintInfo): DocDefinition {
     return {
@@ -419,23 +491,7 @@ export class PdfService {
   private header(org: OrgPrintInfo, title: string): Content {
     // Усередині реквізиту — нерозривні пробіли: рядок переноситься лише МІЖ реквізитами, а не
     // посеред «Банк: АТ Банк» чи «МФО: 322313» (Bug #867).
-    const join = (parts: Array<string | null | undefined | false>) =>
-      parts
-        .filter((p): p is string => !!p)
-        .map(p => p.replace(/ /g, NBSP))
-        .join('   ');
-    const lines = [
-      join([org.edrpou && `ЄДРПОУ: ${org.edrpou}`, org.ipn && `ІПН: ${org.ipn}`]),
-      org.address ?? '',
-      join([org.phone && `Тел.: ${org.phone}`, org.email && `E-mail: ${org.email}`]),
-      org.bank
-        ? join([
-            `IBAN: ${org.bank.iban}`,
-            org.bank.bankName && `Банк: ${org.bank.bankName}`,
-            org.bank.mfo && `МФО: ${org.bank.mfo}`,
-          ])
-        : '',
-    ].filter(Boolean);
+    const lines = orgDetailLines(org, p => p.replace(/ /g, NBSP));
     return {
       columns: [
         ...(org.logo ? [{ width: 90, image: LOGO_IMAGE_KEY, fit: [90, 60] }] : []),
@@ -623,8 +679,7 @@ export class PdfService {
   // порожнім квадратом. Формат суми — як в інтерфейсі: «1 250,00 грн». Документ в іншій валюті
   // (рахунок чи наряд у USD) — з кодом валюти, як у web (`fmtBankCurrencySuffix`): «100,00 USD».
   private fmtMoney(n: number, currencyCode?: string | null): string {
-    const suffix = !currencyCode || currencyCode === 'UAH' ? 'грн' : currencyCode;
-    return `${UAH_FMT.format(n)} ${suffix}`;
+    return `${UAH_FMT.format(n)} ${currencySuffix(currencyCode)}`;
   }
 
   private fmtQty(n: number): string {

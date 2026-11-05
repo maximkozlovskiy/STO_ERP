@@ -87,7 +87,7 @@ type LineUoM = { coefficient: number; unitOfMeasure: { shortName: string } };
  * вторинного ключа порядок однакових визначав Postgres — і рядок, змінений на місці (`updateLine`,
  * BR-INV-024), після збереження перескакував у кінець таблиці й друкованого рахунку.
  */
-const INVOICE_LINE_ORDER: Prisma.InvoiceLineOrderByWithRelationInput[] = [
+export const INVOICE_LINE_ORDER: Prisma.InvoiceLineOrderByWithRelationInput[] = [
   { sortOrder: 'asc' },
   { createdAt: 'asc' },
   { id: 'asc' },

@@ -1,24 +1,21 @@
 import { Injectable } from '@nestjs/common';
 import { plannedWorkOrderTotals } from '../../common/utils/vat';
 import ExcelJS from 'exceljs';
-import PizZip from 'pizzip';
 import * as path from 'path';
 import * as fs from 'fs';
 import { PrismaService } from '../../prisma/prisma.service';
 import { runUnscoped } from '../../common/tenant/tenant-context';
 import { loadShareableWorkOrder } from './work-order-share-token';
-
-/**
- * SECURITY: нейтралізація formula-injection у XLSX-клітинці (CWE-1236).
- * Рядок, що починається з `= + - @` (TAB/CR), Excel може виконати як формулу.
- * Публічний естімейт-експорт (GET /public/work-orders/:token/export/xlsx) містить
- * вільний текст із БД (назви org/робіт/запчастин) → префіксуємо `'` для рядків-лідерів.
- * Числа/не-рядки не чіпаємо.
- */
-function xlsxSafe<T>(v: T): T | string {
-  if (typeof v === 'string' && /^[=+\-@\t\r]/.test(v)) return `'${v}`;
-  return v;
-}
+import { xlsxSafe } from '../../common/office/xlsx-safe';
+import {
+  buildDocx,
+  docxParagraph,
+  docxPara,
+  docxRun,
+  docxTable,
+  docxTableRow,
+} from '../../common/office/docx';
+import { safeFilenamePart } from '../../common/http/send-file';
 
 interface EstimateForExport {
   number: string;
@@ -389,7 +386,7 @@ export class EstimateExportService {
       doc.end();
     });
 
-    const safeNum = d.number.replace(/[/\\:*?"<>|]/g, '-');
+    const safeNum = safeFilenamePart(d.number);
     return { buffer, filename: `Кошторис-${safeNum}.pdf` };
   }
 
@@ -585,7 +582,7 @@ export class EstimateExportService {
     };
 
     const buffer = Buffer.from(await wb.xlsx.writeBuffer());
-    const safeNum = d.number.replace(/[/\\:*?"<>|]/g, '-');
+    const safeNum = safeFilenamePart(d.number);
     return { buffer, filename: `Кошторис-${safeNum}.xlsx` };
   }
 
@@ -594,68 +591,18 @@ export class EstimateExportService {
   async generateDocx(token: string): Promise<{ buffer: Buffer; filename: string }> {
     const d = await this.getEstimateData(token);
 
-    // Build plain-text document since we generate without a template file
-    // (no template bundled — use inline XML approach via docxtemplater on a minimal template)
-    // We'll build the docx XML directly using a base template embedded as base64.
-    // Simpler: use docxtemplater with a runtime-generated minimal .docx template.
-    const content = this.buildDocxXml(d);
-    const zip = new PizZip();
-    zip.file('word/document.xml', content);
-    zip.file('[Content_Types].xml', this.contentTypesXml());
-    zip.file('_rels/.rels', this.rootRelsXml());
-    zip.file('word/_rels/document.xml.rels', this.docRelsXml());
-    zip.file('word/styles.xml', this.stylesXml());
-    zip.file('word/settings.xml', this.settingsXml());
-    zip.file('docProps/app.xml', this.appXml());
-    zip.file('docProps/core.xml', this.coreXml(d.number));
-
-    const buffer = Buffer.from(
-      zip.generate({
-        type: 'nodebuffer',
-        mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      }),
-    );
-    const safeNum = d.number.replace(/[/\\:*?"<>|]/g, '-');
+    const buffer = buildDocx(this.buildDocxBody(d), `Кошторис ${d.number}`);
+    const safeNum = safeFilenamePart(d.number);
     return { buffer, filename: `Кошторис-${safeNum}.docx` };
   }
 
-  private esc(s: string): string {
-    return s
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
-  }
-
-  private para(text: string, bold = false, size = 22, color = '000000'): string {
-    const b = bold ? '<w:b/>' : '';
-    return `<w:p><w:r><w:rPr>${b}<w:sz w:val="${size}"/><w:color w:val="${color}"/></w:rPr><w:t xml:space="preserve">${this.esc(text)}</w:t></w:r></w:p>`;
-  }
-
-  private tableRow(cells: string[], bold = false, shade?: string): string {
-    const tds = cells.map((c, i) => {
-      const align = i === 0 ? 'left' : 'right';
-      const fill = shade ? `<w:shd w:val="clear" w:color="auto" w:fill="${shade}"/>` : '';
-      return `<w:tc><w:tcPr>${fill}<w:tcBorders>
-        <w:top w:val="single" w:sz="4" w:color="CCCCCC"/>
-        <w:left w:val="single" w:sz="4" w:color="CCCCCC"/>
-        <w:bottom w:val="single" w:sz="4" w:color="CCCCCC"/>
-        <w:right w:val="single" w:sz="4" w:color="CCCCCC"/>
-      </w:tcBorders></w:tcPr>
-      <w:p><w:pPr><w:jc w:val="${align}"/></w:pPr>
-      <w:r><w:rPr>${bold ? '<w:b/>' : ''}<w:sz w:val="18"/></w:rPr>
-      <w:t xml:space="preserve">${this.esc(c)}</w:t></w:r></w:p></w:tc>`;
-    });
-    return `<w:tr>${tds.join('')}</w:tr>`;
-  }
-
-  private buildDocxXml(d: EstimateForExport): string {
+  private buildDocxBody(d: EstimateForExport): string[] {
     const rows: string[] = [];
 
-    if (d.orgName) rows.push(this.para(d.orgName, true, 22, '444444'));
-    rows.push(this.para(`Кошторис ${d.number}`, true, 28));
-    if (d.branchName) rows.push(this.para(d.branchName, false, 20, '666666'));
-    rows.push(this.para(''));
+    if (d.orgName) rows.push(docxPara(d.orgName, true, 22, '444444'));
+    rows.push(docxPara(`Кошторис ${d.number}`, true, 28));
+    if (d.branchName) rows.push(docxPara(d.branchName, false, 20, '666666'));
+    rows.push(docxPara(''));
 
     // Info
     const info: [string, string][] = [
@@ -666,41 +613,40 @@ export class EstimateExportService {
     if (d.description) info.push(['Примітка:', d.description]);
     for (const [lbl, val] of info) {
       rows.push(
-        `<w:p><w:r><w:rPr><w:b/><w:sz w:val="20"/><w:color w:val="888888"/></w:rPr><w:t xml:space="preserve">${this.esc(lbl)} </w:t></w:r><w:r><w:rPr><w:sz w:val="20"/></w:rPr><w:t>${this.esc(val)}</w:t></w:r></w:p>`,
+        docxParagraph([
+          docxRun(`${lbl} `, { bold: true, size: 20, color: '888888' }),
+          docxRun(val, { size: 20 }),
+        ]),
       );
     }
-    rows.push(this.para(''));
+    rows.push(docxPara(''));
 
     // Works table
     if (d.lines.length > 0) {
-      rows.push(this.para('Роботи', true, 24));
+      rows.push(docxPara('Роботи', true, 24));
       const worksTable = [
-        this.tableRow(['Назва', 'Н/год', 'Ціна, ₴', 'Сума, ₴'], true, 'D9E1F2'),
+        docxTableRow(['Назва', 'Н/год', 'Ціна, ₴', 'Сума, ₴'], true, 'D9E1F2'),
         ...d.lines.map(l =>
-          this.tableRow([l.name, String(l.normoHours), fmt(l.price), fmt(l.amount)]),
+          docxTableRow([l.name, String(l.normoHours), fmt(l.price), fmt(l.amount)]),
         ),
-        this.tableRow(['', '', 'Разом роботи:', fmt(d.totalLabor)], true, 'DCE6F1'),
+        docxTableRow(['', '', 'Разом роботи:', fmt(d.totalLabor)], true, 'DCE6F1'),
       ];
-      rows.push(
-        `<w:tbl><w:tblPr><w:tblW w:w="9360" w:type="dxa"/><w:tblLayout w:type="fixed"/></w:tblPr><w:tblGrid><w:gridCol w:w="5040"/><w:gridCol w:w="1440"/><w:gridCol w:w="1440"/><w:gridCol w:w="1440"/></w:tblGrid>${worksTable.join('')}</w:tbl>`,
-      );
-      rows.push(this.para(''));
+      rows.push(docxTable(worksTable, [5040, 1440, 1440, 1440]));
+      rows.push(docxPara(''));
     }
 
     // Parts table
     if (d.parts.length > 0) {
-      rows.push(this.para('Запчастини та матеріали', true, 24));
+      rows.push(docxPara('Запчастини та матеріали', true, 24));
       const partsTable = [
-        this.tableRow(['Назва', 'Кількість', 'Од.', 'Ціна, ₴', 'Сума, ₴'], true, 'D9E1F2'),
+        docxTableRow(['Назва', 'Кількість', 'Од.', 'Ціна, ₴', 'Сума, ₴'], true, 'D9E1F2'),
         ...d.parts.map(p =>
-          this.tableRow([p.name, String(p.quantity), p.unit, fmt(p.price), fmt(p.amount)]),
+          docxTableRow([p.name, String(p.quantity), p.unit, fmt(p.price), fmt(p.amount)]),
         ),
-        this.tableRow(['', '', '', 'Разом запчастини:', fmt(d.totalParts)], true, 'DCE6F1'),
+        docxTableRow(['', '', '', 'Разом запчастини:', fmt(d.totalParts)], true, 'DCE6F1'),
       ];
-      rows.push(
-        `<w:tbl><w:tblPr><w:tblW w:w="9360" w:type="dxa"/><w:tblLayout w:type="fixed"/></w:tblPr><w:tblGrid><w:gridCol w:w="4032"/><w:gridCol w:w="1440"/><w:gridCol w:w="648"/><w:gridCol w:w="1440"/><w:gridCol w:w="1800"/></w:tblGrid>${partsTable.join('')}</w:tbl>`,
-      );
-      rows.push(this.para(''));
+      rows.push(docxTable(partsTable, [4032, 1440, 648, 1440, 1800]));
+      rows.push(docxPara(''));
     }
 
     if (d.totalVat > 0) {
@@ -708,90 +654,17 @@ export class EstimateExportService {
         ['Сума без ПДВ', d.totalNet],
         ['ПДВ', d.totalVat],
       ] as const) {
-        rows.push(
-          `<w:p><w:pPr><w:jc w:val="right"/></w:pPr><w:r><w:t>${label}: ${this.esc(fmt(value))} ₴</w:t></w:r></w:p>`,
-        );
+        rows.push(docxParagraph(docxRun(`${label}: ${fmt(value)} ₴`), 'right'));
       }
     }
 
     // Grand total
     rows.push(
-      `<w:p><w:pPr><w:jc w:val="right"/></w:pPr><w:r><w:rPr><w:b/><w:sz w:val="28"/></w:rPr><w:t>${grandTotalLabel(d)}: ${this.esc(fmt(d.totalAmount))} ₴</w:t></w:r></w:p>`,
+      docxParagraph(
+        docxRun(`${grandTotalLabel(d)}: ${fmt(d.totalAmount)} ₴`, { bold: true, size: 28 }),
+        'right',
+      ),
     );
-
-    return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:document xmlns:wpc="http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas"
-  xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
-  xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
-  <w:body>
-    ${rows.join('\n    ')}
-    <w:sectPr>
-      <w:pgSz w:w="12240" w:h="15840"/>
-      <w:pgMar w:top="1134" w:right="850" w:bottom="1134" w:left="1134"/>
-    </w:sectPr>
-  </w:body>
-</w:document>`;
-  }
-
-  private contentTypesXml(): string {
-    return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
-  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
-  <Default Extension="xml" ContentType="application/xml"/>
-  <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
-  <Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>
-  <Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/>
-  <Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>
-  <Override PartName="/docProps/core.xml" ContentType="application/package.core-properties+xml"/>
-</Types>`;
-  }
-
-  private rootRelsXml(): string {
-    return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
-  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>
-  <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/>
-</Relationships>`;
-  }
-
-  private docRelsXml(): string {
-    return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
-  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings" Target="settings.xml"/>
-</Relationships>`;
-  }
-
-  private stylesXml(): string {
-    return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
-  <w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri"/><w:sz w:val="22"/></w:rPr></w:rPrDefault></w:docDefaults>
-</w:styles>`;
-  }
-
-  private settingsXml(): string {
-    return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:settings xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
-  <w:defaultTabStop w:val="720"/>
-</w:settings>`;
-  }
-
-  private appXml(): string {
-    return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties">
-  <Application>OneService</Application>
-</Properties>`;
-  }
-
-  private coreXml(number: string): string {
-    const now = new Date().toISOString();
-    return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties"
-  xmlns:dc="http://purl.org/dc/elements/1.1/">
-  <dc:title>Кошторис ${this.esc(number)}</dc:title>
-  <dc:creator>OneService</dc:creator>
-  <cp:created>${now}</cp:created>
-</cp:coreProperties>`;
+    return rows;
   }
 }
