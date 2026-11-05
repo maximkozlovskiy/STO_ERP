@@ -11,6 +11,7 @@
 // ColumnsDropdown → падає «Escape у поповері».
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { useState } from 'react';
 import { vi, it, expect, describe, beforeAll, afterAll } from 'vitest';
 import { Modal } from '../modal';
 import { DatePickerInput } from '../date-picker-input';
@@ -118,5 +119,113 @@ describe('ColumnsDropdown — Escape і край екрана', () => {
     host.getBoundingClientRect = () => ({ right: 1400 }) as DOMRect;
     fireEvent.click(button);
     expect(screen.getByTestId('columns-popover')).toHaveClass('right-0');
+  });
+});
+
+// Повернення фокуса після закриття (TECH-DEBT §8 L697, вікно вибору товарів у формі правила
+// ціноутворення). Поле пошуку з `autoFocus` брало фокус на коміті, ДО ефекту пастки, і пастка
+// запам'ятовувала як «елемент до відкриття» саме його. Після Escape панель зникала разом із полем,
+// і фокус падав на <body>, а не на «Додати товар».
+//
+// Mutation-verify (2026-11-05): запам'ятовувати `document.activeElement` в ефекті, а не в рендері
+// → падають «Escape у вкладеній» і «змонтована відкритою»; умова відновлення лише
+// `container.contains(activeElement)` (без «фокус загубився») → падають ті самі два; відновлювати
+// завжди → падає «чужий фокус не відбирається»; прибрати запасний шлях на нижню пастку → падає
+// «відкривача вже немає».
+describe('Modal — повернення фокуса після закриття', () => {
+  function RuleForm({ mountPicker = false, hideOpener = false }) {
+    const [picker, setPicker] = useState(false);
+    const pickerModal = (
+      <Modal open={picker} onClose={() => setPicker(false)} title="Оберіть товар">
+        <input aria-label="Пошук товару" autoFocus />
+        <button type="button">Готово</button>
+      </Modal>
+    );
+    return (
+      <>
+        <button type="button">Кнопка сторінки</button>
+        <Modal open onClose={vi.fn()} title="Нове правило">
+          <input aria-label="Назва правила" />
+          {!(hideOpener && picker) && (
+            <button type="button" onClick={() => setPicker(true)}>
+              Додати товар
+            </button>
+          )}
+        </Modal>
+        {mountPicker ? picker && pickerModal : pickerModal}
+      </>
+    );
+  }
+
+  it('Escape у вкладеній: фокус спершу в пошуку, потім повертається на «Додати товар»', async () => {
+    const user = userEvent.setup();
+    render(<RuleForm />);
+    await user.click(screen.getByRole('button', { name: 'Додати товар' }));
+    const search = await screen.findByLabelText('Пошук товару');
+    await waitFor(() => expect(search).toHaveFocus());
+    await user.keyboard('4820000000000');
+    expect(search).toHaveValue('4820000000000');
+
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByLabelText('Пошук товару')).toBeNull());
+    expect(screen.getByRole('button', { name: 'Додати товар' })).toHaveFocus();
+  });
+
+  it('змонтована одразу відкритою: Tab циклить у ній, Escape повертає на відкривача', async () => {
+    const user = userEvent.setup();
+    render(<RuleForm mountPicker />);
+    await user.click(screen.getByRole('button', { name: 'Додати товар' }));
+    const picker = await screen.findByRole('dialog', { name: 'Оберіть товар' });
+    await waitFor(() => expect(screen.getByLabelText('Пошук товару')).toHaveFocus());
+    for (let i = 0; i < 5; i++) {
+      await user.tab();
+      expect(picker).toContainElement(document.activeElement as HTMLElement);
+    }
+
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog', { name: 'Оберіть товар' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Додати товар' })).toHaveFocus();
+  });
+
+  it('відкривача вже немає в документі — фокус іде в нижню модалку, не на <body>', async () => {
+    const user = userEvent.setup();
+    render(<RuleForm hideOpener />);
+    await user.click(screen.getByRole('button', { name: 'Додати товар' }));
+    await waitFor(() => expect(screen.getByLabelText('Пошук товару')).toHaveFocus());
+
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByLabelText('Пошук товару')).toBeNull());
+    expect(screen.getByRole('dialog', { name: 'Нове правило' })).toContainElement(
+      document.activeElement as HTMLElement,
+    );
+  });
+
+  it('чужий фокус не відбирається: поле поза вікном, що взяло фокус, його тримає', async () => {
+    const user = userEvent.setup();
+    function Page() {
+      const [open, setOpen] = useState(false);
+      return (
+        <>
+          <button type="button" onClick={() => setOpen(true)}>
+            Відкрити
+          </button>
+          <input aria-label="Поле сторінки" />
+          <Modal open={open} onClose={() => setOpen(false)} title="Вікно">
+            <input aria-label="Поле вікна" />
+            <button type="button" onClick={() => setOpen(false)}>
+              Закрити й перейти
+            </button>
+          </Modal>
+        </>
+      );
+    }
+    render(<Page />);
+    await user.click(screen.getByRole('button', { name: 'Відкрити' }));
+    await waitFor(() => expect(screen.getByLabelText('Поле вікна')).toHaveFocus());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Закрити й перейти' }));
+    screen.getByLabelText('Поле сторінки').focus();
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Вікно' })).toBeNull());
+    expect(screen.getByLabelText('Поле сторінки')).toHaveFocus();
   });
 });

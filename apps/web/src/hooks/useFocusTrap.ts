@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, type RefObject } from 'react';
+import { useEffect, useRef, type RefObject } from 'react';
 
 const FOCUSABLE =
   'a[href],area[href],input:not([disabled]):not([type="hidden"]),select:not([disabled]),textarea:not([disabled]),button:not([disabled]),iframe,[tabindex]:not([tabindex="-1"]),[contenteditable="true"]';
@@ -16,7 +16,14 @@ const FIELD =
  *  1. фокус переміщується всередину панелі (перше поле введення, інакше перший фокусований
  *     елемент, або сама панель);
  *  2. Tab/Shift+Tab циклять У МЕЖАХ панелі (фокус не «тікає» на фон);
- *  3. при закритті фокус повертається на елемент, що був активним до відкриття.
+ *  3. при закритті фокус повертається на елемент, що був активним до відкриття (кнопка, що
+ *     відкрила вікно), — якщо він ще в документі й бере фокус; інакше на верхню з пасток, що
+ *     лишились (нижня модалка).
+ *
+ * Елемент «до відкриття» запам'ятовується в РЕНДЕРІ, на якому `active` став true, а не в ефекті:
+ * поле з `autoFocus` бере фокус на коміті, ДО ефекту, і ефект запам'ятовував саме його — поле
+ * всередині панелі. Закриття тоді «повертало» фокус на поле, що зникло разом із панеллю, і фокус
+ * падав на `<body>` (вікно вибору товарів → Escape, TECH-DEBT §8 L697).
  *
  * Вкладені модалки: кожен екземпляр трапить ВЛАСНУ панель і позначає її `data-focus-trap`.
  * Слухачі обох висять на document, і нижня модалка чує Tab першою: якщо фокус у панелі ІНШОЇ
@@ -26,21 +33,59 @@ const FIELD =
  * Скоуп через containerRef (як існуючі keydown-хендлери Modal).
  */
 
+/** Активні пастки в порядку відкриття — щоб після закриття верхньої віддати фокус нижній. */
+const openTraps: HTMLElement[] = [];
+
+const focusablesIn = (container: HTMLElement): HTMLElement[] =>
+  Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
+    el => el.offsetParent !== null || el === document.activeElement,
+  );
+
+/** Фокус «загубився»: стоїть на `<body>` (елемент у фокусі прибрали з DOM) або ніде. */
+const focusLost = (): boolean =>
+  document.activeElement === null || document.activeElement === document.body;
+
+/**
+ * Повертає фокус після закриття пастки: на елемент до відкриття, якщо він ще в документі й бере
+ * фокус; інакше — у верхню з пасток, що лишились.
+ */
+function restoreFocus(target: HTMLElement | null): void {
+  if (target?.isConnected) {
+    target.focus?.();
+    if (document.activeElement === target) return;
+  }
+  // Нижня модалка, що закривається в тому ж коміті, уже поза документом — її пропускаємо.
+  const lower = [...openTraps].reverse().find(el => el.isConnected);
+  if (!lower) return;
+  const first = focusablesIn(lower)[0];
+  if (first) first.focus();
+  else {
+    lower.setAttribute('tabindex', '-1');
+    lower.focus();
+  }
+}
+
 export function useFocusTrap(containerRef: RefObject<HTMLElement | null>, active: boolean): void {
+  // Елемент у фокусі ДО відкриття — береться в рендері переходу active false → true (див. вище).
+  const openerRef = useRef<HTMLElement | null>(null);
+  const wasActiveRef = useRef(false);
+  if (active && !wasActiveRef.current && typeof document !== 'undefined') {
+    const el = document.activeElement;
+    openerRef.current = el instanceof HTMLElement && el !== document.body ? el : null;
+  }
+  wasActiveRef.current = active;
+
   useEffect(() => {
     if (!active || typeof document === 'undefined') return;
     const container = containerRef.current;
     if (!container) return;
 
     container.setAttribute(TRAP_ATTR, '');
+    openTraps.push(container);
 
-    // Запам'ятовуємо елемент, що мав фокус до відкриття — щоб повернути на закритті.
-    const previouslyFocused = document.activeElement as HTMLElement | null;
+    const opener = openerRef.current;
 
-    const focusables = (): HTMLElement[] =>
-      Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
-        el => el.offsetParent !== null || el === document.activeElement,
-      );
+    const focusables = (): HTMLElement[] => focusablesIn(container);
 
     // Початковий фокус (UX-огляд 2026-10-29: стояв на «×» шапки): елемент з `data-autofocus`; поле,
     // що вже взяло фокус (`autoFocus`); перше поле введення; інакше перший фокусований елемент або
@@ -97,11 +142,12 @@ export function useFocusTrap(containerRef: RefObject<HTMLElement | null>, active
     return () => {
       document.removeEventListener('keydown', handleKey);
       container.removeAttribute(TRAP_ATTR);
-      // Повертаємо фокус лише якщо він досі всередині нашої панелі (інакше не відбираємо
-      // фокус у того, хто його вже легітимно отримав, напр. вкладена модалка).
-      if (previouslyFocused && container.contains(document.activeElement)) {
-        previouslyFocused.focus?.();
-      }
+      const index = openTraps.indexOf(container);
+      if (index !== -1) openTraps.splice(index, 1);
+      // Повертаємо фокус, лише якщо він досі в нашій панелі або загубився (панель уже прибрано
+      // з DOM разом із полем у фокусі). Фокус, який легітимно взяв інший елемент (вкладена
+      // модалка, сусідня картка), не відбираємо.
+      if (container.contains(document.activeElement) || focusLost()) restoreFocus(opener);
     };
   }, [active, containerRef]);
 }
