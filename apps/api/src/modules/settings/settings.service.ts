@@ -310,6 +310,10 @@ export class SettingsService {
         create: { branchId, orgId },
         update: {},
       });
+      // Філія без рядка мала типові години й кожен день робочим (`GET /settings/work-hours`, кеш
+      // 60 с), а щойно створений рядок — дні з `@default` колонки. Перевірка BR-WO-019 читає БД, тож
+      // без скидання пікер ще хвилину пропонував би день, який сервер уже відхиляє (Bug #1050).
+      await this.invalidateWorkHoursCache(orgId, branchId);
     }
 
     const result = this.mapBranchSettings(settings);

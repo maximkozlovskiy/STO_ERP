@@ -827,6 +827,30 @@ describe('Settings — HTTP Contract', () => {
       );
     });
 
+    // Філія без рядка — кожен день робочий; GET вкладки створює рядок із днями `@default` колонки,
+    // і `work-hours` з кешу інакше ще хвилину розходився б із перевіркою сервера (Bug #1050).
+    // guards: BR-WO-019
+    it('GET філії без налаштувань створює рядок → кеш годин скинуто', async () => {
+      prismaMock.garageBranch.findFirst.mockResolvedValue({ id: branchId });
+      prismaMock.branchSettings.findUnique = vi.fn().mockResolvedValue(null);
+      prismaMock.branchSettings.upsert = vi.fn().mockResolvedValue({
+        branchId,
+        orgId: 'org-1',
+        workStartTime: '09:00',
+        workEndTime: '18:00',
+        workDays: [1, 2, 3, 4, 5],
+        slotDurationMinutes: 60,
+        updatedAt: new Date(),
+      });
+      const res = await app.inject({ method: 'GET', url: `/settings/branch/${branchId}` });
+      expect(res.statusCode).toBe(200);
+      expect(prismaMock.branchSettings.upsert).toHaveBeenCalled();
+      expect(redisMock.del).toHaveBeenCalledWith(
+        'settings:work-hours:v2:org-1',
+        `settings:work-hours:v2:org-1:${branchId}`,
+      );
+    });
+
     it('PATCH з workStartTime="20:00", workEndTime="09:00" → 400 (cross-field: end <= start)', async () => {
       prismaMock.garageBranch.findFirst.mockResolvedValue({ id: branchId });
       prismaMock.branchSettings.findUnique = vi
