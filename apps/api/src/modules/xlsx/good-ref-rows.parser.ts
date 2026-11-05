@@ -66,17 +66,20 @@ function recognisedColumns(cells: string[]): Map<number, Field> {
 }
 
 /**
- * Рядок заголовків — перший із перших `HEADER_SCAN_ROWS`, де впізнано хоч одну назву колонки
- * (BR-GOOD-013). Рядки над ним — шапка прайсу, не дані. Не знайдено → файл без заголовків:
- * усі рядки — дані в порядку шаблону, і перший товар не губиться.
+ * Рядок заголовків — той із перших `HEADER_SCAN_ROWS`, де впізнано НАЙБІЛЬШЕ назв колонок; за
+ * рівності — вищий (BR-GOOD-013). Не «перший із хоч однією»: у шапці прайсу реквізити часто
+ * стоять підписами в окремій комірці («Назва:» | «ТОВ …», «Код:» | «12345678»), і такий рядок
+ * забирав би роль заголовка у справжньої таблиці нижче. Рядки над заголовком — шапка, не дані.
+ * Не знайдено → файл без заголовків: усі рядки — дані в порядку шаблону, перший товар не губиться.
  */
 function findHeader(grid: GridRow[]): { index: number; columns: Map<number, Field> } | null {
   const limit = Math.min(grid.length, HEADER_SCAN_ROWS);
+  let best: { index: number; columns: Map<number, Field> } | null = null;
   for (let i = 0; i < limit; i++) {
     const columns = recognisedColumns(grid[i].cells);
-    if (columns.size > 0) return { index: i, columns };
+    if (columns.size > (best?.columns.size ?? 0)) best = { index: i, columns };
   }
-  return null;
+  return best;
 }
 
 function toRows(grid: GridRow[]): GoodRefRow[] {
