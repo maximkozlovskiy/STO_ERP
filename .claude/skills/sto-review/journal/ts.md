@@ -126,3 +126,9 @@
 **Фікс:** база push — коміт останнього успішного прогону (`gh run list --status success`, перевірка
 `git merge-base --is-ancestor`), вихід `changes.outputs.base`; гейти — `needs.changes.outputs.base || github.event.before`.
 **Severity:** CRITICAL — пропущена перевірка коду на main без жодного червоного сигналу.
+
+### 2026-11-05 — Новий хелпер вставлено між чужим JSDoc і його функцією — §1
+
+**Сигнал:** `CalendarSlotModal.tsx`: `nextWorkDayISO` (зі своїм `/** */`) став між JSDoc `calcEndAt` і самою `calcEndAt` — два блоки впритул, опис «Кінець запису для поля «Кінець»…» у IDE показувався на `nextWorkDayISO`, а `calcEndAt` лишився без опису. tsc і eslint мовчать.
+**Grep:** `awk '{sub(/\r$/,"")} p ~ /^[ \t]*\*\/$/ && /^[ \t]*\/\*\*/ {print FILENAME":"FNR} {p=$0}' <файли diff-у>` (у дереві є старі свідомі хіти — заголовок модуля впритул до першого опису; дивитись лише diff).
+**Фікс:** перенести новий хелпер із його JSDoc НАД чужий блок. **Severity:** SUGGESTION

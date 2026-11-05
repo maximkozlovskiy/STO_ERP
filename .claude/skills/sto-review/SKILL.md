@@ -150,6 +150,12 @@ for f in packages/*/package.json apps/*/package.json; do
   dir=$(dirname "$f"); [ -f "$dir/tsconfig.json" ] || echo "MISSING tsconfig: $dir"
 done
 
+# Два JSDoc-блоки впритул: нову функцію вставили між чужим JSDoc і його функцією — старий опис
+# тепер «належить» новій (IDE-підказка бреше). Лише файли diff-у; хіт — звірити, чий це опис.
+for f in $(git diff HEAD~10 --name-only 2>/dev/null | grep -E "\.(ts|tsx)$"); do
+  [ -f "$f" ] && awk '{sub(/\r$/,"")} p ~ /^[ \t]*\*\/$/ && /^[ \t]*\/\*\*/ {print FILENAME":"FNR} {p=$0}' "$f"
+done
+
 # UTF-8 BOM у .ts/.tsx (Windows-редактор/PowerShell Out-File -Encoding utf8) — неконсистентно з codebase
 for f in $(git diff HEAD~10 --name-only 2>/dev/null | grep -E "\.(ts|tsx)$"); do
   [ -f "$f" ] && [ "$(head -c 3 "$f" | od -An -tx1 | tr -d ' ')" = "efbbbf" ] && echo "BOM: $f"
@@ -174,6 +180,7 @@ done
 - [ ] Немає `console.log`
 - [ ] Всі `findMany` мають `take: N`
 - [ ] Canonical Tailwind tokens (не `[var(--...)]`, не inline HSL)
+- [ ] Новий хелпер не вставлено між чужим JSDoc і його функцією (два `/** */` впритул; 2026-11-05 `nextWorkDayISO` забрав опис `calcEndAt`)
 - [ ] Немає UTF-8 BOM (`ef bb bf`) у .ts/.tsx — Windows/PowerShell редактори додають мовчки; tsc толерує, але неконсистентно й ламає деякі парсери/JSON-імпорти
 - [ ] CI (`.github/workflows/*.yml`): новий diff-гейт чи path-фільтр на push порівнює НЕ з голим `github.event.before` — з `cancel-in-progress` код скасованого push так і не перевіряється (`journal/ts.md`, 2026-10-23); `grep -n "event.before" .github/workflows/*.yml`
 - [ ] Рефакторинг перейменував чи прибрав функцію/константу → її старе ім'я не лишилось у детекторах скілів і docs: `grep -rn "<старе ім'я>" .claude/skills docs` (tsc їх не бачить; 2026-10-21 `snapshotOf` → `offerSnapshot` лишив мертвий grep у журналі sto-tester)
