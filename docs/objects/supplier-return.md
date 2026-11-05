@@ -182,8 +182,8 @@ E2E: `apps/web/e2e/supplier-returns.spec.ts` — вкладка й кнопка 
   дата, сторони, реквізити, рядки в порядку картки (рядки у двійнику Prisma перемішані), одиниця рядка,
   підсумки, «ВИДАЛЕНО», 404 для чужої організації, ім'я файла. Мутації: без `orderBy` у мапері замовлення,
   без `orgId` у `where` рахунку → червоніє;
-- `document-export.renderers.spec.ts` (10) — PDF / XLSX / DOCX однієї моделі: «ВИДАЛЕНО», числа XLSX з
-  форматом, `xlsxSafe` (мутація: без нього → червоніє), екранування DOCX, ті самі підсумки у трьох форматах;
+- `document-export.renderers.spec.ts` (11) — PDF / XLSX / DOCX однієї моделі: «ВИДАЛЕНО», числа XLSX з
+  форматом, `xlsxSafe` (мутація: без нього → червоніє), екранування DOCX і переноси рядків примітки (`<w:br/>`), ті самі підсумки у трьох форматах;
 - `document-export.controller.spec.ts` (25) — ролі кожного маршруту, 400 на невідомий формат без читання
   документа (мутація: без `parseExportFormat` → червоніє), 404 чужий, `filename*=UTF-8''…`, `Content-Length`;
 - `apps/api/src/common/http/send-file.spec.ts` (2) — ім'я файла й `Content-Disposition`;

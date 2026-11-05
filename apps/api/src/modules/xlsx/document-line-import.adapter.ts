@@ -4,6 +4,7 @@ import { MAX_QUERY_LIMIT } from '@sto/shared';
 import { err } from '../../common/utils/err';
 import { money, moneyFromDecimal, sumMoney } from '../../common/utils/money';
 import { calcLineVat } from '../../common/utils/vat';
+import { withOrderedStamps } from '../../common/utils/line-order';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
 import { PurchaseListLinkService } from '../purchase-lists/purchase-list-link.service';
@@ -135,15 +136,17 @@ export class PurchaseOrderImportAdapter implements DocumentLineImportAdapter {
     });
     if (computed.length) {
       await tx.purchaseOrderLine.createMany({
-        data: computed.map(l => ({
-          orgId,
-          purchaseOrderId: docId,
-          goodId: l.goodId,
-          quantity: l.quantity,
-          price: l.price,
-          vatRate: l.vatRate,
-          vatAmount: l.vatAmount,
-        })),
+        data: withOrderedStamps(
+          computed.map(l => ({
+            orgId,
+            purchaseOrderId: docId,
+            goodId: l.goodId,
+            quantity: l.quantity,
+            price: l.price,
+            vatRate: l.vatRate,
+            vatAmount: l.vatAmount,
+          })),
+        ),
       });
     }
     await tx.purchaseOrder.updateMany({
@@ -195,15 +198,17 @@ export class PurchaseOrderImportAdapter implements DocumentLineImportAdapter {
 
     if (toCreate.length) {
       await tx.purchaseOrderLine.createMany({
-        data: toCreate.map(l => ({
-          orgId,
-          purchaseOrderId: docId,
-          goodId: l.goodId,
-          quantity: l.quantity,
-          price: l.price,
-          vatRate: l.vatRate,
-          vatAmount: l.vatAmount,
-        })),
+        data: withOrderedStamps(
+          toCreate.map(l => ({
+            orgId,
+            purchaseOrderId: docId,
+            goodId: l.goodId,
+            quantity: l.quantity,
+            price: l.price,
+            vatRate: l.vatRate,
+            vatAmount: l.vatAmount,
+          })),
+        ),
       });
     }
 
@@ -335,13 +340,15 @@ export class StockDocumentImportAdapter implements DocumentLineImportAdapter {
     });
     if (lines.length) {
       await tx.stockDocumentLine.createMany({
-        data: lines.map(l => ({
-          orgId,
-          stockDocumentId: docId,
-          goodId: l.goodId,
-          quantity: l.quantity,
-          price: l.price,
-        })),
+        data: withOrderedStamps(
+          lines.map(l => ({
+            orgId,
+            stockDocumentId: docId,
+            goodId: l.goodId,
+            quantity: l.quantity,
+            price: l.price,
+          })),
+        ),
       });
     }
   }
@@ -378,13 +385,15 @@ export class StockDocumentImportAdapter implements DocumentLineImportAdapter {
 
     if (toCreate.length) {
       await tx.stockDocumentLine.createMany({
-        data: toCreate.map(l => ({
-          orgId,
-          stockDocumentId: docId,
-          goodId: l.goodId,
-          quantity: l.quantity,
-          price: l.price,
-        })),
+        data: withOrderedStamps(
+          toCreate.map(l => ({
+            orgId,
+            stockDocumentId: docId,
+            goodId: l.goodId,
+            quantity: l.quantity,
+            price: l.price,
+          })),
+        ),
       });
     }
   }

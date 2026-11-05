@@ -183,6 +183,15 @@ describe('DOCX документа (OOXML)', () => {
   });
 
   // guards: BR-INV-028
+  it('примітка з кількох рядків — переноси рядка (<w:br/>), а не злитий текст', () => {
+    const xml = docxXml(
+      renderDocumentDocx(ORG_INFO, { ...DOC, notes: 'Перший рядок\nДругий рядок' }),
+    );
+    expect(xml).toContain(
+      'Примітка: Перший рядок</w:t><w:br/><w:t xml:space="preserve">Другий рядок</w:t>',
+    );
+  });
+
   it('не видалений — без позначки', () => {
     expect(docxXml(renderDocumentDocx(ORG_INFO, { ...DOC, deleted: false }))).not.toContain(
       'ВИДАЛЕНО',

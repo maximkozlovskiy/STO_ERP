@@ -13,3 +13,16 @@ export function orderedLineStamps(count: number): Date[] {
   const base = Date.now();
   return Array.from({ length: count }, (_, i) => new Date(base + i));
 }
+
+/**
+ * Рядки для `createMany` із `createdAt` у порядку масиву (`orderedLineStamps`). Для КОЖНОГО
+ * запису рядків документа, що сортується за `LINE_ORDER_BY_CREATED`, — зокрема імпорту з файла:
+ * без міток усі рядки одного `createMany` мають однаковий `createdAt`, і порядок картки й друку
+ * визначає випадковий `id`, а не порядок у файлі.
+ */
+export function withOrderedStamps<T extends object>(
+  rows: readonly T[],
+): Array<T & { createdAt: Date }> {
+  const stamps = orderedLineStamps(rows.length);
+  return rows.map((r, i) => ({ ...r, createdAt: stamps[i] }));
+}

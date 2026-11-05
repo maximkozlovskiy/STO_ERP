@@ -32,6 +32,7 @@ import { parseGoodRefRows } from './good-ref-rows.parser';
 import { loadXlsxWorkbook } from './load-workbook';
 import { deduplicateBy } from '../../common/utils/array';
 import { money } from '../../common/utils/money';
+import { withOrderedStamps } from '../../common/utils/line-order';
 import { normalizeArticle } from '../../common/utils/normalize-article';
 import { escapeLike } from '../../common/utils/like-pattern';
 import {
@@ -653,7 +654,7 @@ export class XlsxService {
     // Creates батчем — один INSERT з усіма рядками.
     if (createsPlan.length > 0) {
       try {
-        await this.prisma.purchaseOrderLine.createMany({ data: createsPlan });
+        await this.prisma.purchaseOrderLine.createMany({ data: withOrderedStamps(createsPlan) });
         result.created += createsPlan.length;
       } catch (e: unknown) {
         result.errors.push(
@@ -772,7 +773,7 @@ export class XlsxService {
 
     if (createsPlan.length > 0) {
       try {
-        await this.prisma.stockDocumentLine.createMany({ data: createsPlan });
+        await this.prisma.stockDocumentLine.createMany({ data: withOrderedStamps(createsPlan) });
         result.created += createsPlan.length;
       } catch (e: unknown) {
         result.errors.push(

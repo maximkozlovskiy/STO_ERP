@@ -248,11 +248,16 @@ else → newContractId = po.contractId                         // unchanged
   дата, сторони, реквізити, рядки в порядку картки (рядки у двійнику Prisma перемішані), одиниця рядка,
   підсумки, «ВИДАЛЕНО», 404 для чужої організації, ім'я файла. Мутації: без `orderBy` у мапері замовлення,
   без `orgId` у `where` рахунку → червоніє;
-- `document-export.renderers.spec.ts` (10) — PDF / XLSX / DOCX однієї моделі: «ВИДАЛЕНО», числа XLSX з
-  форматом, `xlsxSafe` (мутація: без нього → червоніє), екранування DOCX, ті самі підсумки у трьох форматах;
+- `document-export.renderers.spec.ts` (11) — PDF / XLSX / DOCX однієї моделі: «ВИДАЛЕНО», числа XLSX з
+  форматом, `xlsxSafe` (мутація: без нього → червоніє), екранування DOCX і переноси рядків примітки (`<w:br/>`), ті самі підсумки у трьох форматах;
 - `document-export.controller.spec.ts` (25) — ролі кожного маршруту, 400 на невідомий формат без читання
   документа (мутація: без `parseExportFormat` → червоніє), 404 чужий, `filename*=UTF-8''…`, `Content-Length`;
 - `apps/api/src/common/http/send-file.spec.ts` (2) — ім'я файла й `Content-Disposition`;
+- порядок рядків, що його друкує бланк, задає запис: `createdAt` у порядку надсилання (`orderedLineStamps` /
+  `withOrderedStamps`, `common/utils/line-order.ts`) — у `create` / `update` (`purchase-orders.line-goods.spec.ts`)
+  і в імпорті рядків із файла (`document-line-import.adapter.spec.ts`, `xlsx.po-lines-import-totals.spec.ts`).
+  Мутація: без міток у `createMany` → червоніє. Рядки, записані до 2026-11-05 одним `createMany`, мають
+  однаковий `createdAt` і йдуть за `id`;
 - web: `components/ui/__tests__/DocumentExportActions.test.tsx` (4) — «Зберегти як → Excel» кличе
   `…/export/xlsx` і зберігає файл з іменем із заголовка, «Друк» — `printPdf` (мутація: повернути заглушку
   меню → червоніє);
@@ -275,15 +280,15 @@ cd apps/api && npx vitest run src/modules/purchase-orders/purchase-orders.fsm.sp
 | `applyPricing` — правила ціноутворення                                                                                                                                                                       | `purchase-orders.pricing.spec.ts`                   | 13     |
 | `receive()` — UoM-override + tenant-валідація                                                                                                                                                                | `purchase-orders.receive-uom.spec.ts`               | 14     |
 | `receive()` — activeLines, CAS → RECEIPT, борг, CAS статусу (BR-AUT-060)                                                                                                                                     | `purchase-orders.receive-ledger.spec.ts`            | 8      |
-| `create`/`update` — tenant-guard goodId рядків                                                                                                                                                               | `purchase-orders.line-goods.spec.ts`                | 3      |
+| `create`/`update` — tenant-guard goodId рядків; `createdAt` рядків у порядку надсилання (BR-PO-016)                                                                                                          | `purchase-orders.line-goods.spec.ts`                | 4      |
 | `update()` — резолв контракту контрагента                                                                                                                                                                    | `purchase-orders.contract-resolution.spec.ts`       | 9      |
 | `transition()` — карта `PO_TRANSITIONS`                                                                                                                                                                      | `purchase-orders.fsm.spec.ts`                       | 16     |
 | HTTP: бухгалтер — лише перегляд (BR-PO-015), ключ прийому (BR-PO-014)                                                                                                                                        | `purchase-orders.roles-keys.contract.spec.ts`       | 13     |
 | `findAll` — `sortBy=paymentDate`, nulls-last; `payable` (BR-SUPPAY-015)                                                                                                                                      | `purchase-orders.sort.spec.ts`                      | 8      |
 | linked-documents — межові випадки, списки купівлі замовлення                                                                                                                                                 | `purchase-orders.linked-docs.spec.ts`               | 9      |
 | `create` — Σ(lines.amount) === totalAmount                                                                                                                                                                   | `purchase-orders.totals.spec.ts`                    | 1      |
-| швидкий імпорт рядків XLSX: виклик перерахунку                                                                                                                                                               | `../xlsx/xlsx.po-lines-import-totals.spec.ts`       | 3      |
-| імпорт рядків: ПДВ рядків і тотали, звірка списків (адаптер)                                                                                                                                                 | `../xlsx/document-line-import.adapter.spec.ts`      | 14     |
+| швидкий імпорт рядків XLSX: виклик перерахунку; рядки в порядку файла (BR-PO-016)                                                                                                                            | `../xlsx/xlsx.po-lines-import-totals.spec.ts`       | 4      |
+| імпорт рядків: ПДВ рядків і тотали, звірка списків, рядки в порядку файла (адаптер)                                                                                                                          | `../xlsx/document-line-import.adapter.spec.ts`      | 16     |
 | HTTP-контракт (DTO, статуси, валідація)                                                                                                                                                                      | `purchase-orders.contract.spec.ts`                  | 48     |
 | документ, позначений на видалення, — лише перегляд (BR-WO-012)                                                                                                                                               | `purchase-orders.with-deleted.spec.ts`              | 11     |
 | доставка: реєстр служб, клієнт Нової Пошти (тіло запиту, порожня відповідь — «не знайдено», помилки; SSRF-сторож: перенаправлення, loopback, DNS → loopback / cloud-metadata), код → статус, перевірка ключа | `delivery/delivery-provider-registry.spec.ts`       | 27     |

@@ -21,6 +21,24 @@ const DOC = 'doc-1';
 /** BR-PL-009: хук звірки позицій списків купівлі після запису рядків чернетки. */
 const purchaseLists = { reconcileDraftOrder: vi.fn().mockResolvedValue(undefined) };
 
+/** createMany-виклики: goodId і createdAt рядків у порядку запису. */
+function writtenLines(
+  createMany: ReturnType<typeof vi.fn>,
+): { goodId: string; createdAt: unknown }[][] {
+  return createMany.mock.calls.map(
+    c => (c[0] as { data: { goodId: string; createdAt: unknown }[] }).data,
+  );
+}
+
+/** Мітки `createdAt` рядків одного запису — дати, строго зростають у порядку файла. */
+function expectStampsInFileOrder(data: { createdAt: unknown }[]): void {
+  const times = data.map(d => {
+    expect(d.createdAt).toBeInstanceOf(Date);
+    return (d.createdAt as Date).getTime();
+  });
+  for (let i = 1; i < times.length; i++) expect(times[i]!).toBeGreaterThan(times[i - 1]!);
+}
+
 describe('PurchaseOrderImportAdapter.appendLines', () => {
   let tx: {
     purchaseOrderLine: {
@@ -77,6 +95,23 @@ describe('PurchaseOrderImportAdapter.appendLines', () => {
       [tx, ORG, DOC],
       [tx, ORG, DOC],
     ]);
+  });
+
+  // guards: BR-PO-016
+  it('рядки файла (заміна й дописування) пишуться з createdAt у порядку файла — так їх показують картка й друк', async () => {
+    await adapter.replaceLines(
+      tx as never,
+      ORG,
+      DOC,
+      lines(['g-1', 1, 10], ['g-2', 1, 10], ['g-3', 1, 10]),
+    );
+    await adapter.appendLines(tx as never, ORG, DOC, lines(['g-4', 1, 10], ['g-5', 1, 10]));
+
+    const [replaced, appended] = writtenLines(tx.purchaseOrderLine.createMany);
+    expect(replaced!.map(l => l.goodId)).toEqual(['g-1', 'g-2', 'g-3']);
+    expect(appended!.map(l => l.goodId)).toEqual(['g-4', 'g-5']);
+    expectStampsInFileOrder(replaced!);
+    expectStampsInFileOrder(appended!);
   });
 
   it('НЕ видаляє наявні рядки (на відміну від replaceLines)', async () => {
@@ -317,6 +352,19 @@ describe('StockDocumentImportAdapter.appendLines', () => {
       c => (c[0] as { data?: { deletedAt?: unknown } })?.data?.deletedAt !== undefined,
     );
     expect(softDelete).toHaveLength(0);
+  });
+
+  // guards: BR-SDOC-009
+  it('рядки файла (заміна й дописування) пишуться з createdAt у порядку файла — так їх показують картка й друк', async () => {
+    const rows = (...ids: string[]) => ids.map(goodId => ({ goodId, quantity: 1, price: 5 }));
+    await adapter.replaceLines(tx as never, ORG, DOC, rows('g-1', 'g-2', 'g-3'));
+    await adapter.appendLines(tx as never, ORG, DOC, rows('g-4', 'g-5'));
+
+    const [replaced, appended] = writtenLines(tx.stockDocumentLine.createMany);
+    expect(replaced!.map(l => l.goodId)).toEqual(['g-1', 'g-2', 'g-3']);
+    expect(appended!.map(l => l.goodId)).toEqual(['g-4', 'g-5']);
+    expectStampsInFileOrder(replaced!);
+    expectStampsInFileOrder(appended!);
   });
 
   it('дублікат goodId → доливає кількість (склад не задвоюється)', async () => {

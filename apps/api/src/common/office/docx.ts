@@ -21,6 +21,17 @@ export function xmlEscape(s: string): string {
     .replace(/"/g, '&quot;');
 }
 
+/**
+ * Текст фрагмента (`<w:t>`): перенос рядка в тексті (примітка з кількох рядків) — `<w:br/>`.
+ * Сирий перенос усередині `<w:t>` Word показує пробілом, і рядки примітки зливались в один.
+ */
+function docxText(text: string): string {
+  return text
+    .split(/\r?\n/)
+    .map(part => `<w:t xml:space="preserve">${xmlEscape(part)}</w:t>`)
+    .join('<w:br/>');
+}
+
 export type DocxAlign = 'left' | 'right' | 'center';
 
 export interface DocxRunStyle {
@@ -38,7 +49,7 @@ export function docxRun(text: string, { bold, size, color }: DocxRunStyle = {}):
     size ? `<w:sz w:val="${size}"/>` : '',
     color ? `<w:color w:val="${color}"/>` : '',
   ].join('');
-  return `<w:r><w:rPr>${rPr}</w:rPr><w:t xml:space="preserve">${xmlEscape(text)}</w:t></w:r>`;
+  return `<w:r><w:rPr>${rPr}</w:rPr>${docxText(text)}</w:r>`;
 }
 
 /** Абзац з одного або кількох фрагментів. */
@@ -74,7 +85,7 @@ export function docxTableRow(
     return `<w:tc><w:tcPr>${fill}${CELL_BORDERS}</w:tcPr>
       <w:p><w:pPr><w:jc w:val="${align(i)}"/></w:pPr>
       <w:r><w:rPr>${bold ? '<w:b/>' : ''}<w:sz w:val="18"/></w:rPr>
-      <w:t xml:space="preserve">${xmlEscape(c)}</w:t></w:r></w:p></w:tc>`;
+      ${docxText(c)}</w:r></w:p></w:tc>`;
   });
   return `<w:tr>${tds.join('')}</w:tr>`;
 }

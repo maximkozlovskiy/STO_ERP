@@ -117,4 +117,36 @@ describe('StockDocumentsService — tenant-guard goodId рядків на update
     // Свої товари → правка проходить, рядки замінюються.
     expect(prisma.stockDocumentLine.createMany).toHaveBeenCalledTimes(1);
   });
+
+  // guards: BR-SDOC-009
+  it('update(): нові рядки пишуться з createdAt у порядку надсилання, відповідь сортує їх за ним — як картка й друк', async () => {
+    prisma.good.findMany.mockImplementation((args: { where: { id: { in: string[] } } }) =>
+      Promise.resolve(args.where.id.in.map(id => ({ id }))),
+    );
+    const ids = ['g-1', 'g-2', 'g-3'];
+
+    await service.update(ORG, DOC_ID, {
+      lines: ids.map(goodId => ({ goodId, quantity: 1 })),
+    } as never);
+
+    const data = (
+      prisma.stockDocumentLine.createMany.mock.calls[0]![0] as {
+        data: { goodId: string; createdAt: unknown }[];
+      }
+    ).data;
+    expect(data.map(l => l.goodId)).toEqual(ids);
+    const times = data.map(l => {
+      expect(l.createdAt).toBeInstanceOf(Date);
+      return (l.createdAt as Date).getTime();
+    });
+    expect(times[1]!).toBeGreaterThan(times[0]!);
+    expect(times[2]!).toBeGreaterThan(times[1]!);
+    expect(prisma.stockDocument.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        include: expect.objectContaining({
+          lines: expect.objectContaining({ orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] }),
+        }),
+      }),
+    );
+  });
 });

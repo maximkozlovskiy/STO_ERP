@@ -154,11 +154,15 @@ OWNER/ADMIN/STOREKEEPER (документи й рухи містять ціни 
   дата, сторони, реквізити, рядки в порядку картки (рядки у двійнику Prisma перемішані), одиниця рядка,
   підсумки, «ВИДАЛЕНО», 404 для чужої організації, ім'я файла. Мутації: без `orderBy` у мапері замовлення,
   без `orgId` у `where` рахунку → червоніє;
-- `document-export.renderers.spec.ts` (10) — PDF / XLSX / DOCX однієї моделі: «ВИДАЛЕНО», числа XLSX з
-  форматом, `xlsxSafe` (мутація: без нього → червоніє), екранування DOCX, ті самі підсумки у трьох форматах;
+- `document-export.renderers.spec.ts` (11) — PDF / XLSX / DOCX однієї моделі: «ВИДАЛЕНО», числа XLSX з
+  форматом, `xlsxSafe` (мутація: без нього → червоніє), екранування DOCX і переноси рядків примітки (`<w:br/>`), ті самі підсумки у трьох форматах;
 - `document-export.controller.spec.ts` (25) — ролі кожного маршруту, 400 на невідомий формат без читання
   документа (мутація: без `parseExportFormat` → червоніє), 404 чужий, `filename*=UTF-8''…`, `Content-Length`;
 - `apps/api/src/common/http/send-file.spec.ts` (2) — ім'я файла й `Content-Disposition`;
+- порядок рядків, що його друкує бланк, задає запис: `createdAt` у порядку надсилання (`orderedLineStamps` /
+  `withOrderedStamps`, `common/utils/line-order.ts`) — в `update` (`stock-documents.line-goods-tenant.spec.ts`)
+  і в імпорті рядків із файла (`../xlsx/document-line-import.adapter.spec.ts`). Мутація: без міток у `createMany`
+  → червоніє. Рядки, записані до 2026-11-05 одним `createMany`, мають однаковий `createdAt` і йдуть за `id`;
 - web: `components/ui/__tests__/DocumentExportActions.test.tsx` (4) — «Зберегти як → Excel» кличе
   `…/export/xlsx` і зберігає файл з іменем із заголовка, «Друк» — `printPdf` (мутація: повернути заглушку
   меню → червоніє);
@@ -173,18 +177,18 @@ describe; 2026-10-05 розбито за аспектами — 54 кейси м
 
 **Модуль:** `apps/api/src/modules/stock-documents/`
 
-| Аспект                                                                       | Тест                                             | Кейсів | Правила                                                             |
-| ---------------------------------------------------------------------------- | ------------------------------------------------ | ------ | ------------------------------------------------------------------- |
-| RECEIPT-тип: transition→CONFIRMED, else-гілка, позитивна quantity (Bug #480) | `stock-documents.receipt-type.spec.ts`           | 21     | BR-SDOC-001, BR-SDOC-002, BR-SDOC-004, BR-SDOC-008, BR-INVT-UOMBASE |
-| пошук у списку: номер або примітка, tenant-фільтр                            | `stock-documents.search.spec.ts`                 | 8      | —                                                                   |
-| Нумерація: кожен тип → свій лічильник, номер лише з лічильника               | `stock-documents.numbering.spec.ts`              | 5      | BR-SDOC-001                                                         |
-| Tenant-guard goodId рядків на update                                         | `stock-documents.line-goods-tenant.spec.ts`      | 2      | BR-SDOC-002                                                         |
-| Пов'язані документи (Phase D3)                                               | `stock-documents.linked-docs.spec.ts`            | 9      | —                                                                   |
-| `purchaseOrderId` на create і update (Phase D2)                              | `stock-documents.purchase-order-link.spec.ts`    | 4      | BR-SDOC-006                                                         |
-| HTTP-контракт (DTO, статуси, валідація)                                      | `stock-documents.contract.spec.ts`               | 42     | —                                                                   |
-| документ, позначений на видалення, — лише перегляд (BR-WO-012)               | `stock-documents.with-deleted.spec.ts`           | 9      | —                                                                   |
-| Асиметричний reverse рухів                                                   | `asymmetric-reverse.invariants.spec.ts`          | 7      | BR-SDOC-004                                                         |
-| Інваріант `STOCK_DOC_TYPE_LABELS` ↔ Prisma `StockDocumentType`               | `stock-documents.type-labels.invariants.spec.ts` | 2      | BR-SDOC-005                                                         |
+| Аспект                                                                        | Тест                                             | Кейсів | Правила                                                             |
+| ----------------------------------------------------------------------------- | ------------------------------------------------ | ------ | ------------------------------------------------------------------- |
+| RECEIPT-тип: transition→CONFIRMED, else-гілка, позитивна quantity (Bug #480)  | `stock-documents.receipt-type.spec.ts`           | 21     | BR-SDOC-001, BR-SDOC-002, BR-SDOC-004, BR-SDOC-008, BR-INVT-UOMBASE |
+| пошук у списку: номер або примітка, tenant-фільтр                             | `stock-documents.search.spec.ts`                 | 8      | —                                                                   |
+| Нумерація: кожен тип → свій лічильник, номер лише з лічильника                | `stock-documents.numbering.spec.ts`              | 5      | BR-SDOC-001                                                         |
+| Tenant-guard goodId рядків на update; `createdAt` рядків у порядку надсилання | `stock-documents.line-goods-tenant.spec.ts`      | 3      | BR-SDOC-002, BR-SDOC-009                                            |
+| Пов'язані документи (Phase D3)                                                | `stock-documents.linked-docs.spec.ts`            | 9      | —                                                                   |
+| `purchaseOrderId` на create і update (Phase D2)                               | `stock-documents.purchase-order-link.spec.ts`    | 4      | BR-SDOC-006                                                         |
+| HTTP-контракт (DTO, статуси, валідація)                                       | `stock-documents.contract.spec.ts`               | 42     | —                                                                   |
+| документ, позначений на видалення, — лише перегляд (BR-WO-012)                | `stock-documents.with-deleted.spec.ts`           | 9      | —                                                                   |
+| Асиметричний reverse рухів                                                    | `asymmetric-reverse.invariants.spec.ts`          | 7      | BR-SDOC-004                                                         |
+| Інваріант `STOCK_DOC_TYPE_LABELS` ↔ Prisma `StockDocumentType`                | `stock-documents.type-labels.invariants.spec.ts` | 2      | BR-SDOC-005                                                         |
 
 Web-тест таб-бару типів (`BR-SDOC-007`) лежить поза модулем:
 `apps/web/src/app/(app)/stock-documents/__tests__/StockDocTypeTabs.test.tsx` — 9 кейсів. У

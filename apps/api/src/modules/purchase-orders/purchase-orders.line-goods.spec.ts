@@ -184,4 +184,28 @@ describe('PurchaseOrdersService.create/update — tenant-guard goodId рядкі
     await expect(service.update(ORG, PO_ID, { notes: 'x' } as never)).resolves.toBeDefined();
     expect(prisma.good.findMany).not.toHaveBeenCalled();
   });
+
+  // guards: BR-PO-016
+  it('create і update: рядки пишуться з createdAt у порядку надсилання — так їх показують картка й друк', async () => {
+    const ids = ['g-1', 'g-2', 'g-3'];
+    prisma.good.findMany.mockResolvedValue(ids.map(id => ({ id })));
+    // Подія створення документа (журнал автоматизацій) пишеться в тій самій транзакції.
+    Object.assign(prisma, { domainEvent: { create: vi.fn().mockResolvedValue({}) } });
+    const lines = ids.map(goodId => ({ goodId, quantity: 1, price: 10 }));
+
+    await service.create(ORG, { supplierId: SUP, warehouseId: WH, lines } as never);
+    await service.update(ORG, PO_ID, { lines } as never);
+
+    expect(prisma.purchaseOrderLine.createMany).toHaveBeenCalledTimes(2);
+    for (const call of prisma.purchaseOrderLine.createMany.mock.calls) {
+      const data = (call[0] as { data: { goodId: string; createdAt: unknown }[] }).data;
+      expect(data.map(l => l.goodId)).toEqual(ids);
+      const times = data.map(l => {
+        expect(l.createdAt).toBeInstanceOf(Date);
+        return (l.createdAt as Date).getTime();
+      });
+      expect(times[1]!).toBeGreaterThan(times[0]!);
+      expect(times[2]!).toBeGreaterThan(times[1]!);
+    }
+  });
 });

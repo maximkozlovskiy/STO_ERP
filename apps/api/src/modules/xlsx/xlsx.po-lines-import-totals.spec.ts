@@ -134,4 +134,37 @@ describe('XlsxService.importPOLines — ПДВ рядків і тотали пі
     expect(sync).not.toHaveBeenCalled();
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
+
+  // guards: BR-PO-016
+  it('нові рядки пишуться з createdAt у порядку файла — так їх показують картка й друк', async () => {
+    seed([
+      { id: 'g1', name: 'Фільтр', sku: 'OC-90' },
+      { id: 'g2', name: 'Свічка', sku: 'SP-1' },
+      { id: 'g3', name: 'Ремінь', sku: 'BLT-7' },
+    ]);
+
+    await service.importPOLines(
+      ORG,
+      PO,
+      await xlsx([
+        HEADER,
+        ['OC-90', 'Фільтр', 1, 10],
+        ['SP-1', 'Свічка', 1, 10],
+        ['BLT-7', 'Ремінь', 1, 10],
+      ]),
+    );
+
+    const data = (
+      prisma.purchaseOrderLine.createMany.mock.calls[0]![0] as {
+        data: { goodId: string; createdAt: unknown }[];
+      }
+    ).data;
+    expect(data.map(l => l.goodId)).toEqual(['g1', 'g2', 'g3']);
+    const times = data.map(l => {
+      expect(l.createdAt).toBeInstanceOf(Date);
+      return (l.createdAt as Date).getTime();
+    });
+    expect(times[1]!).toBeGreaterThan(times[0]!);
+    expect(times[2]!).toBeGreaterThan(times[1]!);
+  });
 });

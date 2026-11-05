@@ -114,7 +114,17 @@ describe('XlsxService — єдиний пошук товару в заванта
       ]);
       expect(res).toMatchObject({ created: 1, errors: [] });
       expect(prisma.purchaseOrderLine.createMany).toHaveBeenCalledWith({
-        data: [{ orgId: ORG, purchaseOrderId: PO, goodId: 'g1', quantity: 2, price: 100 }],
+        data: [
+          {
+            orgId: ORG,
+            purchaseOrderId: PO,
+            goodId: 'g1',
+            quantity: 2,
+            price: 100,
+            // Мітка порядку рядків файла (BR-PO-016, `withOrderedStamps`).
+            createdAt: expect.any(Date),
+          },
+        ],
       });
     });
 
