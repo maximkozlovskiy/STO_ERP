@@ -120,20 +120,6 @@ export class PurchaseOrderImportAdapter implements DocumentLineImportAdapter {
     const totalAmount = money(computed.reduce((s, l) => s + l.quantity * l.price, 0));
     const totalVat = sumMoney(computed.map(l => l.vatAmount));
 
-    // База по курсу на дату документа (як у purchase-orders). currencyId NOT NULL (TD1), але
-    // читаємо актуальний документ у tenant-scope, щоб не довіряти стороннім значенням.
-    const po = await tx.purchaseOrder.findFirstOrThrow({
-      where: { id: docId, orgId, deletedAt: null },
-      select: { currencyId: true, documentDate: true },
-    });
-    const conv = await this.exchangeRates.resolveBaseConversion(
-      orgId,
-      po.currencyId,
-      po.documentDate ?? new Date(),
-      totalAmount,
-      true,
-    );
-
     // Та сама заміна рядків, що й PATCH картки (BR-PL-009 — звірка списків усередині); тотали —
     // після неї: порядок блокувань «позиції → замовлення».
     await replaceDraftLines(tx, this.purchaseLists, {
@@ -141,7 +127,7 @@ export class PurchaseOrderImportAdapter implements DocumentLineImportAdapter {
       purchaseOrderId: docId,
       lines: computed,
     });
-    await this.writeTotals(tx, orgId, docId, { totalAmount, totalVat, conv }, true);
+    await this.writeTotals(tx, orgId, docId, { totalAmount, totalVat }, true);
   }
 
   async appendLines(
@@ -266,18 +252,7 @@ export class PurchaseOrderImportAdapter implements DocumentLineImportAdapter {
     const totalAmount = moneyFromDecimal(agg[0]?.total);
     const totalVat = moneyFromDecimal(agg[0]?.vat);
 
-    const po = await tx.purchaseOrder.findFirstOrThrow({
-      where: { id: docId, orgId, deletedAt: null },
-      select: { currencyId: true, documentDate: true },
-    });
-    const conv = await this.exchangeRates.resolveBaseConversion(
-      orgId,
-      po.currencyId,
-      po.documentDate ?? new Date(),
-      totalAmount,
-      true,
-    );
-    await this.writeTotals(tx, orgId, docId, { totalAmount, totalVat, conv }, draftOnly);
+    await this.writeTotals(tx, orgId, docId, { totalAmount, totalVat }, draftOnly);
   }
 
   /**
@@ -291,16 +266,29 @@ export class PurchaseOrderImportAdapter implements DocumentLineImportAdapter {
     tx: Prisma.TransactionClient,
     orgId: string,
     docId: string,
-    t: { totalAmount: number; totalVat: number; conv: { amountBase: number; rateUsed: number } },
+    t: { totalAmount: number; totalVat: number },
     draftOnly: boolean,
   ): Promise<void> {
+    // База по курсу на дату документа (як у purchase-orders). currencyId NOT NULL (TD1), але
+    // читаємо актуальний документ у tenant-scope, щоб не довіряти стороннім значенням.
+    const po = await tx.purchaseOrder.findFirstOrThrow({
+      where: { id: docId, orgId, deletedAt: null },
+      select: { currencyId: true, documentDate: true },
+    });
+    const conv = await this.exchangeRates.resolveBaseConversion(
+      orgId,
+      po.currencyId,
+      po.documentDate ?? new Date(),
+      t.totalAmount,
+      true,
+    );
     const res = await tx.purchaseOrder.updateMany({
       where: { id: docId, orgId, deletedAt: null, ...(draftOnly ? { status: 'DRAFT' } : {}) },
       data: {
         totalAmount: t.totalAmount,
         totalVat: t.totalVat,
-        totalAmountBase: t.conv.amountBase,
-        rateUsed: t.conv.rateUsed,
+        totalAmountBase: conv.amountBase,
+        rateUsed: conv.rateUsed,
       },
     });
     if (draftOnly && res.count === 0) {
