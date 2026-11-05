@@ -809,6 +809,7 @@ export const VALIDATION_KEYS = [
   'err.workOrder.publicUrlNotConfigured',
   'err.workOrder.plannedInPast',
   'err.workOrder.plannedOutsideWorkHours',
+  'err.workOrder.plannedOnDayOff',
   'err.workOrder.plannedEndBeforeStart',
   'err.workOrder.paidCannotCancel',
   'err.workOrder.paidCannotDelete',

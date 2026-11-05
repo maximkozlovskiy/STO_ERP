@@ -740,6 +740,7 @@ export const en: Record<string, string> = {
   'err.workOrder.plannedInPast': 'Planned time cannot be in the past',
   'err.workOrder.plannedOutsideWorkHours':
     'Planned time must be within working hours ({{start}}:00–{{end}}:00)',
+  'err.workOrder.plannedOnDayOff': 'Planned time falls on a day off of the branch',
   'err.workOrder.plannedEndBeforeStart': 'Planned end must be later than the start',
   'err.workOrder.paidCannotCancel':
     'The work order has payments of {{paid}} — reverse the payment before cancelling the work order',

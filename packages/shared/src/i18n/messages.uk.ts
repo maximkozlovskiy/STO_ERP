@@ -730,6 +730,7 @@ export const uk: Record<string, string> = {
   'err.workOrder.plannedInPast': 'Плановий час не може бути в минулому',
   'err.workOrder.plannedOutsideWorkHours':
     'Плановий час має бути в робочих годинах ({{start}}:00–{{end}}:00)',
+  'err.workOrder.plannedOnDayOff': 'Плановий час припадає на вихідний день філії',
   'err.workOrder.plannedEndBeforeStart': 'Планове завершення має бути пізніше за початок',
   'err.workOrder.paidCannotCancel':
     'Наряд має оплату {{paid}} — спершу сторнуйте оплату, потім скасовуйте наряд',
