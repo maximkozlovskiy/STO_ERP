@@ -5,8 +5,10 @@
 -- Далі — все, що на них посилається (restrict / cascade), і документ цілком, якщо видаляється його рядок.
 -- Організації не чіпаються. Тригери (FK, append-only) вимкнено на час транзакції
 -- (`session_replication_role = replica`), тому цілісність перевіряється наприкінці: висяче посилання
--- хоч в одному FK — відкат; так само відкат, якщо проводка, рух складу чи рядок каси поліморфно
--- (`documentId` без FK) посилається на видалений документ (крок 5б). Також звіряються залишки складу (рух ↔ залишок): нова розбіжність видна у звіті.
+-- хоч в одному FK — відкат. Поліморфні посилання (`documentId` без FK) на видалений документ крок 4б
+-- прибирає: проводки — геть, баланс рахунку розрахунків — заново з проводок; у рядку каси, руху складу й
+-- бонусів гроші й кількість лишаються, посилання — NULL. Крок 5б перевіряє, що грошей і складу з таким
+-- посиланням не лишилось (інакше відкат). Також звіряються залишки складу (рух ↔ залишок).
 --
 -- Типово — ПРОБНИЙ прогін (ROLLBACK) зі звітом «таблиця → скільки рядків». Справжнє видалення — `-v commit=1`.
 -- Спершу копія бази:
@@ -120,6 +122,39 @@ BEGIN
   END LOOP;
 END $$;
 
+-- 4б) Поліморфні посилання на видалені документи. Документ, що потрапив у purge як залежний (наряд
+-- реального клієнта з тестовим авто, товаром чи складом), лишав би проводки, рядки каси й рухи складу з
+-- `documentId` без FK (2026-11-05: 818 проводок на нарядах, яких немає, на рахунках клієнтів без мітки).
+-- Знаки — дзеркало `BALANCE_SIGN` (`settlements.service.ts`); тип, якого тут немає, — відкат.
+CREATE TEMP TABLE balance_sign (type text PRIMARY KEY, s int) ON COMMIT DROP;
+INSERT INTO balance_sign VALUES ('CHARGE',1),('PAYMENT',-1),('PREPAYMENT',-1),('REFUND',-1),('CREDIT_NOTE',-1),
+  ('SUPPLIER_CHARGE',-1),('SUPPLIER_PAYMENT',1),('SUPPLIER_REFUND',1),('FX_GAIN',1),('FX_LOSS',-1),
+  ('REFUND_OUT',1),('REFUND_OUT_CANCEL',-1),('SUPPLIER_PAYMENT_RETURN',-1),('PAYMENT_CANCEL',1),
+  ('PREPAYMENT_CANCEL',1),('SUPPLIER_PAYMENT_CANCEL',-1),('SUPPLIER_PAYMENT_RETURN_CANCEL',1);
+DO $$
+DECLARE n bigint;
+BEGIN
+  IF EXISTS (SELECT 1 FROM settlement_transactions t
+             WHERE NOT EXISTS (SELECT 1 FROM balance_sign b WHERE b.type = t.type::text)) THEN
+    RAISE EXCEPTION 'тип проводки без знака в balance_sign — оновіть дзеркало BALANCE_SIGN';
+  END IF;
+  CREATE TEMP TABLE gone_postings ON COMMIT DROP AS
+    SELECT id, "settlementAccountId" AS acc FROM settlement_transactions
+    WHERE "documentId"::text IN (SELECT id FROM purge);
+  DELETE FROM settlement_transactions WHERE id IN (SELECT id FROM gone_postings);
+  GET DIAGNOSTICS n = ROW_COUNT;
+  IF n > 0 THEN RAISE NOTICE 'проводок на видалені документи: % (рахунків: %)', n, (SELECT count(DISTINCT acc) FROM gone_postings); END IF;
+  -- Баланс = Σ знак × amountBase (як звіряє reconciliation.processor)
+  UPDATE settlement_accounts a SET balance = coalesce((
+    SELECT round(sum(b.s * coalesce(t."amountBase", t.amount)), 2) FROM settlement_transactions t
+    JOIN balance_sign b ON b.type = t.type::text WHERE t."settlementAccountId" = a.id), 0)
+  WHERE a.id IN (SELECT acc FROM gone_postings);
+  UPDATE cash_operations SET "documentType" = NULL, "documentId" = NULL WHERE "documentId"::text IN (SELECT id FROM purge);
+  UPDATE cash_operations SET "baseDocumentType" = NULL, "baseDocumentId" = NULL WHERE "baseDocumentId"::text IN (SELECT id FROM purge);
+  UPDATE stock_movements SET "documentType" = NULL, "documentId" = NULL WHERE "documentId"::text IN (SELECT id FROM purge);
+  UPDATE loyalty_transactions SET "documentType" = NULL, "documentId" = NULL WHERE "documentId"::text IN (SELECT id FROM purge);
+END $$;
+
 -- 5) Цілісність: жодного посилання на неіснуючий рядок
 DO $$
 DECLARE f record; n bigint; bad int := 0;
@@ -133,11 +168,9 @@ BEGIN
   RAISE NOTICE 'цілісність FK: ок';
 END $$;
 
--- 5б) Поліморфні посилання (`documentId` / `entityId` без FK) — їх крок 5 не бачить. Документ, що
--- потрапив у purge як залежний (наряд реального клієнта з тестовим авто, товаром чи складом),
--- лишав би проводки на рахунку розрахунків, рухи складу й рядки каси, які тримають баланс і залишок
--- (2026-11-05 так лишилось 818 проводок `WorkOrder` на нарядах, яких немає). Гроші й склад — відкат;
--- журнали й події — лише звіт.
+-- 5б) Поліморфні посилання (`documentId` / `entityId` без FK) — їх крок 5 не бачить. Після кроку 4б
+-- гроші й склад на видалений документ посилатись не мають; лишилось — відкат. Журнали, події й
+-- `batch_consumptions` (`documentId` обов'язковий, кількість партії узгоджена) — лише звіт.
 DO $$
 DECLARE
   r record; n bigint; bad int := 0;
@@ -145,7 +178,7 @@ BEGIN
   FOR r IN SELECT * FROM (VALUES
     ('settlement_transactions','documentId', true), ('stock_movements','documentId', true),
     ('cash_operations','documentId', true), ('cash_operations','baseDocumentId', true),
-    ('loyalty_transactions','documentId', true), ('batch_consumptions','documentId', true),
+    ('loyalty_transactions','documentId', true), ('batch_consumptions','documentId', false),
     ('audit_events','entityId', false), ('comments','entityId', false), ('domain_events','documentId', false),
     ('employee_notifications','documentId', false), ('integration_logs','documentId', false),
     ('notification_logs','documentId', false), ('tasks','entityId', false)
