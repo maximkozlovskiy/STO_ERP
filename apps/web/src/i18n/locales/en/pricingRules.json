@@ -112,7 +112,7 @@
     "scopeOrder": "Supplier {{gt}} Products {{gt}} Brand {{gt}} Category {{gt}} Type {{gt}} Entire range",
     "supplier": "Supplier (optional)",
     "supplierSearchPlaceholder": "Search supplier…",
-    "supplierScopeHint": "The rule will apply only when pricing orders from this supplier",
+    "supplierScopeHint": "The rule will apply only when pricing orders from this supplier — to products in its scope (list, brand, category, type), or to every product of the order if no scope is set",
     "brand": "Brand (optional)",
     "brandAny": "— Any brand —",
     "goodType": "Good type (optional)",
@@ -226,7 +226,7 @@
           "Of all enabled rules the most specific one wins:",
           {
             "term": "1. Supplier",
-            "text": "only when pricing a document of that supplier"
+            "text": "only when pricing a document of that supplier, and only to products in its scope; among several supplier rules the same order as below applies"
           },
           {
             "term": "2. Product list",
