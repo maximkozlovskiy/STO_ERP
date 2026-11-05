@@ -149,7 +149,8 @@
 - ~~§10 п. 23 — пошук історії каси за контрагентом серед контрагентів цієї каси.~~ ✅ ЗАКРИТО 2026-11-05: контрагент шукається серед тих, що мають рядки в цій касі (групування рядків каси, без стелі 500 на всю організацію), BR-CASH-034, `cash.operation-record.spec.ts`.
 - ~~§12 п. 9 — порядок блокувань «оплата ‖ сторно» (deadlock).~~ ✅ ЗАКРИТО 2026-11-05: `PaymentsService.reverse` першим блокує наряд оплати (`lockWorkOrdersForUpdate`), а без наряду — рахунок, до CAS оплати й проводки сторно — порядок той самий, що в оплаті (BR-PAY-005, `payments.reverse.spec.ts`).
 - ~~§13 п. 5 / 21 — запит діапазону `GET /calendar/slots?from&to` і позначка «не всі дні»; вихідні філії в планових датах.~~ ✅ ЗАКРИТО 2026-11-05: п. 5 — `73709736` (2026-10-27); п. 21 — `99c3df3f`, `f67418ac`, `9d000e38` + review `e9dc7e68`, tester `587606965` (Bug #1047 «Робочі дні» не зберігались), `900d16c37` (Bug #1050): вихідні філії пропускаються в планових датах наряду (400 `plannedOnDayOff`), автокінці, нормогодинах і розбитті запису по днях (BR-WO-019, BR-CAL-016). Питання власнику — (б) №83–86.
-- §15 п. 4 / 8 / 10 — `canOpen(kind)` + `<LinkedDocRef>`; лічильник на `SupplierOfferBatch` (міграція); `setStatus(tx)` / `replaceDraftLines(tx)` у замовленнях.
+- §15 п. 4 / 10 — `canOpen(kind)` + `<LinkedDocRef>`; `setStatus(tx)` / `replaceDraftLines(tx)` у замовленнях.
+- ~~§15 п. 8 — лічильник на `SupplierOfferBatch` (міграція).~~ ✅ ЗАКРИТО 2026-11-05: замість лічильника — індекс `(orgId, batchId, status)` (міграція `20261105190000_supplier_offer_requests_batch_status_idx`, замінив `(orgId, batchId)`) і `findFirst` відкритого запиту замість `count` у `completeBatchIfDone`: перевірка не перебирає batch, а копії стану, яку треба тримати узгодженою з запитами, немає.
 - ~~Прибрати модель `WorkGoodCategoryLink` і таблицю `work_good_category_links` (разом із seed).~~ ✅ ЗАКРИТО 2026-11-05: міграція `20261105180000_drop_work_order_templates_and_category_links`, крок зв'язків у `seed-catalog.ts` прибрано.
 - ~~Прибрати модель `WorkOrderTemplate` і таблицю `work_order_templates` (зв'язок `Organisation.workOrderTemplates`, `'WorkOrderTemplate'` у `prisma.service.ts`).~~ ✅ ЗАКРИТО 2026-11-05: та сама міграція `20261105180000_drop_work_order_templates_and_category_links`; синк мобільного застосунку таблицю не читав (grep по `apps/mobile` і модулю sync — 0 збігів).
 
@@ -2075,9 +2076,9 @@ BR-INV-018…020, BR-CASH-026). Поведінку нижче не змінен�
    (`ItemsView`, `PurchaseOrderCreateModal`, `GoodsTab`;
    `SupplierConnectionModal` виправлено в Bug #894). Глибше: серверний пошук у спільному хуку чи
    `EntityPickerField` з `onSearch` і grep-гейт на `limit=200` у завантаженнях варіантів.
-8. **Завершення batch-у пропозицій рахує відкриті запити `count`-ом після кожної задачі** — O(N²) на
-   batch. Дешевше — лічильник незавершених на `SupplierOfferBatch` (`UPDATE … RETURNING`), потрібна
-   міграція.
+8. ~~**Завершення batch-у пропозицій рахує відкриті запити `count`-ом після кожної задачі** — O(N²) на
+   batch.~~ — ✅ ЗАКРИТО 2026-11-05: індекс `(orgId, batchId, status)` + `findFirst` відкритого запиту
+   (див. розділ (а)). Лічильник на `SupplierOfferBatch` свідомо не вводили — він дублював би стан запитів.
 9. **`dns.lookup` на кожен HTTP-запит до постачальника** (`supplier-url-policy.ts`). Кеш перевірки на
    хост із коротким TTL — лише після рішення про ризик DNS rebinding.
 10. **Статус замовлення постачальнику з наслідками** (`purchase-orders.service` `transition`,

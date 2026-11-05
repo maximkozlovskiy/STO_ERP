@@ -100,7 +100,9 @@ model SupplierOfferRequest {
   connection SupplierConnection  @relation(fields: [connectionId], references: [id])
   offers     SupplierOffer[]
 
-  @@index([orgId, batchId])
+  // status — для completeBatchIfDone («чи лишився відкритий запит batch-у» без перебору batch-у);
+  // префікс (orgId, batchId) обслуговує й читання batch-у.
+  @@index([orgId, batchId, status])
   // Пропозиції позиції (`GET /purchase-list-items/:id/offers`, вибір пропозиції): без індексу — повний скан
   // таблиці з видаленими за retention рядками; EXPLAIN на 450 тис. рядків — 25 мс → 0.09 мс (optimize 2026-10-18).
   @@index([orgId, purchaseListItemId])

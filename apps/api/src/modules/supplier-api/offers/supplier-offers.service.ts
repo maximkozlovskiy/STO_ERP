@@ -309,12 +309,17 @@ export class SupplierOffersService {
     return ok;
   }
 
-  /** Batch завершено, коли всі його запити DONE / FAILED. */
+  /**
+   * Batch завершено, коли всі його запити DONE / FAILED. Викликається після КОЖНОГО запиту, тож
+   * питає лише «чи лишився хоч один відкритий» — індекс (orgId, batchId, status) дає перший рядок
+   * одразу; `count` перебирав би весь batch щоразу, O(N²) на batch (TECH-DEBT §15 п. 8).
+   */
   async completeBatchIfDone(orgId: string, batchId: string): Promise<void> {
-    const open = await this.prisma.supplierOfferRequest.count({
+    const open = await this.prisma.supplierOfferRequest.findFirst({
       where: { orgId, batchId, deletedAt: null, status: { in: ['QUEUED', 'RUNNING', 'RETRYING'] } },
+      select: { id: true },
     });
-    if (open > 0) return;
+    if (open) return;
     await this.prisma.supplierOfferBatch.updateMany({
       where: { id: batchId, orgId, completedAt: null },
       data: { completedAt: new Date() },
