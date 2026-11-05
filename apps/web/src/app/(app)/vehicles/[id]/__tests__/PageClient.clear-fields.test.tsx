@@ -159,3 +159,15 @@ describe('Картка авто — очищення полів у PATCH', () =>
     expect(patchBody()).toMatchObject({ engineVolume: 0 });
   });
 });
+
+// Bug #1041: картка показувала обʼєм через `{vehicle.engineVolume && <Info …/>}` — 0 (електромобіль, тепер
+// зберігається) React друкував голим «0» без підпису, а рядка «Обʼєм, л» не було. Мутація: повернути
+// truthy-умову → підпису немає, кейс червоніє.
+describe('Картка авто — обʼєм 0 у блоці даних', () => {
+  it('обʼєм 0 → рядок «Обʼєм, л» зі значенням 0', async () => {
+    vehicle = { ...VEHICLE, engineVolume: 0 };
+    renderWithQueryClient(<VehicleCardPage />);
+    const label = await screen.findByText("Об'єм, л");
+    expect(label.parentElement).toHaveTextContent(/^Об'єм, л\s*0$/);
+  });
+});

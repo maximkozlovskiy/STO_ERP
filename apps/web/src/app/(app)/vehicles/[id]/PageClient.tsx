@@ -396,8 +396,9 @@ export default function VehicleCardPage() {
           <Info label={t('card.info.licensePlate')} value={vehicle.licensePlate} />
         )}
         {vehicle.vin && <Info label={t('card.info.vin')} value={vehicle.vin} mono />}
-        {vehicle.year && <Info label={t('card.info.year')} value={String(vehicle.year)} />}
-        {vehicle.engineVolume && (
+        {vehicle.year != null && <Info label={t('card.info.year')} value={String(vehicle.year)} />}
+        {/* `!= null`, не truthy: обʼєм 0 (електромобіль) інакше React друкує голим «0» без підпису. */}
+        {vehicle.engineVolume != null && (
           <Info label={t('card.info.engineVolume')} value={String(vehicle.engineVolume)} />
         )}
         {vehicle.fuelType && (
