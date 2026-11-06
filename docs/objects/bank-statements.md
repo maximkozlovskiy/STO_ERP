@@ -296,7 +296,7 @@ cd apps/api && npx vitest run src/modules/bank-statements/<файл>.spec.ts
 | HTTP-клієнт                                                                                                          | `providers/privat24.client.spec.ts`                        | 13     |
 | провайдер                                                                                                            | `providers/privat24.provider.spec.ts`                      | 25     |
 | purpose parser                                                                                                       | `purpose-parser.spec.ts`                                   | 11     |
-| курс проведення оплати постачальнику на дату операції                                                                | `../supplier-payments/supplier-payments.rate-date.spec.ts` | 4      |
+| курс проведення оплати постачальнику на дату операції                                                                | `../supplier-payments/supplier-payments.rate-date.spec.ts` | 5      |
 | видалення рахунку з рознесеними рядками (BR-BANK-043)                                                                | `../bank-accounts/bank-accounts.service.spec.ts`           | 5      |
 
 Спільний сетап аспектних спеків `bank-reconciliation.*` — `bank-reconciliation.spec-fixture.ts` (фабрики моків) і

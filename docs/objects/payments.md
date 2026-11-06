@@ -543,7 +543,7 @@ cd apps/api && npx vitest run src/modules/payments/<файл>.spec.ts
 | fiscal gate                                                                                         | `payments.fiscal-gate.spec.ts`                           | 8      |
 | idempotency                                                                                         | `payments.idempotency.spec.ts`                           | 7      |
 | money model                                                                                         | `payments.money-model.spec.ts`                           | 23     |
-| multicurrency                                                                                       | `payments.multicurrency.spec.ts`                         | 26     |
+| multicurrency                                                                                       | `payments.multicurrency.spec.ts`                         | 27     |
 | query dto                                                                                           | `payments.query-dto.spec.ts`                             | 48     |
 | передумови + наряд; подія «створено» оплати (BR-AUT-060); наряд — підстава рядка каси (BR-CASH-030) | `payments.work-order.spec.ts`                            | 57     |
 | політика повторів черг                                                                              | `payments.queue-retry-policy.spec.ts`                    | 6      |
