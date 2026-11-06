@@ -129,6 +129,38 @@ describe('SupplierPaymentsService — payables-fx', () => {
     expect(fxCall()![1]).toMatchObject({ type: 'FX_LOSS', amount: 50, documentId: PO_FX });
   });
 
+  // Bug #1054 (CRITICAL money): повна передоплата валютного замовлення ДО прийому. Нарахування
+  // SUPPLIER_CHARGE ще немає (chargeBase = 0) — «курсова різниця» дорівнювала всій сплаченій сумі:
+  // FX_LOSS обнуляв аванс, а прийом потім нараховував борг удруге (живий API: оплата 500 USD
+  // «Замовлено» → FX_LOSS 21 625 грн). Частково прийняте — те саме на неприйняту частину.
+  // Mutation-verify: прибрати умову `status === RECEIVED` у confirmInTx → обидва кейси падають.
+  // guards: BR-SUPPAY-012
+  it.each([['ORDERED'], ['PARTIAL']])(
+    'повна оплата USD-PO у статусі %s (ще не прийнято) → FX НЕ бронюється, paidAt ставиться',
+    async status => {
+      setupSpPre(USD);
+      prisma.purchaseOrder.findFirst.mockResolvedValue({
+        status,
+        currencyId: USD,
+        totalAmount: 100,
+        paidAmount: 0,
+        paidAt: null,
+      });
+      (
+        service as unknown as { exchangeRates: { getBaseCurrency: ReturnType<typeof vi.fn> } }
+      ).exchangeRates.getBaseCurrency = vi.fn().mockResolvedValue({ id: UAH, code: 'UAH' });
+      journalByType({ SUPPLIER_PAYMENT: 4150 }); // нарахування немає
+      prisma.supplierPayment.findMany.mockResolvedValue([{ id: SP_ID }]);
+
+      await service.confirm(ORG, SP_ID, USER_ID);
+
+      expect(fxCall()).toBeUndefined();
+      expect(prisma.purchaseOrder.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ paidAmount: 100 }) }),
+      );
+    },
+  );
+
   it('часткова оплата PO (не повна) → paidAmount інкремент, БЕЗ FX, paidAt null', async () => {
     setupSpPre(USD);
     setupPo(USD, 500, 0); // оплата 100 < 500 → часткова

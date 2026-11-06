@@ -180,12 +180,41 @@ describe('PaymentsService — мультивалюта Фаза 2 (Payment curre
     expect(lastCreateData?.currencyId).toBe(USD_ID);
     expect(lastCreateData?.amountBase).toBe(4150);
     expect(lastCreateData?.rateUsed).toBe(41.5);
-    // Борг у base: settlement отримує currencyId (createTransaction сам конвертує).
+    // Борг у base: settlement отримує currencyId і ТОЙ САМИЙ курс, що й оплата (Bug #1053).
     expect(settlements.createTransaction).toHaveBeenCalledWith(
       ORG,
-      expect.objectContaining({ type: 'PAYMENT', amount: 100, currencyId: USD_ID }),
+      expect.objectContaining({
+        type: 'PAYMENT',
+        amount: 100,
+        currencyId: USD_ID,
+        conversion: { rateUsed: 41.5, amountBase: 4150 },
+      }),
       expect.anything(),
     );
+  });
+
+  // Bug #1053: курс проводки — із підготовки оплати, а не нове читання в транзакції. Читання через
+  // `this.prisma` усередині `$transaction` бере друге з'єднання пулу: 30 паралельних рознесень на
+  // одного контрагента (пул 25) давали 26 × 500 «expired transaction». Курс читається РІВНО раз.
+  // Mutation-verify: прибрати `conversion: conv` у createInTx → кейс падає (проводка без курсу оплати).
+  it('курс оплати читається один раз — до транзакції; проводка отримує його готовим (Bug #1053)', async () => {
+    prisma.cashRegister.findFirst.mockResolvedValue({
+      id: CASH_ID,
+      isFiscal: false,
+      currencyId: USD_ID,
+    });
+    exchangeRates.resolveBaseConversion.mockResolvedValue({ rateUsed: 41.5, amountBase: 4150 });
+
+    await service.create(ORG, usdCashDto, 'user-1');
+
+    expect(exchangeRates.resolveBaseConversion).toHaveBeenCalledTimes(1);
+    const settlementDto = settlements.createTransaction.mock.calls[0][1] as {
+      conversion?: unknown;
+    };
+    expect(settlementDto.conversion).toEqual({
+      rateUsed: lastCreateData?.rateUsed,
+      amountBase: lastCreateData?.amountBase,
+    });
   });
 
   // F8 (BR-FIN-MONEYCAP, аудит 2026-10-24): Payment.amountBase = dto.amount × rate лягає у

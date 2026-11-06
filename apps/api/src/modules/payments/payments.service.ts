@@ -854,9 +854,14 @@ export class PaymentsService {
             : 'PAYMENT'
           : (dto.settlementType ?? 'PAYMENT'),
         amount: dto.amount,
-        // Мультивалюта (Фаза 2): передаємо валюту → борг лягає у base (amountBase). createTransaction
-        // сам конвертує (спільне джерело курсу). Без currencyId → base (BC для UAH-орг).
+        // Мультивалюта (Фаза 2): передаємо валюту → борг лягає у base (amountBase). Без currencyId →
+        // base (BC для UAH-орг). Курс — той, що вже записано в оплату (`prepareCreate`), а не нове
+        // читання: (1) проводка й Payment.amountBase — одна сума, навіть якщо курс додали між кроками;
+        // (2) читання курсу через `this.prisma` усередині транзакції бере ДРУГЕ з'єднання пулу — під
+        // паралельними оплатами всі з'єднання тримають транзакції, і кожна чекає вільного до
+        // таймауту (Bug #1053: 30 паралельних рознесень → 26 × 500).
         currencyId: paymentCurrencyId ?? undefined,
+        conversion: conv,
         documentType: 'Payment',
         documentId: created.id,
         createdBy: userId,

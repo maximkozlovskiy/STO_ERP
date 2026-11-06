@@ -115,6 +115,17 @@ describe('SupplierPaymentsService.confirm — дата курсу (opts.rateDate
     expect((posting.date as Date).toISOString()).toBe(RATE_DATE.toISOString());
   });
 
+  // Bug #1053: проводка отримує ГОТОВИЙ курс оплати, а не читає його вдруге в транзакції через
+  // `this.prisma` (друге з'єднання пулу → таймаути під паралельними рознесеннями).
+  // Mutation-verify: прибрати `conversion: conv` у confirmInTx → кейс падає.
+  // guards: BR-BANK-028
+  it('з rateDate: проведення отримує той самий курс і базову суму, що записано в оплату', async () => {
+    await confirmAt({ rateDate: RATE_DATE });
+
+    const posting = h.settlements.createTransaction.mock.calls[0]![1];
+    expect(posting.conversion).toEqual({ rateUsed: 41.5, amountBase: 8300 });
+  });
+
   // guards: BR-BANK-028
   it.each([
     ['без opts', undefined],

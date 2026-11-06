@@ -991,6 +991,10 @@ export class SupplierPaymentsService {
         currencyId: pre.currencyId ?? undefined,
         date: confirmDate,
         fallbackToLatest: true,
+        // Курс — той, що щойно записано в оплату (`prepareConfirm`): проводка й totalAmountBase —
+        // одна сума, і жодного читання курсу через `this.prisma` усередині транзакції (друге
+        // з'єднання пулу; під паралельними рознесеннями — таймаут, Bug #1053).
+        conversion: conv,
         documentType: 'SupplierPayment',
         documentId: id,
         createdBy: userId,
@@ -1057,7 +1061,20 @@ export class SupplierPaymentsService {
 
       // FX лише коли PO вперше повністю сплачено + не-базова валюта. Курс нарахування (дата
       // прийому) ≠ курс оплати → base-залишок ≠ 0; одна проводка обнуляє.
-      if (becameFullyPaid && !(await this.exchangeRates.sameCurrency(orgId, null, po.currencyId))) {
+      // Лише для ПРИЙНЯТОГО замовлення (Bug #1054): до прийому нарахування SUPPLIER_CHARGE немає
+      // (chargeBase = 0), і «різниця» дорівнювала б УСІЙ сплаченій сумі — FX_LOSS з'їдав аванс, а
+      // прийом потім нараховував борг удруге. Частково прийняте — те саме на неприйняту частину.
+      // Статус — з транзакції: рядок замовлення щойно заблоковано CAS-ом вище.
+      if (
+        becameFullyPaid &&
+        !(await this.exchangeRates.sameCurrency(orgId, null, po.currencyId)) &&
+        (
+          await tx.purchaseOrder.findFirst({
+            where: { id: poId, orgId, deletedAt: null },
+            select: { status: true },
+          })
+        )?.status === PurchaseOrderStatus.RECEIVED
+      ) {
         const [chargeAgg, spIds, fxNet] = await Promise.all([
           tx.settlementTransaction.aggregate({
             where: {
