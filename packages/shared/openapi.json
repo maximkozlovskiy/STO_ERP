@@ -33690,6 +33690,10 @@
             "type": "string",
             "nullable": true
           },
+          "supplierPaymentFromRow": {
+            "type": "boolean",
+            "description": "Оплату постачальнику СТВОРЕНО з цього рядка (BR-BANK-028): скасування рознесення її сторнує; false — оплату лише прив’язали (BR-BANK-027) або її немає (BR-BANK-039)"
+          },
           "expenseCategoryId": {
             "type": "string",
             "nullable": true
@@ -33768,7 +33772,8 @@
           "externalId",
           "source",
           "status",
-          "createdAt"
+          "createdAt",
+          "supplierPaymentFromRow"
         ]
       },
       "PaginatedBankTransactionsDto": {

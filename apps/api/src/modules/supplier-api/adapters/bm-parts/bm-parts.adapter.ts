@@ -32,6 +32,7 @@ import {
   findBmReserve,
   parseBmOfferKey,
 } from './bm-parts.mapper';
+import { SUPPLIER_PROVIDER_NAMES } from '../supplier-provider-names';
 
 const NAME = 'BM Parts';
 export const BM_PROD_URL = 'https://api.bm.parts';
@@ -51,7 +52,7 @@ const DEFAULT_USER_AGENT = 'STO-ERP';
 @Injectable()
 export class BmPartsAdapter implements SupplierAdapter {
   readonly provider = 'BM_PARTS' as const;
-  readonly name = 'BM Parts';
+  readonly name = SUPPLIER_PROVIDER_NAMES.BM_PARTS;
   readonly capabilities = {
     search: 'online',
     analogs: true,

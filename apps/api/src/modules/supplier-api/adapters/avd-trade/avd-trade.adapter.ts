@@ -30,6 +30,7 @@ import {
   parseAvdOfferKey,
   parseAvdPriceCsv,
 } from './avd-trade.mapper';
+import { SUPPLIER_PROVIDER_NAMES } from '../supplier-provider-names';
 
 const NAME = 'AVD';
 export const AVD_PROD_URL = 'https://api.avdtrade.com.ua/api/v1';
@@ -52,7 +53,7 @@ const PRICE_FILE_MAX_BYTES = 256 * 1024 * 1024;
 @Injectable()
 export class AvdTradeAdapter implements SupplierAdapter {
   readonly provider = 'AVD_TRADE' as const;
-  readonly name = 'AVD Trade';
+  readonly name = SUPPLIER_PROVIDER_NAMES.AVD_TRADE;
   readonly capabilities = {
     search: 'mirror',
     analogs: false,

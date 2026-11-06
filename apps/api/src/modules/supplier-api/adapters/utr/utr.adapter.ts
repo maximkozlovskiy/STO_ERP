@@ -37,6 +37,7 @@ import {
   utrExpiresAt,
   utrOrderLines,
 } from './utr.mapper';
+import { SUPPLIER_PROVIDER_NAMES } from '../supplier-provider-names';
 
 const NAME = 'UTR';
 export const UTR_PROD_URL = 'https://order24-api.utr.ua';
@@ -55,7 +56,7 @@ const RECONCILE_LOOKBACK_MS = 2 * 86_400_000;
 @Injectable()
 export class UtrAdapter implements SupplierAdapter {
   readonly provider = 'UTR' as const;
-  readonly name = 'UTR (UniqTrade)';
+  readonly name = SUPPLIER_PROVIDER_NAMES.UTR;
   readonly capabilities = {
     search: 'online',
     analogs: false,

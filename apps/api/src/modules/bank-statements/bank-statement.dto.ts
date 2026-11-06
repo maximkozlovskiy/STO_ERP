@@ -543,6 +543,12 @@ export class BankTransactionResponseDto {
   @ApiPropertyOptional() counterpartyName?: string | null;
   @ApiPropertyOptional() supplierPaymentId?: string | null;
   @ApiPropertyOptional() supplierPaymentNumber?: string | null;
+  @ApiProperty({
+    description:
+      'Оплату постачальнику СТВОРЕНО з цього рядка (BR-BANK-028): скасування рознесення її сторнує; ' +
+      'false — оплату лише прив’язали (BR-BANK-027) або її немає (BR-BANK-039)',
+  })
+  supplierPaymentFromRow!: boolean;
   @ApiPropertyOptional() expenseCategoryId?: string | null;
   @ApiPropertyOptional() expenseCategoryName?: string | null;
   @ApiPropertyOptional() payrollPeriodId?: string | null;
@@ -614,7 +620,7 @@ interface BankTransactionRow {
     firstName: string | null;
     lastName: string | null;
   } | null;
-  supplierPayment?: { number: string } | null;
+  supplierPayment?: { number: string; originBankTransactionId?: string | null } | null;
   expenseCategory?: { name: string } | null;
   payrollPeriod?: { periodStart: Date; periodEnd: Date } | null;
   employee?: { firstName: string; lastName: string } | null;
@@ -659,6 +665,8 @@ export function toBankTransactionResponseDto(tx: BankTransactionRow): BankTransa
       : null,
     supplierPaymentId: tx.supplierPaymentId ?? null,
     supplierPaymentNumber: tx.supplierPayment?.number ?? null,
+    supplierPaymentFromRow:
+      tx.supplierPaymentId != null && tx.supplierPayment?.originBankTransactionId === tx.id,
     expenseCategoryId: tx.expenseCategoryId ?? null,
     expenseCategoryName: tx.expenseCategory?.name ?? null,
     payrollPeriodId: tx.payrollPeriodId ?? null,

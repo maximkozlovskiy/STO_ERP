@@ -29,6 +29,7 @@ import type {
   SupplierSearchQuery,
 } from '../supplier-adapter.interface';
 import { adRowToOffers, mapAdOrder, parseAdOfferKey } from './ad-ukraine.mapper';
+import { SUPPLIER_PROVIDER_NAMES } from '../supplier-provider-names';
 
 const NAME = 'AD';
 export const AD_PROD_URL = 'https://api.ad.ua';
@@ -49,7 +50,7 @@ export const AD_COMPANIES = ['autotechnics', 'cargo-parts', 'forma-parts', 'addi
 @Injectable()
 export class AdUkraineAdapter implements SupplierAdapter {
   readonly provider = 'AD_UKRAINE' as const;
-  readonly name = 'AD Ukraine (АвтоТехнікс)';
+  readonly name = SUPPLIER_PROVIDER_NAMES.AD_UKRAINE;
   readonly capabilities = {
     search: 'online',
     analogs: false,

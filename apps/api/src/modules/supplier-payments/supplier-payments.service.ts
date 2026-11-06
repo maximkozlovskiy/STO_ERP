@@ -80,7 +80,7 @@ function assertOrderPayable(status: PurchaseOrderStatus): void {
 }
 
 /** Що проведенню треба знати про оплату — з чернетки в базі або з даних нової оплати. */
-interface ConfirmSource {
+export interface ConfirmSource {
   supplierId: string;
   amount: Prisma.Decimal | number;
   sourceType: PaymentSourceType;
@@ -90,7 +90,7 @@ interface ConfirmSource {
 }
 
 /** Результат перевірок проведення до транзакції. */
-interface ConfirmPlan {
+export interface ConfirmPlan {
   po: {
     status: PurchaseOrderStatus;
     currencyId: string | null;
@@ -101,6 +101,27 @@ interface ConfirmPlan {
   conv: { rateUsed: number; amountBase: number };
   confirmDate: Date;
 }
+
+/**
+ * Нова оплата, перевірена до транзакції (`prepareCreateAndConfirm`): постачальник, джерело,
+ * замовлення, валюта, курс проведення. Пише її `createAndConfirmInTx` у транзакції викликача.
+ */
+export interface PreparedSupplierPayment {
+  readonly orgId: string;
+  readonly dto: CreateSupplierPaymentDto;
+  readonly currencyId: string;
+  readonly source: ConfirmSource;
+  readonly plan: ConfirmPlan;
+}
+
+/**
+ * Документ проводки сторно: рядок сторно каси (BR-CASH-024) або рядок банківської виписки, з якого
+ * оплату створено, при скасуванні його рознесення (BR-BANK-039). Рівно один.
+ */
+export type SupplierPaymentReversalContext = { reason: string; userId?: string } & (
+  | { cashOperationId: string; bankTransactionId?: undefined }
+  | { bankTransactionId: string; cashOperationId?: undefined }
+);
 
 @Injectable()
 export class SupplierPaymentsService {
@@ -607,6 +628,36 @@ export class SupplierPaymentsService {
     cashRow?: CashOperationExtras,
     opts: { onCashRow?: (row: CashOperationResponseDto) => void } = {},
   ): Promise<SupplierPaymentResponseDto> {
+    const prepared = await this.prepareCreateAndConfirm(orgId, dto);
+    // Відповідь читається В транзакції: читання після коміту могло б упасти вже на проведеній
+    // оплаті — інтерсептор ідемпотентності тоді знімає резервацію ключа, і повтор із тим самим
+    // ключем провів би ДРУГУ оплату (BR-SUPPAY-013).
+    // Так само рядок каси: каса (`CashDeskService`, BR-CASH-019) бере його з `opts.onCashRow`, а
+    // не перечитує після коміту.
+    const { sp, cashOperation } = await this.prisma.$transaction(
+      async tx => {
+        const created = await this.createAndConfirmInTx(tx, prepared, userId, { cashRow });
+        return {
+          sp: await this.readDetailInTx(tx, orgId, created.id),
+          cashOperation: created.cashOperation,
+        };
+      },
+      { timeout: TRANSACTION_TIMEOUT_MS },
+    );
+    if (cashOperation) opts.onCashRow?.(cashOperation);
+    return this.toDto(sp);
+  }
+
+  /**
+   * Перший крок оплати однією дією (BR-SUPPAY-013) — усі читання й перевірки створення й
+   * проведення, без запису. `opts.rateDate` — дата курсу проведення (типово — зараз); рознесення
+   * банківського рядка задає дату операції рядка (BR-BANK-028).
+   */
+  async prepareCreateAndConfirm(
+    orgId: string,
+    dto: CreateSupplierPaymentDto,
+    opts: { rateDate?: Date } = {},
+  ): Promise<PreparedSupplierPayment> {
     const { currencyId } = await this.prepareCreate(orgId, dto);
     const source: ConfirmSource = {
       supplierId: dto.supplierId,
@@ -617,22 +668,37 @@ export class SupplierPaymentsService {
       currencyId,
       purchaseOrderId: dto.purchaseOrderId ?? null,
     };
-    const plan = await this.prepareConfirm(orgId, source);
-    // Відповідь читається В транзакції: читання після коміту могло б упасти вже на проведеній
-    // оплаті — інтерсептор ідемпотентності тоді знімає резервацію ключа, і повтор із тим самим
-    // ключем провів би ДРУГУ оплату (BR-SUPPAY-013).
-    // Так само рядок каси: каса (`CashDeskService`, BR-CASH-019) бере його з `opts.onCashRow`, а
-    // не перечитує після коміту.
-    const { sp, cashOperation } = await this.prisma.$transaction(
-      async tx => {
-        const created = await this.createInTx(tx, orgId, dto, currencyId, userId);
-        const op = await this.confirmInTx(tx, orgId, created.id, source, plan, userId, cashRow);
-        return { sp: await this.readDetailInTx(tx, orgId, created.id), cashOperation: op };
-      },
-      { timeout: TRANSACTION_TIMEOUT_MS },
+    const plan = await this.prepareConfirm(orgId, source, opts.rateDate);
+    return { orgId, dto, currencyId, source, plan };
+  }
+
+  /**
+   * Другий крок — запис і проведення в транзакції ВИКЛИКАЧА: номер (лічильник рухається в цій
+   * транзакції — відкат повертає номер), оплата, CAS «Проведено», борг, каса, «сплачено» замовлення.
+   * Відмова будь-якого кроку відкочує всю транзакцію викликача — разом із його записами (рознесення
+   * рядка виписки, BR-BANK-029). `originBankTransactionId` — рядок виписки, з якого оплату
+   * створено (BR-BANK-039: скасування його рознесення сторнує саме таку оплату).
+   */
+  async createAndConfirmInTx(
+    tx: Prisma.TransactionClient,
+    prepared: PreparedSupplierPayment,
+    userId: string,
+    opts: { originBankTransactionId?: string; cashRow?: CashOperationExtras } = {},
+  ): Promise<{ id: string; number: string; cashOperation: CashOperationResponseDto | null }> {
+    const { orgId, dto, currencyId, source, plan } = prepared;
+    const created = await this.createInTx(tx, orgId, dto, currencyId, userId, {
+      originBankTransactionId: opts.originBankTransactionId,
+    });
+    const cashOperation = await this.confirmInTx(
+      tx,
+      orgId,
+      created.id,
+      source,
+      plan,
+      userId,
+      opts.cashRow,
     );
-    if (cashOperation) opts.onCashRow?.(cashOperation);
-    return this.toDto(sp);
+    return { id: created.id, number: created.number, cashOperation };
   }
 
   /** Документ із підписами для відповіді — у транзакції запису (див. `createAndConfirm`). */
@@ -726,6 +792,7 @@ export class SupplierPaymentsService {
     dto: CreateSupplierPaymentDto,
     currencyId: string,
     userId?: string,
+    extra: { originBankTransactionId?: string } = {},
   ) {
     const number = await this.docNumbers.next(orgId, 'SUPPLIER_PAYMENT', tx);
     const created = await tx.supplierPayment.create({
@@ -743,6 +810,7 @@ export class SupplierPaymentsService {
         method: dto.method,
         notes: dto.notes ?? null,
         documentDate: dto.documentDate ? new Date(dto.documentDate) : kyivToday(),
+        originBankTransactionId: extra.originBankTransactionId ?? null,
       },
       include: SP_DETAIL_INCLUDE,
     });
@@ -1101,20 +1169,34 @@ export class SupplierPaymentsService {
   }
 
   /**
-   * Сторно проведеної оплати постачальнику (BR-CASH-024) — внутрішній метод без маршруту:
-   * викликає лише каса (`CashDeskService.reverse`) у СВОЇЙ транзакції, після запису рядка сторно
-   * (`ctx.cashOperationId`). «Проведено» → «Сторновано» (публічного переходу немає —
-   * `SP_TRANSITIONS.CONFIRMED` порожній), проводка `SUPPLIER_PAYMENT_CANCEL` з курсом оригіналу,
-   * «сплачено» замовлення назад (не нижче нуля), `paidAt` знімається, якщо замовлення вже не
-   * сплачене повністю, а з ним відкочується й курсова різниця повної оплати (BR-SUPPAY-012).
+   * Сторно проведеної оплати постачальнику — внутрішній метод без маршруту, у транзакції
+   * викликача. Два входи: каса (`CashDeskService.reverse`, BR-CASH-024) після запису рядка сторно
+   * (`ctx.cashOperationId`) і скасування рознесення рядка виписки, з якого оплату створено
+   * (`ctx.bankTransactionId`, BR-BANK-039). «Проведено» → «Сторновано» (публічного переходу немає —
+   * `SP_TRANSITIONS.CONFIRMED` порожній), проводка `SUPPLIER_PAYMENT_CANCEL` з курсом оригіналу
+   * (документ — рядок каси чи рядок виписки), «сплачено» замовлення назад (не нижче нуля), `paidAt`
+   * знімається, якщо замовлення вже не сплачене повністю, а з ним відкочується й курсова різниця
+   * повної оплати (BR-SUPPAY-012).
    */
   async reverse(
     orgId: string,
     id: string,
-    ctx: { cashOperationId: string; reason: string; userId?: string },
+    ctx: SupplierPaymentReversalContext,
     tx: Prisma.TransactionClient,
   ): Promise<void> {
     const locale = getLocale();
+    // Помилки — словами входу: каса сторнує операцію, рознесення виписки — саму оплату.
+    const fromBank = ctx.bankTransactionId !== undefined;
+    const alreadyReversedKey = fromBank
+      ? 'err.supplierPayment.alreadyReversed'
+      : 'err.cash.alreadyReversed';
+    const stateChangedKey = fromBank
+      ? 'err.supplierPayment.reversalStateChanged'
+      : 'err.cash.reversalStateChanged';
+    const document =
+      ctx.bankTransactionId !== undefined
+        ? { documentType: 'BankTransaction', documentId: ctx.bankTransactionId }
+        : { documentType: 'CashOperation', documentId: ctx.cashOperationId };
     const sp = await tx.supplierPayment.findFirst({
       where: { id, orgId, deletedAt: null },
       select: {
@@ -1127,7 +1209,7 @@ export class SupplierPaymentsService {
     });
     if (!sp) throw new NotFoundException(translateError('err.supplierPayment.notFound', locale));
     if (sp.status === SupplierPaymentStatus.REVERSED) {
-      throw new BadRequestException(translateError('err.cash.alreadyReversed', locale));
+      throw new BadRequestException(translateError(alreadyReversedKey, locale));
     }
     // CAS першим записом: паралельне чи повторне сторно тут програє, нічого не змінивши.
     const cas = await tx.supplierPayment.updateMany({
@@ -1135,7 +1217,7 @@ export class SupplierPaymentsService {
       data: { status: SupplierPaymentStatus.REVERSED },
     });
     if (cas.count === 0) {
-      throw new BadRequestException(translateError('err.cash.alreadyReversed', locale));
+      throw new BadRequestException(translateError(alreadyReversedKey, locale));
     }
     await recordDocumentEvent(tx, {
       orgId,
@@ -1160,7 +1242,7 @@ export class SupplierPaymentsService {
       select: { amount: true, currencyId: true, amountBase: true, rateUsed: true },
     });
     if (!original || original.amountBase == null || original.rateUsed == null) {
-      throw new BadRequestException(translateError('err.cash.reversalStateChanged', locale));
+      throw new BadRequestException(translateError(stateChangedKey, locale));
     }
     await this.settlements.createTransaction(
       orgId,
@@ -1173,8 +1255,7 @@ export class SupplierPaymentsService {
           rateUsed: Number(original.rateUsed),
           amountBase: Number(original.amountBase),
         },
-        documentType: 'CashOperation',
-        documentId: ctx.cashOperationId,
+        ...document,
         notes: ctx.reason,
         createdBy: ctx.userId,
       },

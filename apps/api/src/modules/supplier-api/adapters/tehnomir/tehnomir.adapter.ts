@@ -33,6 +33,7 @@ import {
   summarizeTehnomirPositions,
   tehnomirProductToOffers,
 } from './tehnomir.mapper';
+import { SUPPLIER_PROVIDER_NAMES } from '../supplier-provider-names';
 
 const NAME = 'Tehnomir';
 export const TEHNOMIR_PROD_URL = 'https://api.tehnomir.com.ua';
@@ -52,7 +53,7 @@ const positionRef = (reference: string, index: number) => `${reference}-${index 
 @Injectable()
 export class TehnomirAdapter implements SupplierAdapter {
   readonly provider = 'TEHNOMIR' as const;
-  readonly name = 'Tehnomir';
+  readonly name = SUPPLIER_PROVIDER_NAMES.TEHNOMIR;
   readonly capabilities = {
     search: 'online',
     analogs: true,

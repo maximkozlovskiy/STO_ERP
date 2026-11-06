@@ -22,10 +22,17 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { CashService } from '../cash/cash.service';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
-import { PaymentsService } from '../payments/payments.service';
+import {
+  PaymentsService,
+  type CreatedPayment,
+  type PreparedPayment,
+} from '../payments/payments.service';
 import type { PaymentSettlementType } from '../payments/payments.dto';
 import { SettlementsService } from '../settlements/settlements.service';
-import { SupplierPaymentsService } from '../supplier-payments/supplier-payments.service';
+import {
+  SupplierPaymentsService,
+  type PreparedSupplierPayment,
+} from '../supplier-payments/supplier-payments.service';
 import {
   NO_OUTGOING_LINKS,
   assertOutgoingDirection,
@@ -136,7 +143,8 @@ const BANK_TX_INCLUDE = {
     select: { name: true, ibanUA: true, currency: { select: { code: true } } },
   },
   counterparty: { select: { companyName: true, firstName: true, lastName: true } },
-  supplierPayment: { select: { number: true } },
+  // Походження оплати — ознака «створена з цього рядка» (BR-BANK-039) для вікна скасування.
+  supplierPayment: { select: { number: true, originBankTransactionId: true } },
   expenseCategory: { select: { name: true } },
   payrollPeriod: { select: { periodStart: true, periodEnd: true } },
   employee: { select: { firstName: true, lastName: true } },
@@ -158,6 +166,26 @@ const UNMATCHED_STATE = {
 type AllocationPlan =
   | { kind: 'INCOMING'; match: MatchTransactionDto }
   | { kind: 'OUTGOING'; type: BankTxOutMatchType; plan: OutgoingPlan };
+
+type NewSupplierPaymentPlan = Extract<OutgoingPlan, { kind: 'NEW_SUPPLIER_PAYMENT' }>;
+
+/**
+ * План, готовий до запису в транзакції: нова оплата постачальнику — з уже перевіреною оплатою
+ * (`prepareCreateAndConfirm`: постачальник, замовлення, курс на дату операції), решта — як є.
+ */
+type ReadyOutgoingPlan =
+  | Exclude<OutgoingPlan, { kind: 'NEW_SUPPLIER_PAYMENT' }>
+  | (NewSupplierPaymentPlan & { prepared: PreparedSupplierPayment });
+
+/** Поля рядка, з яких береться оплата (сума й рахунок — з рядка, ніколи з запиту, BR-BANK-008). */
+interface PaymentSourceRow {
+  amount: Prisma.Decimal | number;
+  bankAccountId: string;
+}
+
+/** Суми в копійках рівні (Decimal(12,2) проти Decimal(12,2); поріг гасить лише похибку Number). */
+const sameMoney = (a: Prisma.Decimal | number, b: Prisma.Decimal | number): boolean =>
+  Math.abs(Number(a) - Number(b)) < 0.005;
 
 /** Поля ручного рядка до вставки — з них же рознесення бере суму, валюту й дату. */
 type ManualRowData = Prisma.BankTransactionUncheckedCreateInput & {
@@ -703,13 +731,12 @@ export class BankReconciliationService {
   }
 
   /**
-   * Рознесення транзакції на контрагента + створення Payment. Порядок (payments.create відкриває
-   * ВЛАСНУ транзакцію — НЕ обгортаємо у зовнішню):
-   *  1) CAS-mark MATCHED (updateMany where status=UNMATCHED, paymentId=null) — idempotency-guard;
-   *     count===0 → вже рознесено/не існує → Conflict/NotFound.
-   *  2) payments.create (з settlementType за matchType) — власна транзакція.
-   *  3) update BankTransaction.paymentId = payment.id (idempotency-лінк).
-   *  На помилку create — відкат status=UNMATCHED (лишити retriable), проброс помилки.
+   * Рознесення вхідного рядка на контрагента зі створенням оплати (BR-BANK-007…010) — ОДНА
+   * транзакція БД (Bug #1023): CAS-захоплення рядка, оплата (`PaymentsService.createInTx` з усіма
+   * BR-PAY-*) і посилання `paymentId`. Відмова на будь-якому кроці відкочує все — рядок лишається
+   * `UNMATCHED`, оплати немає. Читання й перевірки оплати (`prepareCreate`) — до транзакції;
+   * пост-комітні ефекти (чек, бали, події наряду, аудит) — після коміту. Відповідь читається в
+   * транзакції: маршрут під ключем ідемпотентності.
    */
   async matchTransaction(
     orgId: string,
@@ -718,11 +745,33 @@ export class BankReconciliationService {
     userId?: string,
   ): Promise<BankTransactionResponseDto> {
     await this.assertIncomingRefs(orgId, dto);
-    await this.postIncoming(orgId, txId, dto, userId);
-    const updated = await this.prisma.bankTransaction.findFirstOrThrow({
-      where: { id: txId, orgId },
+    const row = await this.prisma.bankTransaction.findFirst({
+      where: { id: txId, orgId, deletedAt: null },
+      select: { amount: true, bankAccountId: true, direction: true, status: true },
     });
-    return toBankTransactionResponseDto(updated);
+    if (!row) {
+      throw new NotFoundException(translateError('err.bankStatement.txNotFound', getLocale()));
+    }
+    // BR-BANK-025: швидка відмова до перевірок оплати; авторитетна — `direction: 'IN'` у CAS.
+    if (row.status === 'UNMATCHED' && row.direction === 'OUT') {
+      throw new BadRequestException(
+        translateError('err.bankStatement.wrongDirection', getLocale()),
+      );
+    }
+    const prepared = await this.payments.prepareCreate(
+      orgId,
+      this.incomingPaymentInput(dto, row),
+      userId,
+    );
+    const { created, response } = await this.prisma.$transaction(
+      async tx => {
+        const payment = await this.postIncoming(tx, orgId, txId, dto, prepared, row, userId);
+        return { created: payment, response: await this.loadResponse(orgId, txId, tx) };
+      },
+      { timeout: TRANSACTION_TIMEOUT_MS },
+    );
+    await this.afterIncoming(prepared, created);
+    return response;
   }
 
   /**
@@ -770,17 +819,39 @@ export class BankReconciliationService {
     }
   }
 
-  /** Кроки 1–3 рознесення вхідного: CAS → `payments.create` → посилання `paymentId`. */
+  /** Оплата клієнта з вхідного рядка (BR-BANK-008): сума й рахунок — з рядка, вид — з рознесення. */
+  private incomingPaymentInput(dto: MatchTransactionDto, row: PaymentSourceRow) {
+    const settlementType: PaymentSettlementType =
+      dto.type === 'PREPAYMENT' ? 'PREPAYMENT' : dto.type === 'REFUND' ? 'REFUND' : 'PAYMENT';
+    return {
+      counterpartyId: dto.counterpartyId,
+      invoiceId: dto.type === 'INVOICE' ? dto.invoiceId : undefined,
+      amount: Number(row.amount),
+      method: 'bank',
+      sourceType: 'BANK_ACCOUNT' as const,
+      bankAccountId: row.bankAccountId,
+      settlementType,
+    };
+  }
+
+  /**
+   * Рознесення вхідного рядка в транзакції викликача (BR-BANK-007…009): CAS-захоплення → оплата →
+   * посилання `paymentId`. `expected` — сума й рахунок, з якими оплату підготовано до транзакції:
+   * рядок, захоплений з іншими (його мали б іншим), не розноситься.
+   */
   private async postIncoming(
+    tx: Prisma.TransactionClient,
     orgId: string,
     txId: string,
     dto: MatchTransactionDto,
+    prepared: PreparedPayment,
+    expected: PaymentSourceRow,
     userId?: string,
-  ): Promise<void> {
-    // (1) CAS-mark MATCHED — атомарний захват staging-рядка (idempotency проти подвійного match).
-    // BR-BANK-025: `direction: 'IN'` у самому CAS — вихідний рядок цей endpoint не захопить ніколи,
-    // інакше списання стало б оплатою клієнта.
-    const marked = await this.prisma.bankTransaction.updateMany({
+  ): Promise<CreatedPayment> {
+    // CAS-mark MATCHED — атомарний захват рядка (проти подвійного match). BR-BANK-025:
+    // `direction: 'IN'` у самому CAS — вихідний рядок цей шлях не захопить ніколи, інакше списання
+    // стало б оплатою клієнта.
+    const marked = await tx.bankTransaction.updateMany({
       where: {
         id: txId,
         orgId,
@@ -798,77 +869,76 @@ export class BankReconciliationService {
       },
     });
     if (marked.count === 0) {
-      // Розрізняємо «не існує» / «вихідний рядок» / «вже рознесено».
-      const exists = await this.prisma.bankTransaction.findFirst({
-        where: { id: txId, orgId, deletedAt: null },
-        select: { id: true, status: true, direction: true },
-      });
-      if (!exists) {
-        throw new NotFoundException(translateError('err.bankStatement.txNotFound', getLocale()));
-      }
-      if (exists.status === 'UNMATCHED' && exists.direction === 'OUT') {
-        throw new BadRequestException(
-          translateError('err.bankStatement.wrongDirection', getLocale()),
-        );
-      }
+      throw await this.incomingCaptureFailure(tx, orgId, txId);
+    }
+    // Захоплений рядок — тією ж транзакцією: оплата має бути саме на його суму й рахунок.
+    const captured = await tx.bankTransaction.findFirst({
+      where: { id: txId, orgId },
+      select: { amount: true, bankAccountId: true },
+    });
+    if (
+      !captured ||
+      captured.bankAccountId !== expected.bankAccountId ||
+      !sameMoney(captured.amount, expected.amount)
+    ) {
       throw new ConflictException(translateError('err.bankStatement.alreadyMatched', getLocale()));
     }
 
-    // Читаємо захоплений рядок (сума + рахунок для Payment).
-    const tx = await this.prisma.bankTransaction.findFirst({
-      where: { id: txId, orgId },
-      select: { id: true, amount: true, bankAccountId: true },
-    });
-    if (!tx) {
-      throw new NotFoundException(translateError('err.bankStatement.txNotFound', getLocale()));
-    }
+    const created = await this.payments.createInTx(tx, prepared);
+    await this.linkIncomingPayment(tx, orgId, txId, created.payment.id);
+    return created;
+  }
 
-    // (2) payments.create — власна транзакція (settlement + fiscal + ін.). На помилку відкат.
-    const settlementType: PaymentSettlementType =
-      dto.type === 'PREPAYMENT' ? 'PREPAYMENT' : dto.type === 'REFUND' ? 'REFUND' : 'PAYMENT';
-    let paymentId: string;
-    try {
-      const payment = await this.payments.create(
-        orgId,
-        {
-          counterpartyId: dto.counterpartyId,
-          invoiceId: dto.type === 'INVOICE' ? dto.invoiceId : undefined,
-          amount: Number(tx.amount),
-          method: 'bank',
-          sourceType: 'BANK_ACCOUNT',
-          bankAccountId: tx.bankAccountId,
-          settlementType,
-        },
-        userId,
-      );
-      paymentId = payment.id;
-    } catch (err: unknown) {
-      // Відкат status=UNMATCHED — лишаємо транзакцію retriable (payment НЕ створено).
-      await this.prisma.bankTransaction
-        .updateMany({
-          where: { id: txId, orgId, status: 'MATCHED', paymentId: null },
-          data: {
-            status: 'UNMATCHED',
-            counterpartyId: null,
-            matchedType: null,
-            matchedAt: null,
-            matchedBy: null,
-          },
-        })
-        .catch(e =>
-          this.logger.warn(
-            `Не вдалось відкотити статус банк-транзакції ${txId}: ${e instanceof Error ? e.message : e}`,
-          ),
-        );
-      // Пробрасуємо оригінальну помилку payments.create (валідні 4xx — валюта/статус рахунку тощо).
-      throw err;
-    }
-
-    // (3) Лінк paymentId (idempotency — 1 Payment на транзакцію через @unique paymentId).
-    await this.prisma.bankTransaction.updateMany({
-      where: { id: txId, orgId, status: 'MATCHED' },
+  /** Посилання на оплату в захопленому рядку (одна оплата ↔ один рядок, `@unique paymentId`). */
+  private async linkIncomingPayment(
+    tx: Prisma.TransactionClient,
+    orgId: string,
+    txId: string,
+    paymentId: string,
+  ): Promise<void> {
+    const linked = await tx.bankTransaction.updateMany({
+      where: { id: txId, orgId, status: 'MATCHED', paymentId: null },
       data: { paymentId },
     });
+    if (linked.count === 0) {
+      throw new ConflictException(translateError('err.bankStatement.alreadyMatched', getLocale()));
+    }
+  }
+
+  /** Чому CAS вхідного рядка нічого не захопив: немає (404), вихідний (400) чи вже оброблений (409). */
+  private async incomingCaptureFailure(
+    tx: Prisma.TransactionClient,
+    orgId: string,
+    txId: string,
+  ): Promise<NotFoundException | BadRequestException | ConflictException> {
+    const exists = await tx.bankTransaction.findFirst({
+      where: { id: txId, orgId, deletedAt: null },
+      select: { id: true, status: true, direction: true },
+    });
+    if (!exists) {
+      return new NotFoundException(translateError('err.bankStatement.txNotFound', getLocale()));
+    }
+    if (exists.status === 'UNMATCHED' && exists.direction === 'OUT') {
+      return new BadRequestException(
+        translateError('err.bankStatement.wrongDirection', getLocale()),
+      );
+    }
+    return new ConflictException(translateError('err.bankStatement.alreadyMatched', getLocale()));
+  }
+
+  /**
+   * Пост-комітні ефекти оплати клієнта (чек, бали, події наряду, аудит) — лише після коміту
+   * рознесення. Оплата й рядок уже записані: збій тут не скасовує їх і не має перетворити успішне
+   * рознесення на 500 (повтор отримав би 409 «вже рознесено» замість відповіді).
+   */
+  private async afterIncoming(prepared: PreparedPayment, created: CreatedPayment): Promise<void> {
+    await this.payments
+      .afterCreate(prepared, created)
+      .catch((e: unknown) =>
+        this.logger.error(
+          `Оплата ${created.payment.id}: пост-комітні ефекти не виконано: ${e instanceof Error ? e.message : String(e)}`,
+        ),
+      );
   }
 
   // ─── Вихідні платежі: ручне внесення, рознесення, скасування ─────────────────────────────
@@ -1035,13 +1105,10 @@ export class BankReconciliationService {
   }
 
   /**
-   * BR-BANK-041: внесення з рознесенням. Два шляхи, бо не всі ефекти вміщуються в одну транзакцію:
-   *  · вихідні види, крім нової оплати постачальнику, — вставка рядка й рознесення в ОДНІЙ
-   *    транзакції БД: відмова відкочує й сам рядок;
-   *  · вхідні види (`payments.create`) і нова оплата постачальнику (`create` + `confirm`) мають
-   *    власні транзакції — рядок вставляється, розноситься наявним шляхом, а якщо рознесення
-   *    впало й рядок лишився нерознесеним без оплати, — прибирається (м'яке видалення). Рядок,
-   *    за яким оплата вже проведена (BR-BANK-029), лишається рознесеним.
+   * BR-BANK-041: внесення з рознесенням — ОДНА транзакція БД для всіх видів (Bug #1023): вставка
+   * рядка, рознесення (CAS, оплата чи проведення, посилання) і відповідь. Відмова на будь-якому
+   * кроці не лишає нічого — ні рядка, ні оплати, ні проведення, номер документа не витрачено.
+   * Перевірки й курс оплати — до транзакції; пост-комітні ефекти оплати клієнта — після коміту.
    */
   private async createAllocated(
     orgId: string,
@@ -1049,67 +1116,58 @@ export class BankReconciliationService {
     allocation: AllocationPlan,
     userId: string,
   ): Promise<BankTransactionResponseDto> {
-    if (allocation.kind === 'OUTGOING' && allocation.plan.kind !== 'NEW_SUPPLIER_PAYMENT') {
-      const { type, plan } = allocation;
-      // Відповідь — з цієї ж транзакції (маршрут під ключем ідемпотентності): читання після
-      // коміту, що впало, зняло б резервацію ключа, і повтор вніс і розніс би рядок удруге.
-      return this.prisma.$transaction(
-        async tx => {
-          const created = await tx.bankTransaction.create({ data, select: { id: true } });
-          await this.applyOutgoingPlan(tx, orgId, created.id, data, type, plan, userId);
-          return this.loadResponse(orgId, created.id, tx);
-        },
-        { timeout: TRANSACTION_TIMEOUT_MS },
-      );
-    }
+    const incoming =
+      allocation.kind === 'INCOMING'
+        ? {
+            match: allocation.match,
+            prepared: await this.payments.prepareCreate(
+              orgId,
+              this.incomingPaymentInput(allocation.match, data),
+              userId,
+            ),
+          }
+        : null;
+    const outgoing =
+      allocation.kind === 'OUTGOING'
+        ? {
+            type: allocation.type,
+            plan: await this.prepareOutgoingPlan(orgId, data, allocation.plan),
+          }
+        : null;
 
-    const created = await this.prisma.bankTransaction.create({
-      data,
-      select: { id: true, bankAccountId: true, amount: true, operationDate: true, purpose: true },
-    });
-    try {
-      if (allocation.kind === 'INCOMING') {
-        await this.postIncoming(orgId, created.id, allocation.match, userId);
-      } else if (allocation.plan.kind === 'NEW_SUPPLIER_PAYMENT') {
-        await this.reconcileNewSupplierPayment(orgId, created, allocation.plan, userId);
-      }
-    } catch (err: unknown) {
-      await this.discardUnallocated(orgId, created.id);
-      throw err;
-    }
-    return this.loadResponse(orgId, created.id);
-  }
-
-  /**
-   * BR-BANK-041: прибирає рядок, внесений разом із невдалим рознесенням, — лише поки він
-   * нерознесений і без оплати (відкат рознесення вже відпрацював). Рядок, який лишився
-   * рознесеним (оплату проведено або її стан невідомий), не чіпається: інакше повторне внесення
-   * заплатило б удруге.
-   */
-  private async discardUnallocated(orgId: string, txId: string): Promise<void> {
-    const removed = await this.prisma.bankTransaction
-      .updateMany({
-        where: {
-          id: txId,
-          orgId,
-          deletedAt: null,
-          source: 'MANUAL',
-          // Відкат рознесення повертає рядок в UNMATCHED лише без оплати (BR-BANK-009, 029).
-          status: 'UNMATCHED',
-        },
-        data: { deletedAt: new Date() },
-      })
-      .catch((e: unknown) => {
-        this.logger.error(
-          `Банк-транзакцію ${txId} не прибрано після невдалого рознесення: ${e instanceof Error ? e.message : String(e)}`,
-        );
-        return null;
-      });
-    if (removed?.count === 0) {
-      this.logger.error(
-        `Банк-транзакція ${txId}: рознесення при внесенні не вдалося, але рядок уже рознесено — лишаю`,
-      );
-    }
+    // Відповідь — з цієї ж транзакції (маршрут під ключем ідемпотентності): читання після
+    // коміту, що впало, зняло б резервацію ключа, і повтор вніс і розніс би рядок удруге.
+    const { created, response } = await this.prisma.$transaction(
+      async tx => {
+        const row = await tx.bankTransaction.create({ data, select: { id: true } });
+        let payment: CreatedPayment | null = null;
+        if (incoming) {
+          payment = await this.postIncoming(
+            tx,
+            orgId,
+            row.id,
+            incoming.match,
+            incoming.prepared,
+            data,
+            userId,
+          );
+        } else if (outgoing) {
+          await this.applyOutgoingPlan(
+            tx,
+            orgId,
+            row.id,
+            data,
+            outgoing.type,
+            outgoing.plan,
+            userId,
+          );
+        }
+        return { created: payment, response: await this.loadResponse(orgId, row.id, tx) };
+      },
+      { timeout: TRANSACTION_TIMEOUT_MS },
+    );
+    if (incoming && created) await this.afterIncoming(incoming.prepared, created);
+    return response;
   }
 
   /** BR-BANK-024: soft delete лише ручного нерознесеного рядка (CAS); інакше 400 / 404 / 409. */
@@ -1197,10 +1255,11 @@ export class BankReconciliationService {
    * BR-BANK-025…034: рознесення рядка за `dto.type`. Порядок: рядок (404) → напрям проти виду
    * (400) → посилання виду (400 / 404 / 409) → дія. До дії рядок не чіпається.
    *
-   * Усі види, крім нової оплати постачальнику, — ОДНА транзакція БД: CAS-захоплення зі статусу
-   * `UNMATCHED` разом із посиланнями, потім ефект (проведення / касова операція). Програний CAS →
-   * 409 без другого ефекту; помилка ефекту відкочує й захоплення — рядок лишається `UNMATCHED`.
-   * Суму, рахунок, валюту й дату бере з рядка, ніколи з запиту (BR-BANK-026).
+   * Усі види — ОДНА транзакція БД (нова оплата постачальнику теж — Bug #1023): CAS-захоплення зі
+   * статусу `UNMATCHED` разом із посиланнями, потім ефект (проведення / касова операція / нова
+   * оплата). Програний CAS → 409 без другого ефекту; помилка ефекту відкочує й захоплення — рядок
+   * лишається `UNMATCHED`. Відповідь читається в тій самій транзакції. Суму, рахунок, валюту й дату
+   * бере з рядка, ніколи з запиту (BR-BANK-026).
    */
   async reconcile(
     orgId: string,
@@ -1232,14 +1291,14 @@ export class BankReconciliationService {
       async () => (await this.exchangeRates.getBaseCurrency(orgId)).id,
     );
 
-    if (plan.kind === 'NEW_SUPPLIER_PAYMENT') {
-      await this.reconcileNewSupplierPayment(orgId, row, plan, userId);
-      return this.loadResponse(orgId, txId);
-    }
+    const ready = await this.prepareOutgoingPlan(orgId, row, plan);
 
     try {
-      await this.prisma.$transaction(
-        tx => this.applyOutgoingPlan(tx, orgId, txId, row, dto.type, plan, userId),
+      return await this.prisma.$transaction(
+        async tx => {
+          await this.applyOutgoingPlan(tx, orgId, txId, row, dto.type, ready, userId);
+          return this.loadResponse(orgId, txId, tx);
+        },
         { timeout: TRANSACTION_TIMEOUT_MS },
       );
     } catch (e: unknown) {
@@ -1251,7 +1310,39 @@ export class BankReconciliationService {
       }
       throw e;
     }
-    return this.loadResponse(orgId, txId);
+  }
+
+  /**
+   * BR-BANK-028: нова оплата постачальнику — перевірки й курс на дату операції рядка ДО
+   * транзакції (`prepareCreateAndConfirm`, усі правила BR-SUPPAY-*). Інші плани — без змін.
+   */
+  private async prepareOutgoingPlan(
+    orgId: string,
+    row: {
+      bankAccountId: string;
+      amount: Prisma.Decimal | number;
+      operationDate: Date;
+      purpose?: string | null;
+    },
+    plan: OutgoingPlan,
+  ): Promise<ReadyOutgoingPlan> {
+    if (plan.kind !== 'NEW_SUPPLIER_PAYMENT') return plan;
+    const prepared = await this.supplierPayments.prepareCreateAndConfirm(
+      orgId,
+      {
+        supplierId: plan.supplierId,
+        sourceType: 'BANK_ACCOUNT',
+        bankAccountId: row.bankAccountId,
+        amount: Number(row.amount),
+        method: 'bank',
+        documentDate: ymdOf(row.operationDate),
+        purchaseOrderId: plan.purchaseOrderId,
+        notes: row.purpose ?? undefined,
+      },
+      // Гроші пішли в день операції з виписки, а не в день, коли бухгалтер розніс рядок.
+      { rateDate: row.operationDate },
+    );
+    return { ...plan, prepared };
   }
 
   /**
@@ -1266,9 +1357,13 @@ export class BankReconciliationService {
     txId: string,
     row: { currencyId: string; amount: Prisma.Decimal | number; operationDate: Date },
     type: BankTxOutMatchType,
-    plan: Exclude<OutgoingPlan, { kind: 'NEW_SUPPLIER_PAYMENT' }>,
+    plan: ReadyOutgoingPlan,
     userId: string,
   ): Promise<void> {
+    if (plan.kind === 'NEW_SUPPLIER_PAYMENT') {
+      await this.reconcileNewSupplierPayment(tx, orgId, txId, plan, userId);
+      return;
+    }
     const captured = await tx.bankTransaction.updateMany({
       where: { id: txId, orgId, deletedAt: null, status: 'UNMATCHED' },
       data: {
@@ -1391,158 +1486,59 @@ export class BankReconciliationService {
   }
 
   /**
-   * BR-BANK-028 / 029: нова оплата постачальнику з рядка. `SupplierPaymentsService.create` і
-   * `confirm` відкривають ВЛАСНІ транзакції (не обгортати), тому тут «захоплення → дія → відкат»:
+   * BR-BANK-028 / 029: нова оплата постачальнику з рядка — у транзакції викликача (Bug #1023):
    *  1) CAS-захоплення рядка (програний → 409 / 404, оплата не створюється);
-   *  2) чернетка оплати: рахунок, сума й валюта рядка, `documentDate = operationDate`;
-   *  3) посилання на чернетку в рядку — ДО проведення, щоб проведена оплата не лишилась без рядка;
-   *  4) `confirm` із курсом на `operationDate` (усі правила BR-SUPPAY-* — його).
-   * Збій на кроках 2–4 → чернетка скасовується, рядок повертається в `UNMATCHED`, клієнт
-   * отримує початкову помилку.
+   *  2) оплата з номером і одразу проведена (`createAndConfirmInTx`, усі BR-SUPPAY-*), з
+   *     походженням — цим рядком (`originBankTransactionId`, BR-BANK-039);
+   *  3) посилання `supplierPaymentId` у рядку.
+   * Відмова будь-якого кроку відкочує всю транзакцію: ні оплати, ні проведення, номер не витрачено,
+   * рядок `UNMATCHED`. Проміжного стану, який могло б перехопити скасування рознесення, немає.
    */
   private async reconcileNewSupplierPayment(
+    tx: Prisma.TransactionClient,
     orgId: string,
-    row: {
-      id: string;
-      bankAccountId: string;
-      amount: Prisma.Decimal;
-      operationDate: Date;
-      purpose: string | null;
-    },
-    plan: Extract<OutgoingPlan, { kind: 'NEW_SUPPLIER_PAYMENT' }>,
+    txId: string,
+    plan: NewSupplierPaymentPlan & { prepared: PreparedSupplierPayment },
     userId: string,
   ): Promise<void> {
-    // `matchedAt` of THIS capture doubles as its token: the steps below run outside one DB
-    // transaction, and in between the row can be released (unreconcile) and captured again by
-    // another request. Every later write is pinned to the token, so it never touches a capture
-    // that is no longer ours.
-    const capturedAt = new Date();
-    const captured = await this.prisma.bankTransaction.updateMany({
-      where: { id: row.id, orgId, deletedAt: null, status: 'UNMATCHED' },
+    const captured = await tx.bankTransaction.updateMany({
+      where: { id: txId, orgId, deletedAt: null, status: 'UNMATCHED' },
       data: {
         status: 'MATCHED',
         matchedType: 'SUPPLIER_PAYMENT',
         counterpartyId: plan.supplierId,
-        matchedAt: capturedAt,
+        matchedAt: new Date(),
         matchedBy: userId,
       },
     });
     if (captured.count === 0) {
-      throw await this.captureFailure(this.prisma, orgId, row.id);
+      throw await this.captureFailure(tx, orgId, txId);
     }
-
-    let draftId: string | null = null;
-    try {
-      const draft = await this.supplierPayments.create(
-        orgId,
-        {
-          supplierId: plan.supplierId,
-          sourceType: 'BANK_ACCOUNT',
-          bankAccountId: row.bankAccountId,
-          amount: Number(row.amount),
-          method: 'bank',
-          documentDate: ymdOf(row.operationDate),
-          purchaseOrderId: plan.purchaseOrderId,
-          notes: row.purpose ?? undefined,
-        },
-        userId,
-      );
-      draftId = draft.id;
-      const linked = await this.prisma.bankTransaction.updateMany({
-        where: {
-          id: row.id,
-          orgId,
-          status: 'MATCHED',
-          matchedType: 'SUPPLIER_PAYMENT',
-          matchedAt: capturedAt,
-          supplierPaymentId: null,
-        },
-        data: { supplierPaymentId: draft.id },
-      });
-      // Рядок встигли звільнити (скасування рознесення) між захопленням і цим кроком — а може, й
-      // захопити знову іншим запитом: проводити оплату для вже не нашого рядка не можна.
-      if (linked.count === 0) {
-        throw new ConflictException(
-          translateError('err.bankStatement.alreadyMatched', getLocale()),
-        );
-      }
-      await this.supplierPayments.confirm(orgId, draft.id, userId, {
-        rateDate: row.operationDate,
-      });
-    } catch (err: unknown) {
-      await this.rollbackNewSupplierPayment(orgId, row.id, draftId, capturedAt);
-      throw err;
-    }
+    const payment = await this.supplierPayments.createAndConfirmInTx(tx, plan.prepared, userId, {
+      originBankTransactionId: txId,
+    });
+    await this.linkSupplierPayment(tx, orgId, txId, payment.id);
   }
 
-  /**
-   * Відкат невдалої нової оплати постачальнику (BR-BANK-029): чернетка → `CANCELLED`, рядок →
-   * `UNMATCHED` без посилань. Чернетка, яку не вдалося скасувати, рядок не тримає: вона нічого
-   * не провела й лишається чернеткою.
-   *
-   * Єдиний виняток — оплата, яка ВЖЕ проведена: `confirm` міг упасти після коміту своєї
-   * транзакції (на читанні відповіді). Тоді `cancel` відмовляє, а звільнений рядок дозволив би
-   * заплатити постачальнику вдруге — тому рядок лишається `MATCHED` із посиланням на оплату.
-   */
-  private async rollbackNewSupplierPayment(
+  /** Посилання на створену оплату постачальнику в захопленому рядку (одна оплата ↔ один рядок). */
+  private async linkSupplierPayment(
+    tx: Prisma.TransactionClient,
     orgId: string,
     txId: string,
-    draftId: string | null,
-    capturedAt: Date,
+    supplierPaymentId: string,
   ): Promise<void> {
-    if (draftId && !(await this.cancelDraftOrDetectPosted(orgId, txId, draftId))) return;
-    await this.prisma.bankTransaction
-      .updateMany({
-        where: {
-          id: txId,
-          orgId,
-          status: 'MATCHED',
-          matchedType: 'SUPPLIER_PAYMENT',
-          // Лише НАШЕ захоплення: рядок, який тим часом звільнили й захопили знову, не чіпаємо.
-          matchedAt: capturedAt,
-          supplierPaymentId: draftId,
-        },
-        data: UNMATCHED_STATE,
-      })
-      .catch(e =>
-        this.logger.warn(
-          `Не вдалось відкотити статус банк-транзакції ${txId}: ${e instanceof Error ? e.message : e}`,
-        ),
-      );
-  }
-
-  /**
-   * Скасовує чернетку оплати. `true` — рядок можна звільняти (чернетку скасовано або вона так і
-   * лишилась непроведеною); `false` — оплата проведена або її стан з'ясувати не вдалося.
-   */
-  private async cancelDraftOrDetectPosted(
-    orgId: string,
-    txId: string,
-    draftId: string,
-  ): Promise<boolean> {
-    try {
-      await this.supplierPayments.cancel(orgId, draftId);
-      return true;
-    } catch (cancelError: unknown) {
-      const reason = cancelError instanceof Error ? cancelError.message : String(cancelError);
-      try {
-        const payment = await this.prisma.supplierPayment.findFirst({
-          where: { id: draftId, orgId },
-          select: { status: true },
-        });
-        if (payment?.status !== 'CONFIRMED') {
-          this.logger.warn(
-            `Банк-транзакція ${txId}: чернетку оплати постачальнику ${draftId} не скасовано (${reason}) — рядок звільняю`,
-          );
-          return true;
-        }
-      } catch {
-        // Стан оплати невідомий — нижче обираємо безпечний бік: рядок не звільняємо.
-      }
-      this.logger.error(
-        `Банк-транзакція ${txId}: оплата постачальнику ${draftId} проведена або її стан невідомий (${reason}) — рядок лишаю рознесеним`,
-      );
-      return false;
+    const linked = await tx.bankTransaction.updateMany({
+      where: {
+        id: txId,
+        orgId,
+        status: 'MATCHED',
+        matchedType: 'SUPPLIER_PAYMENT',
+        supplierPaymentId: null,
+      },
+      data: { supplierPaymentId },
+    });
+    if (linked.count === 0) {
+      throw new ConflictException(translateError('err.bankStatement.alreadyMatched', getLocale()));
     }
   }
 
@@ -1578,12 +1574,15 @@ export class BankReconciliationService {
         transferBankAccountId: true,
         cashOperationId: true,
         matchedAt: true,
+        // BR-BANK-039: оплату, створену з цього рядка, скасування сторнує; прив'язану — лише відв'язує.
+        supplierPayment: { select: { originBankTransactionId: true } },
       },
     });
     if (!row) {
       throw new NotFoundException(translateError('err.bankStatement.txNotFound', getLocale()));
     }
-    // Вхідний вид без paymentId — `match` у польоті (Payment ще створюється): теж не наш випадок.
+    // Вхідний вид без paymentId — рядок, що застряг до 2026-11-06 (рознесення йшло кількома
+    // комітами, Bug #1023): теж не наш випадок — його знімає лише сторно оплати.
     if (row.paymentId || (row.status === 'MATCHED' && isInMatchType(row.matchedType))) {
       throw new BadRequestException(
         translateError('err.bankStatement.unmatchIncomingUnsupported', getLocale()),
@@ -1708,7 +1707,22 @@ export class BankReconciliationService {
             tx,
           );
         }
-        // SUPPLIER_PAYMENT — лише відв'язка: оплата лишається проведеною (її сторно в системі немає).
+        // SUPPLIER_PAYMENT: оплату, СТВОРЕНУ з цього рядка, — сторно в цій самій транзакції (борг
+        // постачальнику повертається, BR-SUPPAY-012; документ проводки — рядок); оплату, до якої
+        // рядок лише прив'язали, — лише відв'язка (вона була проведена окремою дією і лишається).
+        // Уже сторнована оплата → 400 і відкат звільнення рядка.
+        if (
+          matchedType === 'SUPPLIER_PAYMENT' &&
+          row.supplierPaymentId &&
+          row.supplierPayment?.originBankTransactionId === txId
+        ) {
+          await this.supplierPayments.reverse(
+            orgId,
+            row.supplierPaymentId,
+            { bankTransactionId: txId, reason, userId },
+            tx,
+          );
+        }
         // EXPENSE / PAYROLL / TRANSFER — знімається сама класифікація.
       },
       { timeout: TRANSACTION_TIMEOUT_MS },

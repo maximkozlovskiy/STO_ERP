@@ -10004,6 +10004,8 @@ export interface components {
             counterpartyName?: string | null;
             supplierPaymentId?: string | null;
             supplierPaymentNumber?: string | null;
+            /** @description Оплату постачальнику СТВОРЕНО з цього рядка (BR-BANK-028): скасування рознесення її сторнує; false — оплату лише прив’язали (BR-BANK-027) або її немає (BR-BANK-039) */
+            supplierPaymentFromRow: boolean;
             expenseCategoryId?: string | null;
             expenseCategoryName?: string | null;
             payrollPeriodId?: string | null;

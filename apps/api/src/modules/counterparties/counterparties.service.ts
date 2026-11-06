@@ -1,4 +1,10 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import {
   ContractType,
   CounterpartyType,
@@ -16,6 +22,7 @@ import { telegramSubscriptionStatus } from '../notifications/telegram-recipients
 import { DocumentNumberService } from '../document-number/document-number.service';
 import { AuditService } from '../audit/audit.service';
 import { ibanFromBankAccount } from './counterparty-iban';
+import { supplierProviderName } from '../supplier-api/adapters/supplier-provider-names';
 import { CounterpartyStatusesService } from '../counterparty-statuses/counterparty-statuses.service';
 import {
   ContractResponseDto,
@@ -516,7 +523,7 @@ export class CounterpartiesService {
     // Bug #631: рахунки — той самий клас документів що наряди/PO. SENT/OVERDUE ловить balance-guard
     // (вони створили CHARGE), АЛЕ DRAFT-рахунок ще не має транзакції → balance=0 → осиротів би на
     // soft-deleted контрагента (лишається активним у списку рахунків з мертвим контрагентом).
-    const [activeWo, openPo, openInvoice] = await Promise.all([
+    const [activeWo, openPo, openInvoice, activeConnections] = await Promise.all([
       this.prisma.workOrder.count({
         where: {
           orgId,
@@ -541,6 +548,13 @@ export class CounterpartiesService {
           status: { notIn: ['PAID', 'CANCELLED'] },
         },
       }),
+      // BR-CP-019: увімкнене підключення до API постачальника — каталог синхронізується, замовлення
+      // відправляються; без контрагента в довіднику воно працювало б «у нікуди». Вимкнене не заважає.
+      this.prisma.supplierConnection.findMany({
+        where: { orgId, counterpartyId: id, enabled: true, deletedAt: null },
+        select: { name: true, provider: true },
+        orderBy: { createdAt: 'asc' },
+      }),
     ]);
     if (activeWo > 0) {
       throw new BadRequestException(
@@ -553,6 +567,15 @@ export class CounterpartiesService {
     if (openInvoice > 0) {
       throw new BadRequestException(
         translateError('err.counterparty.hasOpenInvoices', getLocale()),
+      );
+    }
+    if (activeConnections.length > 0) {
+      // Назва — як у списку підключень: власна або назва провайдера з реєстру адаптерів.
+      const names = [
+        ...new Set(activeConnections.map(c => c.name?.trim() || supplierProviderName(c.provider))),
+      ].join(', ');
+      throw new ConflictException(
+        translateError('err.counterparty.hasActiveSupplierConnections', getLocale(), { names }),
       );
     }
 
