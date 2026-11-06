@@ -1272,6 +1272,8 @@ export const uk: Record<string, string> = {
   'err.dto.settings.pnlExpenseRequired': 'Звіт P&L: привід «Витрата» має завжди входити у витрати',
   'err.dto.settings.time.format': 'Формат “ГГ:ХХ” (00:00–23:59)',
   'err.dto.settings.workingDays.max': 'Не більше 7 робочих днів',
+  'err.dto.settings.workingDays.min': 'Оберіть хоча б один робочий день',
+  'err.dto.settings.workingDays.unique': 'Робочі дні не повинні повторюватись',
   'err.dto.organisation.phone.format': 'Телефон має бути у форматі +380XXXXXXXXX',
   'err.dto.organisation.email.invalid': 'Невірний формат e-mail',
   'err.dto.organisation.ipn.format': 'ІПН має містити 10 або 12 цифр',

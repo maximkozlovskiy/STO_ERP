@@ -1246,6 +1246,8 @@ export const VALIDATION_KEYS = [
   'err.dto.settings.pnlExpenseRequired',
   'err.dto.settings.time.format',
   'err.dto.settings.workingDays.max',
+  'err.dto.settings.workingDays.min',
+  'err.dto.settings.workingDays.unique',
   'err.dto.organisation.phone.format',
   'err.dto.organisation.email.invalid',
   'err.dto.organisation.ipn.format',

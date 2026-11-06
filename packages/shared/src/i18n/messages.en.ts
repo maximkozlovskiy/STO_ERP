@@ -1296,6 +1296,8 @@ export const en: Record<string, string> = {
     'P&L report: the «Expense» reason must always count as an expense',
   'err.dto.settings.time.format': 'Format “HH:MM” (00:00–23:59)',
   'err.dto.settings.workingDays.max': 'No more than 7 working days',
+  'err.dto.settings.workingDays.min': 'Select at least one working day',
+  'err.dto.settings.workingDays.unique': 'Working days must not repeat',
   'err.dto.organisation.phone.format': 'Phone must be in the format +380XXXXXXXXX',
   'err.dto.organisation.email.invalid': 'Invalid email format',
   'err.dto.organisation.ipn.format': 'Tax ID (IPN) must contain 10 or 12 digits',
