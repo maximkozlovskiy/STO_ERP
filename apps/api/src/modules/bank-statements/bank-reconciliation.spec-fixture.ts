@@ -25,11 +25,12 @@ export function makePrisma() {
     bankAccount: { findFirst: vi.fn() },
     // Колбек виконується на тому самому моку (tx = prisma): рознесення вхідного рядка — одна
     // транзакція (BR-BANK-009), і запити всередині видно на тих самих шпигунах.
+    // Тип — загальний `vi.fn`: спеки підміняють реалізацію колбеком із власним tx-моком.
     $transaction: vi.fn((arg: unknown): Promise<unknown> =>
       typeof arg === 'function'
         ? Promise.resolve((arg as (tx: unknown) => unknown)(prisma))
         : Promise.all(arg as unknown[]),
-    ),
+    ) as ReturnType<typeof vi.fn>,
   };
   return prisma;
 }

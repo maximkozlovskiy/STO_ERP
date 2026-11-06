@@ -125,13 +125,15 @@ beforeAll(async () => {
   const base = await new ExchangeRatesService(raw as unknown as PrismaService).getBaseCurrency(
     orgId,
   );
+  if (!base.id) throw new Error('seed: у організації немає базової валюти');
+  const baseCurrencyId = base.id;
   const [account, client, supplier] = await Promise.all([
     raw.bankAccount.create({
       data: {
         orgId,
         name: `${MARKER} рахунок`,
         ibanUA: `UA00${String(STAMP).padStart(25, '0').slice(-25)}`,
-        currencyId: base.id,
+        currencyId: baseCurrencyId,
       },
       select: { id: true },
     }),
