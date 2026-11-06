@@ -273,8 +273,10 @@ describe('інші мутації банківських платежів', () =
     );
   });
 
-  it('match, відмова: чужих списків не чіпає', async () => {
-    apiFetchMock.mockRejectedValue(new Error('Рахунок уже оплачено'));
+  // Bug #1057: відмова (409 «уже рознесено») — рядок у списку застарів: оновлюється лише список
+  // платежів, чужі списки — ні. Mutation-verify: повернути скидання списку в onSuccess → кейс падає.
+  it('match, відмова: оновлює лише список платежів, чужих списків не чіпає', async () => {
+    apiFetchMock.mockRejectedValue(new Error('Транзакцію вже рознесено або проведено'));
     const { wrapper, invalidated } = setup();
     const { result } = renderHook(() => useMatchBankTransaction(), { wrapper });
     await act(async () => {
@@ -282,7 +284,7 @@ describe('інші мутації банківських платежів', () =
         .mutateAsync({ id: 'tx-3', data: { type: 'PREPAYMENT', counterpartyId: ID } })
         .catch(() => undefined);
     });
-    expect(invalidated()).toEqual([]);
+    expect(invalidated()).toEqual(['bank-transactions']);
   });
 
   it('кандидати оплат: без id рядка або з enabled=false запит не йде', () => {

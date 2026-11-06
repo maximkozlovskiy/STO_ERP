@@ -317,6 +317,19 @@ function CrmPageInner() {
             );
             const succeeded = results.filter(r => r.status === 'fulfilled').length;
             const failed = results.length - succeeded;
+            // Причини відмов — текстом сервера (без повторів): лічильник «2 не вдалось» не каже, що
+            // робити далі — закрити наряди, обнулити борг чи вимкнути підключення API (BR-CP-019).
+            const reasons = [
+              ...new Set(
+                results.flatMap(r =>
+                  r.status === 'rejected' && r.reason instanceof Error && r.reason.message
+                    ? [r.reason.message]
+                    : [],
+                ),
+              ),
+            ];
+            const withReasons = (text: string) =>
+              reasons.length > 0 ? `${text}: ${reasons.join('; ')}` : text;
             bulkSelect.clear();
             void queryClient.invalidateQueries({ queryKey: counterpartiesKeys.all });
             if (features.toastEnabled) {
@@ -328,16 +341,20 @@ function CrmPageInner() {
                 );
               } else if (succeeded > 0) {
                 toast.warning(
-                  t('toast.deletedPartial', { succeeded, total: results.length, failed }),
+                  withReasons(
+                    t('toast.deletedPartial', { succeeded, total: results.length, failed }),
+                  ),
                 );
               } else {
-                toast.error(t('toast.bulkDeleteNone'));
+                toast.error(withReasons(t('toast.bulkDeleteNone')));
               }
             } else if (failed > 0) {
               setActionError(
-                succeeded > 0
-                  ? t('errors.deletedPartial', { succeeded, total: results.length, failed })
-                  : t('errors.bulkDeleteNone'),
+                withReasons(
+                  succeeded > 0
+                    ? t('errors.deletedPartial', { succeeded, total: results.length, failed })
+                    : t('errors.bulkDeleteNone'),
+                ),
               );
             }
           })();

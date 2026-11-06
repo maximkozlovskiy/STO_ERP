@@ -145,10 +145,14 @@ export function useMatchBankTransaction() {
         body: JSON.stringify(data),
       }),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: bankTransactionsKeys.all });
       // Створено оплату клієнта: «сплачено» рахунку й наряду, оплати, борг — як при внесенні з
       // рознесенням (Bug #860: рахунок лишався «Надіслано» до кінця staleTime).
       invalidatePaymentSideEffects(qc);
+    },
+    // onSettled, не onSuccess (Bug #1057): 409 «уже рознесено» (подвійний клік, інший користувач)
+    // означає, що рядок у списку застарів, — як у `useReconcileBankTransaction`.
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: bankTransactionsKeys.all });
     },
   });
 }
