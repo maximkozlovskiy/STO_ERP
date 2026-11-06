@@ -207,7 +207,9 @@ model BankTransaction {
   currency            Currency         @relation(fields: [currencyId], references: [id])
   counterparty        Counterparty?    @relation(fields: [counterpartyId], references: [id])
   payment             Payment?         @relation(fields: [paymentId], references: [id])
-  supplierPayment     SupplierPayment? @relation(fields: [supplierPaymentId], references: [id])
+  supplierPayment     SupplierPayment? @relation("BankTransactionSupplierPayment", fields: [supplierPaymentId], references: [id])
+  // Оплати постачальнику, створені з цього рядка (історія; жива — лише та, на яку вказує supplierPaymentId).
+  originSupplierPayments SupplierPayment[] @relation("SupplierPaymentOriginRow")
   expenseCategory     ExpenseCategory? @relation(fields: [expenseCategoryId], references: [id])
   payrollPeriod       PayrollPeriod?   @relation(fields: [payrollPeriodId], references: [id])
   employee            Employee?        @relation(fields: [employeeId], references: [id])

@@ -539,6 +539,9 @@ export const en: Record<string, string> = {
   'err.supplierPayment.cashRequiresRegister': 'For a cash payment you must specify a cash register',
   'err.supplierPayment.orderNotPayable':
     'Only an order that is Ordered, Partially received or Received can be paid — this order is "{{status}}"',
+  'err.supplierPayment.alreadyReversed': 'The supplier payment has already been reversed',
+  'err.supplierPayment.reversalStateChanged':
+    'The supplier payment has changed — refresh and retry',
 
   // ── Exception messages: purchase-orders module ──
   'err.deliveryProvider.invalidCode': 'Invalid service code',
@@ -934,6 +937,8 @@ export const en: Record<string, string> = {
   'err.counterparty.hasOpenInvoices': 'Cannot delete: the counterparty has open invoices',
   'err.counterparty.hasNonZeroBalance':
     'Cannot delete a counterparty with a non-zero balance (there is outstanding debt)',
+  'err.counterparty.hasActiveSupplierConnections':
+    'Cannot delete: the counterparty has enabled supplier API connections ({{names}}) — disable them first in "Settings → Supplier APIs"',
   'err.counterparty.garageNotFound': 'Garage not found',
   'err.counterparty.garageHasVehicles':
     'The garage has vehicles - delete them or move them to another garage first',

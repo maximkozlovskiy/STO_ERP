@@ -652,6 +652,8 @@ export const VALIDATION_KEYS = [
   'err.supplierPayment.sourceConflict',
   'err.supplierPayment.cashRequiresRegister',
   'err.supplierPayment.orderNotPayable',
+  'err.supplierPayment.alreadyReversed',
+  'err.supplierPayment.reversalStateChanged',
   // Exception-повідомлення: purchase-orders-модуль
   'err.deliveryProvider.invalidCode',
   'err.deliveryProvider.unknown',
@@ -960,6 +962,7 @@ export const VALIDATION_KEYS = [
   'err.counterparty.hasOpenOrders',
   'err.counterparty.hasOpenInvoices',
   'err.counterparty.hasNonZeroBalance',
+  'err.counterparty.hasActiveSupplierConnections',
   'err.counterparty.garageNotFound',
   'err.counterparty.garageHasVehicles',
   'err.counterparty.supplierOnlyPurchaseContract',

@@ -480,8 +480,13 @@ model SupplierPayment {
   bankAccount   BankAccount?   @relation(fields: [bankAccountId], references: [id])
   cashRegister  CashRegister?  @relation(fields: [cashRegisterId], references: [id])
   currency      Currency?      @relation("SupplierPaymentCurrency", fields: [currencyId], references: [id])
+  // Рядок банківської виписки, з якого оплату СТВОРЕНО (BR-BANK-028); null — оплату створено окремою
+  // дією, а рядок лише прив'язали (BR-BANK-027). Скасування рознесення сторнує лише створену з рядка
+  // (BR-BANK-039, рішення власника 2026-11-06). Лишається й після сторно — історія походження.
+  originBankTransactionId String? @db.Uuid
   // Рядок банківської виписки, яким цю оплату підтверджено (BR-BANK-027/028); 1:1.
-  bankTransaction BankTransaction?
+  bankTransaction       BankTransaction? @relation("BankTransactionSupplierPayment")
+  originBankTransaction BankTransaction? @relation("SupplierPaymentOriginRow", fields: [originBankTransactionId], references: [id])
 
   // +createdAt: дефолтний unfiltered list сортує createdAt desc → covering (як решта документів)
   @@index([orgId, deletedAt, createdAt])
@@ -491,6 +496,7 @@ model SupplierPayment {
   // + groupBy(purchaseOrderId=null) — FK PO axis не було покрито.
   @@index([orgId, purchaseOrderId, deletedAt])
   @@index([orgId, syncVersion])
+  @@index([originBankTransactionId])
   // T14: ручний partial-unique (orgId, number) WHERE deletedAt IS NULL — міграція 20260909210000 (Prisma не виражає partial-unique у @@unique).
   @@map("supplier_payments")
 }

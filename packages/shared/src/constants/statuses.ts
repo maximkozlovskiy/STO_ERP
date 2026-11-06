@@ -403,7 +403,7 @@ export const SUPPLIER_PAYMENT_STATUS_DESCRIPTIONS: Record<string, string> = {
   DRAFT: 'Чернетка — оплату оформлено, ще не проведено',
   CONFIRMED: 'Проведено — борг перед постачальником зменшено на суму оплати',
   CANCELLED: 'Скасовано — оплату анульовано',
-  REVERSED: 'Сторновано — проведену оплату скасовано з каси, борг і «сплачено» повернуто',
+  REVERSED: 'Сторновано — проведену оплату скасовано, борг і «сплачено» повернуто',
 };
 
 export const SUPPLIER_PAYMENT_STATUS_BADGE: Record<string, BadgeVariant> = {

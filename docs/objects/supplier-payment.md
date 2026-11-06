@@ -63,7 +63,7 @@ model SupplierPayment {
 ```
 DRAFT → CONFIRMED   (пише settlement SUPPLIER_PAYMENT)
       ↘ CANCELLED
-CONFIRMED → REVERSED   (лише сторно з каси, внутрішній метод `reverse`; публічного переходу немає)
+CONFIRMED → REVERSED   (внутрішній метод `reverse`: сторно з каси або скасування рознесення рядка виписки, з якого оплату створено — BR-BANK-039; публічного переходу немає)
 ```
 
 | Статус      | Значення                                                                                    |
@@ -73,12 +73,13 @@ CONFIRMED → REVERSED   (лише сторно з каси, внутрішні�
 | `CANCELLED` | Скасовано — settlement не пишеться                                                          |
 | `REVERSED`  | Сторновано з каси (BR-CASH-024) — є `SUPPLIER_PAYMENT_CANCEL`; термінальний, не видаляється |
 
-Сторно (`SupplierPaymentsService.reverse(orgId, id, ctx, tx)`) — внутрішній метод без маршруту: його
-викликає лише `CashDeskService.reverse` у своїй транзакції після запису рядка сторно каси. Порядок: CAS
-`CONFIRMED → REVERSED` (друге сторно → 400) → проводка `SUPPLIER_PAYMENT_CANCEL` (−1, курс оригіналу,
-`documentType = 'CashOperation'`, `documentId` = рядок сторно) → `PurchaseOrder.paidAmount` мінус сума (не
-нижче нуля, CAS), `paidAt` знімається, якщо замовлення вже не сплачене повністю. Оплата не в базовій
-валюті → 400. `SP_TRANSITIONS.CONFIRMED` лишається порожньою: `REVERSED` ставить лише `reverse`.
+Сторно (`SupplierPaymentsService.reverse(orgId, id, ctx, tx)`) — внутрішній метод без маршруту, у транзакції
+викликача. Викликають двоє: `CashDeskService.reverse` після запису рядка сторно каси і, з 2026-11-06, скасування
+рознесення рядка виписки, з якого оплату створено (BR-BANK-039). Порядок: CAS `CONFIRMED → REVERSED` (друге
+сторно → 400) → проводка `SUPPLIER_PAYMENT_CANCEL` (−1, сума, курс і базова сума оригіналу — BR-SUPPAY-012;
+документ — `CashOperation` (рядок сторно каси) або `BankTransaction` (рядок виписки)) → `PurchaseOrder.paidAmount`
+мінус сума (не нижче нуля, CAS), `paidAt` знімається, якщо замовлення вже не сплачене повністю, з відкатом FX.
+`SP_TRANSITIONS.CONFIRMED` лишається порожньою: `REVERSED` ставить лише `reverse`.
 
 Тести сторно — у реєстрі `cash.md` (`supplier-payments.reverse.spec.ts`).
 

@@ -530,6 +530,9 @@ export const uk: Record<string, string> = {
   'err.supplierPayment.cashRequiresRegister': 'Для оплати з каси потрібно вказати касу',
   'err.supplierPayment.orderNotPayable':
     'Оплатити можна лише замовлення «Замовлено», «Частково» чи «Отримано» — це замовлення «{{status}}»',
+  'err.supplierPayment.alreadyReversed': 'Оплату постачальнику вже сторновано',
+  'err.supplierPayment.reversalStateChanged':
+    'Оплата постачальнику змінилась — оновіть сторінку й повторіть',
 
   // ── Exception-повідомлення: purchase-orders-модуль ──
   'err.deliveryProvider.invalidCode': 'Некоректний код служби',
@@ -918,6 +921,8 @@ export const uk: Record<string, string> = {
   'err.counterparty.hasOpenInvoices': 'Неможливо видалити: контрагент має відкриті рахунки',
   'err.counterparty.hasNonZeroBalance':
     'Неможливо видалити контрагента з ненульовим балансом (є заборгованість)',
+  'err.counterparty.hasActiveSupplierConnections':
+    'Неможливо видалити: у контрагента є увімкнені підключення до API постачальника ({{names}}) — спершу вимкніть їх у «Налаштування → Постачальники API»',
   'err.counterparty.garageNotFound': 'Гараж не знайдено',
   'err.counterparty.garageHasVehicles':
     'У гаражі є авто — спершу видаліть їх або перенесіть в інший гараж',
