@@ -68,11 +68,18 @@ describe('plannedDatesError — вихідні філії (BR-WO-019)', () => {
     expect(plannedDatesError(next(prev.plannedAt, kyiv(MON, '09:00')), prev, NOW, H)).toBeNull();
   });
 
-  // guards: BR-WO-019
-  it('переліку днів немає чи він порожній → неділя робоча', () => {
+  // guards: BR-WO-019, BR-CAL-016
+  it('переліку днів немає чи він порожній → пн–пт: субота й неділя вихідні, пн — ні', () => {
     const sunday = next(kyiv(SUN, '10:00'), kyiv(SUN, '12:00'));
-    expect(plannedDatesError(sunday, null, NOW, { startHour: 8, endHour: 18 })).toBeNull();
-    expect(plannedDatesError(sunday, null, NOW, { ...H, workDays: [] })).toBeNull();
+    const saturday = next(kyiv(SAT, '10:00'), kyiv(SAT, '12:00'));
+    const monday = next(kyiv(MON, '10:00'), kyiv(MON, '12:00'));
+    expect(plannedDatesError(sunday, null, NOW, { startHour: 8, endHour: 18 })).toEqual({
+      key: 'err.workOrder.plannedOnDayOff',
+    });
+    expect(plannedDatesError(saturday, null, NOW, { ...H, workDays: [] })).toEqual({
+      key: 'err.workOrder.plannedOnDayOff',
+    });
+    expect(plannedDatesError(monday, null, NOW, { ...H, workDays: [] })).toBeNull();
   });
 
   // guards: BR-WO-019
@@ -91,18 +98,34 @@ describe('overflowEnd / workHoursBetween — вихідні пропускают
   // guards: BR-CAL-016
   it('сб 17:00 + 2 год (вікно 8–18, пн–сб) → кінець у пн 09:00, не в нд', () => {
     expect(t(overflowEnd(kyiv(SAT, '17:00'), kyiv(SAT, '19:00'), H))).toBe(t(kyiv(MON, '09:00')));
-    // Без переліку днів — як раніше, наступного календарного дня.
+    // Без переліку днів — пн–пт: субота вихідна, запис, що в ній починається, не переходить.
     expect(
       t(overflowEnd(kyiv(SAT, '17:00'), kyiv(SAT, '19:00'), { startHour: 8, endHour: 18 })),
-    ).toBe(t(kyiv(SUN, '09:00')));
+    ).toBe(t(kyiv(SAT, '19:00')));
+    // Пт 17:00–19:00 без переліку — залишок на пн, не на сб.
+    expect(
+      t(
+        overflowEnd(kyiv('2026-05-22', '17:00'), kyiv('2026-05-22', '19:00'), {
+          startHour: 8,
+          endHour: 18,
+        }),
+      ),
+    ).toBe(t(kyiv(MON, '09:00')));
   });
 
   // guards: BR-WO-019
-  it('нормогодини сб 17:00 → пн 10:00: 1 + 2 = 3 год без неділі (з неділею — 13)', () => {
+  it('нормогодини сб 17:00 → пн 10:00: 1 + 2 = 3 год без неділі (з неділею — 13, пн–пт — 2)', () => {
     expect(workHoursBetween(kyiv(SAT, '17:00'), kyiv(MON, '10:00'), H)).toBe(3);
     expect(
-      workHoursBetween(kyiv(SAT, '17:00'), kyiv(MON, '10:00'), { startHour: 8, endHour: 18 }),
+      workHoursBetween(kyiv(SAT, '17:00'), kyiv(MON, '10:00'), {
+        startHour: 8,
+        endHour: 18,
+        workDays: [1, 2, 3, 4, 5, 6, 7],
+      }),
     ).toBe(13);
+    expect(
+      workHoursBetween(kyiv(SAT, '17:00'), kyiv(MON, '10:00'), { startHour: 8, endHour: 18 }),
+    ).toBe(2);
   });
 });
 

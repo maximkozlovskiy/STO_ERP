@@ -79,6 +79,7 @@ const MODEL_ID = '880e8400-e29b-41d4-a716-446655440002';
 
 describe('Sync — HTTP Contract', () => {
   let app: NestFastifyApplication;
+  const workOrdersMock = { updateCalendarSlot: vi.fn(), removeCalendarSlot: vi.fn() };
 
   beforeAll(async () => {
     const module = await Test.createTestingModule({
@@ -86,7 +87,7 @@ describe('Sync — HTTP Contract', () => {
       providers: [
         SyncService,
         { provide: PrismaService, useValue: prismaMock },
-        { provide: WorkOrdersService, useValue: { updateCalendarSlot: vi.fn() } },
+        { provide: WorkOrdersService, useValue: workOrdersMock },
         { provide: CacheService, useValue: { del: vi.fn() } },
       ],
     })
@@ -356,7 +357,11 @@ describe('Sync — HTTP Contract', () => {
       expect(prismaMock.calendarSlot.update).not.toHaveBeenCalled();
     });
 
-    it('DELETE calendar_slot з НОВІШИМ syncVersion застосовує soft-delete', async () => {
+    // BR-CAL-019: видалення запису без наряду з планшета — тим самим шляхом, що й
+    // `DELETE /calendar/slots/:id`, тобто весь ланцюжок (якір і продовження), а не лише цей рядок.
+    // guards: BR-CAL-019
+    it('DELETE calendar_slot з НОВІШИМ syncVersion видаляє запис шляхом DELETE /calendar/slots', async () => {
+      workOrdersMock.removeCalendarSlot.mockClear();
       prismaMock.calendarSlot.findFirst.mockResolvedValueOnce({
         id: '660e8400-e29b-41d4-a716-446655440222',
         syncVersion: 3n,
@@ -381,11 +386,12 @@ describe('Sync — HTTP Contract', () => {
       });
 
       expect(res.statusCode).toBe(201);
-      expect(prismaMock.calendarSlot.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({ deletedAt: expect.any(Date) }),
-        }),
+      expect(workOrdersMock.removeCalendarSlot).toHaveBeenCalledWith(
+        expect.any(String),
+        '660e8400-e29b-41d4-a716-446655440222',
+        expect.any(String),
       );
+      expect(prismaMock.calendarSlot.update).not.toHaveBeenCalled();
     });
 
     // guards: BR-CP-015

@@ -21586,6 +21586,7 @@
             "type": "string"
           },
           "workDays": {
+            "minItems": 1,
             "maxItems": 7,
             "description": "Робочі дні тижня, ISO (1=пн, ..., 7=нд)",
             "type": "array",
@@ -22289,6 +22290,10 @@
           "zoneId": {
             "type": "string"
           },
+          "branchId": {
+            "type": "string",
+            "description": "Філія підйомника (через зону; BR-CAL-017)"
+          },
           "name": {
             "type": "string"
           },
@@ -22357,6 +22362,7 @@
           "id",
           "orgId",
           "zoneId",
+          "branchId",
           "name",
           "type",
           "status",
@@ -29208,6 +29214,19 @@
               "MEETING"
             ],
             "type": "string"
+          },
+          "chainDays": {
+            "type": "number",
+            "description": "Кількість частин ланцюжка запису (1 — одноденний)",
+            "minimum": 1
+          },
+          "chainEndAt": {
+            "type": "string",
+            "description": "Кінець останньої частини ланцюжка запису (ISO)"
+          },
+          "removed": {
+            "type": "boolean",
+            "description": "Запис видалено відв'язкою від наряду (лише відповідь PATCH; BR-WO-028)"
           }
         },
         "required": [
@@ -29215,7 +29234,9 @@
           "startAt",
           "endAt",
           "status",
-          "type"
+          "type",
+          "chainDays",
+          "chainEndAt"
         ]
       },
       "CheckConflictsDto": {

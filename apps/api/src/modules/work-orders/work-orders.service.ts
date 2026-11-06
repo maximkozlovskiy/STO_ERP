@@ -9,7 +9,7 @@ import { assertFsmTransition } from '../../common/utils/fsm';
 import { assertCounterpartyRole } from '../../common/utils/counterparty-role';
 import { PrismaService } from '../../prisma/prisma.service';
 import { throwIfExclusionConflict } from '../../common/utils/prisma-errors';
-import type { WorkHours } from '../../common/utils/work-hours';
+import type { TimeSegment, WorkHours } from '../../common/utils/work-hours';
 import { WorkOrderStockEffectsService } from './work-order-stock-effects.service';
 import { WorkOrderTotalsService } from './work-order-totals.service';
 import { lockWorkOrdersForUpdate } from './work-order-stock-requirements';
@@ -759,12 +759,7 @@ export class WorkOrdersService {
       if (dto.workOrderId)
         return this.relinkCalendarSlot(orgId, slot, dto.workOrderId, dto, userId);
       if (slot.workOrderId)
-        return this.unlinkCalendarSlot(
-          orgId,
-          { ...slot, workOrderId: slot.workOrderId },
-          dto,
-          userId,
-        );
+        return this.unlinkCalendarSlot(orgId, { ...slot, workOrderId: slot.workOrderId }, userId);
     }
     const workOrderId = slot?.workOrderId;
     if (!slot || !workOrderId) return this.calendar.updateSlot(orgId, id, dto);
@@ -1019,7 +1014,7 @@ export class WorkOrdersService {
    * BR-WO-026: запис наряду видалено (форма «Видалити» — `DELETE /calendar/slots/:id`, видалення
    * з планшета). В одній транзакції позначається видаленим увесь ланцюжок записів наряду, а
    * планові початок і завершення наряду стираються (нормогодини, виведені з дат, — теж). Запис
-   * без наряду — як раніше, сам (`CalendarService.removeSlot`).
+   * без наряду — `CalendarService.removeSlot`: увесь його ланцюжок (BR-CAL-019).
    *
    * Лише в статусах, де картка змінює планові дати (`EDITABLE_STATUSES`, як BR-WO-027; рішення
    * власника 2026-10-19): інакше 400 з причиною — і до транзакції, і під блокуванням наряду
@@ -1029,11 +1024,12 @@ export class WorkOrdersService {
   async removeCalendarSlot(orgId: string, id: string, userId?: string): Promise<void> {
     const slot = await this.prisma.calendarSlot.findFirst({
       where: { id, orgId, deletedAt: null },
-      select: { workOrderId: true },
+      select: { workOrderId: true, parentSlotId: true },
     });
     if (!slot) throw new NotFoundException(err('err.calendar.slotNotFound'));
     const { workOrderId } = slot;
-    if (!workOrderId) return this.calendar.removeSlot(orgId, id);
+    // BR-CAL-019: запис без наряду — увесь його ланцюжок (будь-якого дня).
+    if (!workOrderId) return this.calendar.removeSlot(orgId, id, slot);
     const wo = await this.prisma.workOrder.findFirst({
       where: { id: workOrderId, orgId, deletedAt: null },
       select: { status: true, branchId: true },
@@ -1200,76 +1196,78 @@ export class WorkOrdersService {
   }
 
   /**
-   * Запис наряду відв'язано від наряду (форма «×», `workOrderId: null` з планшета): за BR-WO-026
-   * наряд утрачає запис — ланцюжок запису лишається в календарі без наряду, інші записи наряду
-   * позначаються видаленими, планові дати наряду стираються. Сама зміна запису (клієнт, час,
-   * нотатки) — як раніше, `CalendarService.updateSlot`, у тій самій транзакції.
+   * Запис наряду відв'язано від наряду (форма «×», зміна чи очищення клієнта, `workOrderId: null` з
+   * планшета) — BR-WO-028, рішення власника 2026-10-30 / 2026-11-06 (TECH-DEBT (б) №67): увесь
+   * ланцюжок запису наряду (і будь-які інші його записи) позначається видаленим, а наряд ЗБЕРІГАЄ
+   * планові дати й підйомник, лишаючись без запису в календарі. Запис з'являється знову при зміні
+   * дат чи підйомника в наряді або через «+ Слот» із цим нарядом (`forceSlot`). До 2026-11-06 запис
+   * лишався ручним, а дати наряду стирались. Інші поля зміни (клієнт, час, примітка) не
+   * застосовуються — запису вже немає.
    *
-   * Відв'язка — перев'язка «ні на що» (BR-WO-028): лише коли наряд у редагованому статусі
-   * (BR-WO-027), інакше 400 — і до транзакції, і під блокуванням наряду (Bug #907). Багатоденний
-   * запис (якір чи продовження) відв'язується весь: клієнт, авто, примітка й механік — для всього
-   * ланцюжка без перебудови (`updateSlotChainDetails`); час чи підйомник разом із відв'язкою
-   * ланцюжка не змінюються, як у будь-якого багатоденного запису без наряду (Bug #906).
+   * Лише коли наряд у редагованому статусі (BR-WO-027), інакше 400 — і до транзакції, і під
+   * блокуванням наряду (Bug #907). Журнал наряду — запис про видалення запису календаря.
+   * Відповідь — відв'язаний запис, яким він був до видалення, з `removed: true`.
    */
   private async unlinkCalendarSlot(
     orgId: string,
     slot: WorkOrderSlotRow,
-    change: CalendarSlotEdit,
     userId?: string,
   ): Promise<CalendarSlotResponseDto> {
     const { workOrderId } = slot;
-    const [wo, chain] = await Promise.all([
+    const [wo, before] = await Promise.all([
       this.prisma.workOrder.findFirst({
         where: { id: workOrderId, orgId, deletedAt: null },
-        select: { status: true, branchId: true },
+        select: { status: true },
       }),
-      this.slotChain(orgId, slot),
+      this.calendar.findSlotById(orgId, slot.id),
     ]);
     if (wo) assertRelinkable(wo.status);
-    const hours = await this.calendar.resolveWorkHours(orgId, wo?.branchId ?? null);
-    const chainIds = chain.map(s => s.id);
-    let released: DatesReleased | null = null;
-    const unlinkInTx = async (tx: Prisma.TransactionClient) => {
-      // Наряд — перший у транзакції, до записів календаря (як `applyUpdate`: наряд → записи); статус
-      // — ще раз під блокуванням: перехід «В роботу» поруч інакше втратив би дати (BR-WO-027).
-      const [locked = null] = await this.lockForSlotChange(tx, orgId, [workOrderId]);
-      if (locked) assertRelinkable(locked.status);
-      await tx.calendarSlot.updateMany({
-        where: { orgId, id: { in: chainIds }, deletedAt: null },
-        data: { workOrderId: null },
-      });
-      released = await this.releaseWorkOrderDates(tx, orgId, workOrderId, hours, locked);
-    };
+    if (!before) throw new NotFoundException(err('err.calendar.slotNotFound'));
+    const removed = await this.prisma.$transaction(
+      async tx => {
+        // Наряд — перший у транзакції, до записів календаря (як `applyUpdate`: наряд → записи);
+        // статус — ще раз під блокуванням: перехід «В роботу» поруч (BR-WO-027).
+        const [locked = null] = await this.lockForSlotChange(tx, orgId, [workOrderId]);
+        if (locked) assertRelinkable(locked.status);
+        const live = await tx.calendarSlot.findMany({
+          where: { orgId, workOrderId, deletedAt: null },
+          select: { startAt: true, endAt: true },
+          take: 500,
+        });
+        await this.calendar.removeWorkOrderSlots(tx, orgId, workOrderId);
+        return live;
+      },
+      { timeout: TRANSACTION_TIMEOUT_MS },
+    );
+    this.recordSlotRemoved(orgId, workOrderId, userId, removed);
+    return { ...before, removed: true };
+  }
 
-    let res: CalendarSlotResponseDto;
-    if (chain.length > 1) {
-      // Час чи підйомник відв'язаного ланцюжка — правка багатоденного запису без наряду (400).
-      if (movesWorkOrderSlot(slot, { ...change, workOrderId: undefined }))
-        throw new BadRequestException(err('err.calendar.slotSplitTwoDays'));
-      const employeeId = nextMechanic(change, slot);
-      const mechanicChanged = (employeeId ?? null) !== slot.employeeId;
-      if (employeeId && mechanicChanged)
-        await this.assertSlotMechanic(orgId, employeeId, slot.liftId);
-      await this.calendar.updateSlotChainDetails(
+  /**
+   * Журнал змін наряду: його запис календаря видалено відв'язкою (BR-WO-028) — межі ланцюжка, що
+   * був; планові дати наряду не змінились, тож «дати звільнено» тут не пишеться.
+   */
+  private recordSlotRemoved(
+    orgId: string,
+    workOrderId: string,
+    userId: string | undefined,
+    removed: readonly TimeSegment[],
+  ): void {
+    if (!userId || removed.length === 0) return;
+    const { start, end } = bounds(removed);
+    this.audit
+      .record(
         orgId,
-        chain,
-        {
-          ...(mechanicChanged && { employeeId }),
-          notes: change.notes,
-          counterpartyId: change.counterpartyId,
-          vehicleId: change.vehicleId,
-        },
-        { inTx: unlinkInTx },
+        'WorkOrder',
+        workOrderId,
+        'UPDATE',
+        userId,
+        { calendarSlot: `${start.toISOString()} — ${end.toISOString()}` },
+        { calendarSlot: null },
+      )
+      .catch((e: unknown) =>
+        this.logger.warn(`Audit record failed: ${e instanceof Error ? e.message : e}`),
       );
-      const anchorId = slot.parentSlotId ?? slot.id;
-      const anchor = await this.calendar.findSlotById(orgId, anchorId);
-      if (!anchor) throw new NotFoundException(err('err.calendar.slotNotFound'));
-      res = anchor;
-    } else {
-      res = await this.calendar.updateSlot(orgId, slot.id, change, { inTx: unlinkInTx });
-    }
-    this.recordDatesReleased(orgId, workOrderId, userId, released);
-    return res;
   }
 
   /**

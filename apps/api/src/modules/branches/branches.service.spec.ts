@@ -17,7 +17,14 @@ import { modelMock, type PrismaModelMock } from '../../common/testing/prisma-moc
  */
 describe('BranchesService', () => {
   let svc: BranchesService;
-  let prisma: { garageBranch: PrismaModelMock };
+  let prisma: {
+    garageBranch: PrismaModelMock;
+    branchSettings: PrismaModelMock;
+    $transaction: ReturnType<typeof vi.fn>;
+  };
+  /** Чи йде виклик усередині `$transaction` — налаштування мають писатись разом із філією. */
+  let inTx: boolean;
+  let writtenInTx: string[];
   let cache: {
     get: ReturnType<typeof vi.fn>;
     set: ReturnType<typeof vi.fn>;
@@ -40,12 +47,30 @@ describe('BranchesService', () => {
   });
 
   beforeEach(() => {
+    inTx = false;
+    writtenInTx = [];
     prisma = {
       garageBranch: modelMock('findMany', 'findFirst', 'create', 'update', 'updateMany'),
+      branchSettings: modelMock('create'),
+      $transaction: vi.fn(async (cb: (tx: unknown) => Promise<unknown>) => {
+        inTx = true;
+        try {
+          return await cb(prisma);
+        } finally {
+          inTx = false;
+        }
+      }),
     };
+    prisma.branchSettings.create.mockImplementation(() => {
+      if (inTx) writtenInTx.push('branchSettings');
+      return Promise.resolve({});
+    });
     prisma.garageBranch.findMany.mockResolvedValue([row()]);
     prisma.garageBranch.findFirst.mockResolvedValue(row());
-    prisma.garageBranch.create.mockResolvedValue(row());
+    prisma.garageBranch.create.mockImplementation(() => {
+      if (inTx) writtenInTx.push('garageBranch');
+      return Promise.resolve(row());
+    });
     prisma.garageBranch.update.mockResolvedValue(row());
     prisma.garageBranch.updateMany.mockResolvedValue({ count: 1 });
 
@@ -106,6 +131,28 @@ describe('BranchesService', () => {
       await svc.create(ORG, { name: 'Нова', address: 'вул.', orgId: 'org-ATTACKER' } as never);
       expect(prisma.garageBranch.create.mock.calls[0][0].data.orgId).toBe(ORG);
       expect(cache.del).toHaveBeenCalledWith(`ref:branches:${ORG}`);
+    });
+
+    // Рішення власника 2026-11-06 (TECH-DEBT (б) №84): рядок налаштувань (пн–пт, 09–18 —
+    // `@default` моделі) створюється разом із філією, як у майстрі налаштування; без нього
+    // календар, наряди, онлайн-запис і звіти тлумачили робочі дні по-різному.
+    // guards: BR-CAL-017
+    it('налаштування філії — у тій самій транзакції, з її id і orgId, без власних значень', async () => {
+      await svc.create(ORG, { name: 'Нова', address: 'вул.' } as never);
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(writtenInTx).toEqual(['garageBranch', 'branchSettings']);
+      expect(prisma.branchSettings.create.mock.calls[0][0]).toEqual({
+        data: { branchId: ID, orgId: ORG },
+      });
+    });
+
+    // guards: BR-CAL-017
+    it('налаштування не створились → філія теж (помилка транзакції), кеш не скидається', async () => {
+      prisma.branchSettings.create.mockRejectedValue(new Error('db down'));
+      await expect(svc.create(ORG, { name: 'Нова', address: 'вул.' } as never)).rejects.toThrow(
+        'db down',
+      );
+      expect(cache.del).not.toHaveBeenCalled();
     });
   });
 

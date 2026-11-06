@@ -1,9 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import { err } from '../../common/utils/err';
-import { kyivYmd } from '../../common/utils/kyiv-date';
 import {
-  kyivHourOnDay,
-  nextWorkDay,
+  overflowEnd,
   splitByWorkHours,
   type TimeSegment,
   type WorkHours,
@@ -60,14 +58,26 @@ export function relinksSlot(slot: Pick<SlotState, 'workOrderId'>, change: SlotCh
 /**
  * Межі ланцюжка (якір і продовження), коли запис `editedId` отримав проміжок `edited`:
  * найраніший початок і найпізніше завершення — нові планові дати наряду. Тому зміна меж крайнього
- * запису змінює тривалість наряду, а внутрішня межа багатоденного ланцюжка — ні: її знову ставлять
- * робочі години (BR-WO-020).
+ * запису змінює тривалість наряду. Внутрішню межу багатоденного ланцюжка (кінець не останнього
+ * дня, початок продовження) ставлять робочі години (BR-WO-020) — її зміна 400
+ * `err.calendar.chainInnerEdge` (BR-WO-024, TECH-DEBT (б) №66; до 2026-11-06 мовчки відкочувалась).
  */
 export function chainBounds(
   chain: readonly ({ id: string } & TimeSegment)[],
   editedId: string,
   edited: TimeSegment,
 ): { start: Date; end: Date } {
+  const stored = chain.find(s => s.id === editedId);
+  if (stored && chain.length > 1) {
+    const outer = bounds(chain);
+    const startMoved = edited.startAt.getTime() !== stored.startAt.getTime();
+    const endMoved = edited.endAt.getTime() !== stored.endAt.getTime();
+    if (
+      (startMoved && stored.startAt.getTime() !== outer.start.getTime()) ||
+      (endMoved && stored.endAt.getTime() !== outer.end.getTime())
+    )
+      throw new BadRequestException(err('err.calendar.chainInnerEdge'));
+  }
   return bounds([...chain.filter(s => s.id !== editedId), edited]);
 }
 
@@ -110,18 +120,11 @@ export function slotWindow(
 }
 
 /**
- * Кінець запису, що починається в робочий день і закінчується після його закриття: форма шле
- * «початок + тривалість» на тому ж дні, а залишок переходить на наступний РОБОЧИЙ день від
- * відкриття (вихідні філії пропускаються, BR-CAL-016) — так само, як `CalendarService.createSlot`
- * ділить новий запис (BR-CAL-007). Запис наряду інакше отримав би завершення поза робочими
- * годинами чи на вихідному (400 BR-WO-019).
+ * Кінець запису «початок + тривалість» на тому ж дні, що виходить за закриття, — на наступних
+ * робочих днях (`overflowEnd` у `work-hours.ts`, спільний із `CalendarService.createSlot`,
+ * BR-CAL-007). Запис наряду інакше отримав би завершення поза робочими годинами (400 BR-WO-019).
  */
-export function overflowEnd(startAt: Date, endAt: Date, hours: WorkHours): Date {
-  const close = kyivHourOnDay(kyivYmd(startAt), hours.endHour);
-  if (!(startAt < close && endAt > close)) return endAt;
-  const nextOpen = kyivHourOnDay(nextWorkDay(kyivYmd(startAt), hours), hours.startHour);
-  return new Date(nextOpen.getTime() + (endAt.getTime() - close.getTime()));
-}
+export { overflowEnd };
 
 /**
  * Робочі години між датами (у межах годин філії, без вихідних філії — BR-WO-019), до сотих —

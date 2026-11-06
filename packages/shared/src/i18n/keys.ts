@@ -858,6 +858,7 @@ export const VALIDATION_KEYS = [
   'err.calendar.liftBusyNextDay',
   'err.calendar.employeeBusyNextDay',
   'err.calendar.slotSplitTwoDays',
+  'err.calendar.chainInnerEdge',
   'err.calendar.slotNotFound',
   'err.calendar.serviceSlotNoClient',
   'err.calendar.invalidTimeInterval',

@@ -332,11 +332,13 @@ describe("Перев'язка запису на інший наряд (BR-WO-028
     expect(err.message).toBe(msg('err.calendar.employeeNotOnLift'));
   });
 
-  // guards: BR-WO-028, BR-WO-026
-  it('відвʼязка («×») → запис лишається без наряду з новим часом, наряд утратив дати', async () => {
+  // Рішення власника 2026-10-30 / 2026-11-06 (TECH-DEBT (б) №67): відв'язка видаляє запис наряду,
+  // наряд зберігає планові дати й підйомник. До того запис лишався ручним, а дати наряду стирались.
+  // guards: BR-WO-028
+  it('відвʼязка («×») → запис наряду видалено, наряд зберіг дати, підйомник і нормогодини; журнал — запис календаря', async () => {
     const h = planned();
 
-    await h.service.updateCalendarSlot(
+    const res = await h.service.updateCalendarSlot(
       ORG,
       'anchor',
       relinkForm(null, {
@@ -347,28 +349,86 @@ describe("Перев'язка запису на інший наряд (BR-WO-028
       USER,
     );
 
-    expect(slotOf(h, 'anchor')).toMatchObject({
-      workOrderId: null,
-      deletedAt: null,
-      counterpartyId: CLIENT,
-    });
-    expect(t(slotOf(h, 'anchor').startAt)).toBe(t(kyiv(D, '13:00')));
-    expect(woOf(h)).toMatchObject({ plannedAt: null, dueDate: null, plannedHours: null });
+    expect(slotOf(h, 'anchor').deletedAt).toBeInstanceOf(Date);
+    // Ні нового часу, ні відв'язаного ручного запису: запису немає зовсім.
+    expect(h.calendarSlot.rows.filter(s => s.deletedAt === null)).toEqual([]);
+    expect(woOf(h)).toMatchObject({ liftId: LIFT_1, plannedHours: 2 });
+    expect(t(woOf(h).plannedAt)).toBe(t(kyiv(D, '10:00')));
+    expect(t(woOf(h).dueDate)).toBe(t(kyiv(D, '12:00')));
+    // Відповідь — запис, яким він був, з позначкою «видалено».
+    expect(res).toMatchObject({ id: 'anchor', workOrderId: WO_ID, removed: true });
     expect(h.audit.record).toHaveBeenCalledTimes(1);
+    expect(h.audit.record).toHaveBeenCalledWith(
+      ORG,
+      'WorkOrder',
+      WO_ID,
+      'UPDATE',
+      USER,
+      { calendarSlot: `${iso(D, '10:00')} — ${iso(D, '12:00')}` },
+      { calendarSlot: null },
+    );
   });
 
-  // guards: BR-WO-028, BR-WO-026
-  it('відвʼязка продовження дводенного запису → увесь ланцюжок без наряду, дати наряду стерто', async () => {
+  // guards: BR-WO-028
+  it('відвʼязка продовження дводенного запису → увесь ланцюжок видалено, дати наряду ті самі', async () => {
     const h = twoDays();
 
     await h.service.updateCalendarSlot(ORG, 'cont', { workOrderId: null, counterpartyId: CLIENT });
 
+    expect(h.calendarSlot.rows.filter(s => s.deletedAt === null)).toEqual([]);
+    expect(t(woOf(h).plannedAt)).toBe(t(kyiv(D, '16:00')));
+    expect(t(woOf(h).dueDate)).toBe(t(kyiv(D2, '10:00')));
+    expect(woOf(h).plannedHours).toBe(4);
+  });
+
+  // guards: BR-WO-028, BR-WO-020
+  it('після відвʼязки «+ Слот» із цим нарядом → запис наряду знову на його датах (дати є, запису немає)', async () => {
+    const h = planned();
+    await h.service.updateCalendarSlot(ORG, 'anchor', relinkForm(null), USER);
     expect(h.liveSlots()).toEqual([]);
-    expect([slotOf(h, 'anchor'), slotOf(h, 'cont')]).toEqual([
-      expect.objectContaining({ workOrderId: null, deletedAt: null }),
-      expect.objectContaining({ workOrderId: null, deletedAt: null }),
+
+    const res = await h.service.createCalendarSlot(
+      ORG,
+      {
+        workOrderId: WO_ID,
+        liftId: LIFT_2,
+        startAt: iso(D2, '13:00'),
+        endAt: iso(D2, '15:00'),
+      } as never,
+      USER,
+    );
+
+    expect(h.liveSlots()).toEqual([
+      expect.objectContaining({
+        liftId: LIFT_1,
+        startAt: kyiv(D, '10:00'),
+        endAt: kyiv(D, '12:00'),
+      }),
     ]);
-    expect(woOf(h)).toMatchObject({ plannedAt: null, dueDate: null });
+    expect(res.slots).toHaveLength(1);
+  });
+
+  // guards: BR-WO-028, BR-WO-020
+  it('після відвʼязки зміна дат у наряді → запис наряду з’являється знову; збереження без зміни дат — ні', async () => {
+    const h = planned();
+    await h.service.updateCalendarSlot(ORG, 'anchor', relinkForm(null), USER);
+
+    await h.service.update(ORG, WO_ID, { description: 'Без зміни дат' }, USER);
+    expect(h.liveSlots()).toEqual([]);
+
+    await h.service.update(
+      ORG,
+      WO_ID,
+      { plannedAt: iso(D, '11:00'), dueDate: iso(D, '13:00') },
+      USER,
+    );
+    expect(h.liveSlots()).toEqual([
+      expect.objectContaining({
+        liftId: LIFT_1,
+        startAt: kyiv(D, '11:00'),
+        endAt: kyiv(D, '13:00'),
+      }),
+    ]);
   });
 });
 
@@ -392,51 +452,37 @@ describe("Відв'язка запису наряду: статус і бага�
     ...over,
   });
 
-  // guards: BR-WO-028, BR-WO-026
-  it('відвʼязка ЯКОРЯ дводенного запису з форми → увесь ланцюжок без наряду, примітка всьому ланцюжку, дати стерто (Bug #906)', async () => {
+  // guards: BR-WO-028
+  it('відвʼязка ЯКОРЯ дводенного запису з форми → увесь ланцюжок видалено, дати наряду ті самі', async () => {
     const h = twoDays();
 
     const res = await h.service.updateCalendarSlot(ORG, 'anchor', anchorForm(), USER);
 
-    expect(res).toMatchObject({ id: 'anchor', workOrderId: null });
-    expect(h.liveSlots()).toEqual([]);
-    expect([slotOf(h, 'anchor'), slotOf(h, 'cont')]).toEqual([
-      expect.objectContaining({ workOrderId: null, deletedAt: null, notes: 'Відвʼязано' }),
-      expect.objectContaining({ workOrderId: null, deletedAt: null, notes: 'Відвʼязано' }),
+    expect(res).toMatchObject({ id: 'anchor', removed: true });
+    expect([slotOf(h, 'anchor').deletedAt, slotOf(h, 'cont').deletedAt]).toEqual([
+      expect.any(Date),
+      expect.any(Date),
     ]);
-    expect(slotOf(h, 'cont').counterpartyId).toBe(CLIENT);
-    expect(t(slotOf(h, 'cont').startAt)).toBe(t(kyiv(D2, '08:00')));
-    expect(woOf(h)).toMatchObject({ plannedAt: null, dueDate: null, plannedHours: null });
+    expect(woOf(h)).toMatchObject({ plannedHours: 4 });
+    expect(t(woOf(h).dueDate)).toBe(t(kyiv(D2, '10:00')));
     expect(h.audit.record).toHaveBeenCalledTimes(1);
   });
 
+  // Час, підйомник і механік форми разом із відв'язкою не застосовуються — запису вже немає (до
+  // 2026-11-06 зміна часу багатоденного запису давала 400, механік поза підйомником — теж).
   // guards: BR-WO-028
-  it('відвʼязка дводенного запису з іншим часом → 400 «редагуйте кожен окремо», нічого не змінено', async () => {
+  it('відвʼязка з іншим часом, підйомником і механіком поза підйомником → ланцюжок видалено без 400', async () => {
     const h = twoDays();
 
-    const err = await rejected(
-      h,
-      h.service.updateCalendarSlot(ORG, 'anchor', anchorForm({ startAt: iso(D, '15:00') }), USER),
+    await h.service.updateCalendarSlot(
+      ORG,
+      'anchor',
+      anchorForm({ startAt: iso(D, '15:00'), liftId: LIFT_2, employeeId: MECH_1 }),
+      USER,
     );
-    expect(err.message).toBe(msg('err.calendar.slotSplitTwoDays'));
-  });
 
-  // guards: BR-WO-028, BR-CAL-012
-  it('відвʼязка дводенного запису з механіком, не закріпленим за підйомником → 400, нічого не змінено', async () => {
-    const h = twoDays({ liftId: LIFT_2 });
-    slotOf(h, 'anchor').liftId = LIFT_2;
-    slotOf(h, 'cont').liftId = LIFT_2;
-
-    const err = await rejected(
-      h,
-      h.service.updateCalendarSlot(
-        ORG,
-        'anchor',
-        anchorForm({ liftId: LIFT_2, employeeId: MECH_1 }),
-        USER,
-      ),
-    );
-    expect(err.message).toBe(msg('err.calendar.employeeNotOnLift'));
+    expect(h.calendarSlot.rows.filter(s => s.deletedAt === null)).toEqual([]);
+    expect(woOf(h)).toMatchObject({ liftId: LIFT_1, plannedHours: 4 });
   });
 
   // guards: BR-WO-028, BR-WO-027
@@ -548,6 +594,42 @@ describe('Новий запис календаря для наряду — за�
       [iso(D2, '17:00'), iso(D2, '18:00')],
       [iso('2026-05-24', '08:00'), iso('2026-05-24', '09:00')],
     ]);
+  });
+
+  // Рішення власника 2026-11-06 (TECH-DEBT (б) №72): «+ Слот» з нарядом без дат ділиться на
+  // стільки робочих днів, скільки потрібно (`splitByWorkHours`), — раніше переповнення переходило
+  // лише на один день, а кінець «початок + тривалість» понад нього мовчки зрізався.
+  // guards: BR-WO-028, BR-CAL-007
+  it('наряд без дат, справжній кінець через два дні → три записи, дати наряду — межі, нормогодини 19', async () => {
+    const h = planned();
+
+    const res = await h.service.createCalendarSlot(
+      ORG,
+      createForm(OTHER_WO, { startAt: iso(D2, '13:00'), endAt: iso('2026-05-25', '12:00') }),
+      USER,
+    );
+
+    expect(res.slots.map(s => [s.startAt, s.endAt, s.chainDays])).toEqual([
+      [iso(D2, '13:00'), iso(D2, '18:00'), 3],
+      [iso('2026-05-24', '08:00'), iso('2026-05-24', '18:00'), 3],
+      [iso('2026-05-25', '08:00'), iso('2026-05-25', '12:00'), 3],
+    ]);
+    expect(t(woOf(h, OTHER_WO).plannedAt)).toBe(t(kyiv(D2, '13:00')));
+    expect(t(woOf(h, OTHER_WO).dueDate)).toBe(t(kyiv('2026-05-25', '12:00')));
+    expect(woOf(h, OTHER_WO).plannedHours).toBe(19);
+  });
+
+  // guards: BR-WO-028, BR-CAL-007
+  it('наряд без дат, «початок + тривалість» на тому ж дні (13:00–23:00) → залишок 5 год наступного дня', async () => {
+    const h = planned();
+
+    await h.service.createCalendarSlot(
+      ORG,
+      createForm(OTHER_WO, { startAt: iso(D2, '13:00'), endAt: iso(D2, '23:00') }),
+      USER,
+    );
+
+    expect(t(woOf(h, OTHER_WO).dueDate)).toBe(t(kyiv('2026-05-24', '13:00')));
   });
 
   // guards: BR-WO-028, BR-WO-027

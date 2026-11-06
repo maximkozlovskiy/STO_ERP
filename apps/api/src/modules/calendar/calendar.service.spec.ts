@@ -278,26 +278,15 @@ describe('CalendarService', () => {
     });
 
     // Рішення власника 2026-10-30: залишок ручного запису — на наступний РОБОЧИЙ день філії.
-    // 21.11.2026 — сб, 23.11 — пн; листопад → +02:00.
+    // 20.11.2026 — пт, 21.11 — сб, 23.11 — пн; листопад → +02:00.
     // guards: BR-CAL-016
-    it.each([
-      [
-        'пн–сб: сб 17:00–19:00 → продовження в пн 09:00–10:00, неділі немає',
-        [1, 2, 3, 4, 5, 6],
-        '2026-11-23T07:00:00.000Z',
-        '2026-11-23T08:00:00.000Z',
-      ],
-      [
-        'кожен день робочий (порожній перелік) → продовження в нд',
-        [],
-        '2026-11-22T07:00:00.000Z',
-        '2026-11-22T08:00:00.000Z',
-      ],
-    ])('%s', async (_label, workDays, day2Start, day2End) => {
+    it('пн–сб: сб 17:00–19:00 → продовження в пн 09:00–10:00, неділі немає', async () => {
       const prisma = buildCreateMock('18:00');
-      prisma.branchSettings.findFirst = vi
-        .fn()
-        .mockResolvedValue({ workStartTime: '09:00', workEndTime: '18:00', workDays });
+      prisma.branchSettings.findFirst = vi.fn().mockResolvedValue({
+        workStartTime: '09:00',
+        workEndTime: '18:00',
+        workDays: [1, 2, 3, 4, 5, 6],
+      });
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const service = new CalendarService(prisma as any);
       await service.createSlot(orgId, {
@@ -309,10 +298,101 @@ describe('CalendarService', () => {
       const day1 = prisma._create.mock.calls[0][0].data as { startAt: Date; endAt: Date };
       const day2 = prisma._create.mock.calls[1][0].data as { startAt: Date; endAt: Date };
       expect(day1.endAt.toISOString()).toBe('2026-11-21T16:00:00.000Z');
-      expect([day2.startAt.toISOString(), day2.endAt.toISOString()]).toEqual([day2Start, day2End]);
+      expect([day2.startAt.toISOString(), day2.endAt.toISOString()]).toEqual([
+        '2026-11-23T07:00:00.000Z',
+        '2026-11-23T08:00:00.000Z',
+      ]);
       expect(prisma.branchSettings.findFirst).toHaveBeenCalledWith(
         expect.objectContaining({ select: expect.objectContaining({ workDays: true }) }),
       );
+    });
+
+    // Рішення власника 2026-11-06 (TECH-DEBT (б) №86): запис, що починається у вихідний філії, —
+    // один запис із запитаним часом, як запис поза робочими годинами. Порожній перелік — запасні
+    // пн–пт (BR-CAL-016), а не «кожен день».
+    // guards: BR-CAL-007, BR-CAL-016
+    it.each([
+      ['пн–пт явно', [1, 2, 3, 4, 5]],
+      ['порожній перелік → пн–пт', []],
+    ])('%s: сб 17:00–19:00 → один запис 17:00–19:00 без продовження', async (_l, workDays) => {
+      const prisma = buildCreateMock('18:00');
+      prisma.branchSettings.findFirst = vi
+        .fn()
+        .mockResolvedValue({ workStartTime: '09:00', workEndTime: '18:00', workDays });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const service = new CalendarService(prisma as any);
+      const res = await service.createSlot(orgId, {
+        liftId,
+        startAt: '2026-11-21T15:00:00.000Z',
+        endAt: '2026-11-21T17:00:00.000Z',
+      } as never);
+      expect(prisma._create).toHaveBeenCalledTimes(1);
+      const only = prisma._create.mock.calls[0][0].data as { startAt: Date; endAt: Date };
+      expect([only.startAt.toISOString(), only.endAt.toISOString()]).toEqual([
+        '2026-11-21T15:00:00.000Z',
+        '2026-11-21T17:00:00.000Z',
+      ]);
+      expect(res.slots[0]).toMatchObject({ chainDays: 1 });
+    });
+
+    // Рішення власника 2026-11-06 (TECH-DEBT (б) №72): ручний запис ділиться на стільки робочих
+    // днів, скільки потрібно (`splitByWorkHours`), — раніше максимум дві частини, решта годин
+    // мовчки зрізалась.
+    // guards: BR-CAL-007
+    it('20 год із пт 16:00 до справжнього кінця вт 18:00 (пн–пт, 9–18) → пт, пн, вт; вихідних немає', async () => {
+      const prisma = buildCreateMock('18:00');
+      prisma.branchSettings.findFirst = vi.fn().mockResolvedValue({
+        workStartTime: '09:00',
+        workEndTime: '18:00',
+        workDays: [1, 2, 3, 4, 5],
+      });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const service = new CalendarService(prisma as any);
+      const res = await service.createSlot(orgId, {
+        liftId,
+        startAt: '2026-11-20T14:00:00.000Z', // пт 16:00 Kyiv
+        endAt: '2026-11-24T16:00:00.000Z', // вт 18:00 Kyiv — кінець, як його рахує форма
+      } as never);
+      const parts = prisma._create.mock.calls.map(c => {
+        const d = c[0].data as { startAt: Date; endAt: Date; parentSlotId?: string };
+        return [d.startAt.toISOString(), d.endAt.toISOString(), d.parentSlotId ?? null];
+      });
+      expect(parts).toEqual([
+        ['2026-11-20T14:00:00.000Z', '2026-11-20T16:00:00.000Z', null],
+        ['2026-11-23T07:00:00.000Z', '2026-11-23T16:00:00.000Z', 'slot-x'],
+        ['2026-11-24T07:00:00.000Z', '2026-11-24T16:00:00.000Z', 'slot-x'],
+      ]);
+      // Відповідь знає весь ланцюжок (BR-CAL-019).
+      expect(res.slots.map(x => [x.chainDays, x.chainEndAt])).toEqual([
+        [3, '2026-11-24T16:00:00.000Z'],
+        [3, '2026-11-24T16:00:00.000Z'],
+        [3, '2026-11-24T16:00:00.000Z'],
+      ]);
+    });
+
+    // guards: BR-CAL-007
+    it('кінець «на тому ж дні» понад закриття (пн 17:00–23:00) → залишок 5 год на вт, не обрізано', async () => {
+      const prisma = buildCreateMock('18:00');
+      prisma.branchSettings.findFirst = vi.fn().mockResolvedValue({
+        workStartTime: '09:00',
+        workEndTime: '18:00',
+        workDays: [1, 2, 3, 4, 5],
+      });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const service = new CalendarService(prisma as any);
+      await service.createSlot(orgId, {
+        liftId,
+        startAt: '2026-11-23T15:00:00.000Z', // пн 17:00
+        endAt: '2026-11-23T21:00:00.000Z', // пн 23:00
+      } as never);
+      const parts = prisma._create.mock.calls.map(c => {
+        const d = c[0].data as { startAt: Date; endAt: Date };
+        return [d.startAt.toISOString(), d.endAt.toISOString()];
+      });
+      expect(parts).toEqual([
+        ['2026-11-23T15:00:00.000Z', '2026-11-23T16:00:00.000Z'],
+        ['2026-11-24T07:00:00.000Z', '2026-11-24T12:00:00.000Z'],
+      ]);
     });
   });
 });

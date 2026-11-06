@@ -13,6 +13,7 @@ import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { FastifyAdapter } from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
 import { vi, describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { translateError } from '@sto/shared';
 import { validationExceptionFactory } from '../../common/pipes/validation-error.factory';
 import { SettingsController } from './settings.controller';
 import { SettingsService } from './settings.service';
@@ -236,5 +237,23 @@ describe('Налаштування філії — секрети провайд�
       });
       expect(res.statusCode).toBe(400);
     }
+  });
+
+  // Рішення власника 2026-11-06 (TECH-DEBT (б) №83): порожній перелік робочих днів тлумачився
+  // по-різному (наряди й календар — «кожен день», онлайн-запис і звіти — «жодного»), тож його
+  // заборонено; повтори — теж. Відмова — до запису: рядок налаштувань не змінюється.
+  // guards: BR-CAL-017
+  it.each([
+    ['порожній перелік', [], 'err.dto.settings.workingDays.min'],
+    ['повтор дня', [1, 1, 2], 'err.dto.settings.workingDays.unique'],
+  ])('PATCH workDays: %s → 400 з причиною, нічого не записано', async (_l, workDays, key) => {
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/settings/branch/${BRANCH}`,
+      payload: { workDays },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.body).toContain(translateError(key, 'uk'));
+    expect(prismaMock.branchSettings.upsert).not.toHaveBeenCalled();
   });
 });

@@ -1,4 +1,4 @@
-import { DEFAULT_WORK_HOURS } from '@sto/shared';
+import { DEFAULT_WORK_DAYS, DEFAULT_WORK_HOURS } from '@sto/shared';
 import { kyivOffsetMs, kyivYmd } from './kyiv-date';
 
 /**
@@ -20,11 +20,20 @@ export interface WorkHours {
   readonly endHour: number;
   /**
    * Робочі дні тижня (ISO: 1 = пн … 7 = нд, BR-WO-019 / BR-CAL-016). Немає поля чи порожній
-   * перелік — кожен день робочий: так поводяться типові години (філія без рядка налаштувань,
-   * запис без підйомника), а порожній перелік не залишає розбиттю жодного дня.
+   * перелік — типові пн–пт (`DEFAULT_WORK_DAYS`, BR-CAL-017): рядок налаштувань є в кожної
+   * філії, а перелік не буває порожнім, тож це лише запасне значення (запис без підйомника,
+   * збій читання).
    */
   readonly workDays?: readonly number[];
 }
+
+export { DEFAULT_WORK_DAYS };
+
+/** Типові години й дні — філія без рядка налаштувань, запис без підйомника, збій читання. */
+export const DEFAULT_BRANCH_HOURS: WorkHours = Object.freeze({
+  ...DEFAULT_WORK_HOURS,
+  workDays: DEFAULT_WORK_DAYS,
+});
 
 const DAY_MS = 86_400_000;
 /** Запобіжник `splitByWorkHours` від нескінченного циклу: не більше року днів. */
@@ -49,8 +58,7 @@ function parseWorkHour(value: string | null | undefined, fallback: number): numb
 /**
  * Робочі години з рядка `BranchSettings`. Немає рядка, невалідний час або кінець не пізніше
  * початку (дані до валідації DTO) → типові години цілком, а не наполовину. Робочі дні — з рядка
- * (`workDaysOf`: без поля — пн–пт, як `@default` колонки й онлайн-запис; значення поза 1..7
- * відкидаються); немає рядка — поля немає, тобто кожен день робочий (BR-WO-019).
+ * (`workDaysOf`); немає рядка, поля чи жодного валідного дня — пн–пт (BR-CAL-016, BR-CAL-017).
  */
 export function workHoursOf(
   row:
@@ -58,8 +66,8 @@ export function workHoursOf(
     | null
     | undefined,
 ): WorkHours {
-  if (!row) return DEFAULT_WORK_HOURS;
-  const workDays = workDaysOf(row).filter(d => d >= 1 && d <= 7);
+  if (!row) return DEFAULT_BRANCH_HOURS;
+  const workDays = workDaysOf(row);
   const startHour = parseWorkHour(row.workStartTime, DEFAULT_WORK_HOURS.startHour);
   const endHour = parseWorkHour(row.workEndTime, DEFAULT_WORK_HOURS.endHour);
   return endHour > startHour
@@ -67,18 +75,24 @@ export function workHoursOf(
     : { ...DEFAULT_WORK_HOURS, workDays };
 }
 
-/** Типові робочі дні — пн–пт (ISO: 1 = пн … 7 = нд), як `@default` колонки `workDays`. */
-export const DEFAULT_WORK_DAYS: readonly number[] = Object.freeze([1, 2, 3, 4, 5]);
-
 /**
  * Робочі дні тижня з рядка `BranchSettings` (ISO: 1 = пн … 7 = нд — так їх пише вкладка
- * «Робочі дні» і читає онлайн-запис, BR-CAL-004). Немає рядка або `workDays` не масив → пн–пт.
+ * «Робочі дні» і читає онлайн-запис, BR-CAL-004): цілі 1..7 без повторів, за зростанням. Немає
+ * рядка, `workDays` не масив чи в ньому жодного валідного дня → пн–пт (`DEFAULT_WORK_DAYS`,
+ * BR-CAL-017: порожнього переліку не буває; до 2026-11-06 порожній перелік давав онлайн-запису і
+ * звітам «жодного дня», а нарядам і календарю — «кожен день»).
  */
 export function workDaysOf(row: { workDays?: unknown } | null | undefined): readonly number[] {
   const raw = row?.workDays;
-  return Array.isArray(raw)
-    ? raw.filter((d): d is number => typeof d === 'number' && Number.isInteger(d))
-    : DEFAULT_WORK_DAYS;
+  if (!Array.isArray(raw)) return DEFAULT_WORK_DAYS;
+  const days = [
+    ...new Set(
+      raw.filter(
+        (d): d is number => typeof d === 'number' && Number.isInteger(d) && d >= 1 && d <= 7,
+      ),
+    ),
+  ].sort((a, b) => a - b);
+  return days.length > 0 ? days : DEFAULT_WORK_DAYS;
 }
 
 /**
@@ -125,22 +139,26 @@ function isoWeekday(ymd: string): number {
   return new Date(`${ymd}T12:00:00Z`).getUTCDay() || 7;
 }
 
-/**
- * Чи робочий київський день `ymd` для філії (BR-WO-019, BR-CAL-016). Переліку днів немає чи він
- * порожній — кожен день робочий.
- */
-export function isWorkDay(ymd: string, hours: Pick<WorkHours, 'workDays'>): boolean {
+/** Робочі дні годин; немає чи порожній перелік — пн–пт (BR-CAL-016). */
+function workDaysOfHours(hours: Pick<WorkHours, 'workDays'>): readonly number[] {
   const days = hours.workDays;
-  return !days || days.length === 0 || days.includes(isoWeekday(ymd));
+  return days && days.length > 0 ? days : DEFAULT_WORK_DAYS;
 }
 
 /**
- * Робочі дні для відповіді `GET /settings/work-hours`: перелік із годин, а «кожен день» (немає чи
- * порожній) — усі сім явно, щоб клієнтові не треба було знати угоду про порожній перелік.
+ * Чи робочий київський день `ymd` для філії (BR-WO-019, BR-CAL-016). Переліку днів немає чи він
+ * порожній — пн–пт (`DEFAULT_WORK_DAYS`), як скрізь.
+ */
+export function isWorkDay(ymd: string, hours: Pick<WorkHours, 'workDays'>): boolean {
+  return workDaysOfHours(hours).includes(isoWeekday(ymd));
+}
+
+/**
+ * Робочі дні для відповіді `GET /settings/work-hours`: перелік із годин без повторів за
+ * зростанням; немає чи порожній — пн–пт явно, щоб клієнтові не треба було знати запасного значення.
  */
 export function effectiveWorkDays(hours: Pick<WorkHours, 'workDays'>): number[] {
-  const days = hours.workDays;
-  return days && days.length > 0 ? [...new Set(days)].sort((a, b) => a - b) : [1, 2, 3, 4, 5, 6, 7];
+  return [...new Set(workDaysOfHours(hours))].sort((a, b) => a - b);
 }
 
 /** Хвилина київської доби миті (дробова, з секундами), DST-aware. */
@@ -177,6 +195,33 @@ export function nextWorkDay(ymd: string, hours: Pick<WorkHours, 'workDays'>): st
 export interface TimeSegment {
   startAt: Date;
   endAt: Date;
+}
+
+/**
+ * Кінець запису «початок + тривалість» (BR-CAL-007, №72): форма й старі клієнти шлють кінець на
+ * ТОМУ Ж київському дні, навіть коли запис виходить за закриття робочого дня (17:00 + 3 год →
+ * 20:00). Залишок після закриття переходить на наступні РОБОЧІ дні від відкриття — на стільки
+ * днів, скільки потрібно (вихідні філії пропускаються, BR-CAL-016; до 2026-11-06 — лише на один
+ * день). Кінець на іншому дні — уже справжня мить завершення (форма рахує її за робочими годинами,
+ * `calcEndFromHours`) і повертається як є; так само запис, що не перетинає закриття, і запис, що
+ * починається у вихідний філії чи о закритті й пізніше (BR-CAL-007 — один запис).
+ */
+export function overflowEnd(startAt: Date, endAt: Date, hours: WorkHours): Date {
+  const day = kyivYmd(startAt);
+  const close = kyivHourOnDay(day, hours.endHour);
+  if (!(isWorkDay(day, hours) && startAt < close && endAt > close && kyivYmd(endAt) === day))
+    return endAt;
+  const perDayMs = (hours.endHour - hours.startHour) * 3_600_000;
+  if (!(perDayMs > 0)) return endAt;
+  let remaining = endAt.getTime() - close.getTime();
+  let next = day;
+  for (let i = 0; i < MAX_SPLIT_DAYS; i++) {
+    next = nextWorkDay(next, hours);
+    if (remaining <= perDayMs)
+      return new Date(kyivHourOnDay(next, hours.startHour).getTime() + remaining);
+    remaining -= perDayMs;
+  }
+  return endAt;
 }
 
 /**

@@ -311,6 +311,32 @@ describe('BookingService', () => {
       expect(slots).toEqual([]);
     });
 
+    // Рішення власника 2026-11-06: порожній перелік робочих днів — запасні пн–пт скрізь, і в
+    // онлайн-записі теж (до того — «жодного дня», а наряди й календар — «кожен день»).
+    // guards: BR-CAL-016
+    it.each([
+      ['2026-06-07', 'неділя', 0],
+      ['2026-06-01', 'понеділок', 1],
+    ])(
+      'workDays [] (зіпсований рядок) → пн–пт: %s (%s) — вільних слотів %s+',
+      async (day, _l, min) => {
+        prisma.lift.findMany.mockResolvedValueOnce([{ id: 'lift-1', name: 'Підйомник 1' }]);
+        prisma.calendarSlot.findMany.mockResolvedValueOnce([]);
+        prisma.branchSettings.findUnique.mockResolvedValueOnce({
+          workStartTime: '09:00',
+          workEndTime: '18:00',
+          slotDurationMinutes: 30,
+          workDays: [],
+        });
+        prisma.bookingRequest.findMany.mockResolvedValueOnce([]);
+        prisma.work.findMany.mockResolvedValueOnce([]);
+
+        const slots = await service.getAvailability(orgId, branchId, day);
+        if (min === 0) expect(slots).toEqual([]);
+        else expect(slots.length).toBeGreaterThanOrEqual(min);
+      },
+    );
+
     it('повертає [] якщо немає ліфтів (порожня філія)', async () => {
       prisma.lift.findMany.mockResolvedValueOnce([]);
       prisma.calendarSlot.findMany.mockResolvedValueOnce([]);

@@ -81,3 +81,44 @@ describe('ZonesService.removeZone — cascade guard (active lifts)', () => {
     await expect(service.removeZone('org-1', 'zone-missing')).rejects.toThrow(NotFoundException);
   });
 });
+
+// Рішення власника 2026-11-06 (TECH-DEBT (б) №85): форма запису календаря рахує робочі години
+// й дні філії ПІДЙОМНИКА — підйомник у відповіді має `branchId` (через зону).
+describe('ZonesService.findAllLifts — філія підйомника (BR-CAL-017)', () => {
+  const liftRow = {
+    id: 'lift-1',
+    orgId: 'org-1',
+    zoneId: 'zone-1',
+    name: 'П1',
+    type: 'TWO_POST',
+    maxWeightKg: null,
+    status: 'ACTIVE',
+    serialNumber: null,
+    purchaseDate: null,
+    warrantyUntil: null,
+    maintenanceIntervalDays: null,
+    lastMaintenanceDate: null,
+    nextMaintenanceDate: null,
+    createdAt: new Date('2026-01-01T00:00:00Z'),
+    updatedAt: new Date('2026-01-01T00:00:00Z'),
+    deletedAt: null,
+    zone: { branchId: 'branch-2' },
+  };
+
+  // guards: BR-CAL-017
+  it('branchId — філія зони підйомника; зону читає той самий запит; кеш — новий ключ v2', async () => {
+    const findMany = vi.fn().mockResolvedValue([liftRow]);
+    const cache = { get: vi.fn().mockResolvedValue(null), set: vi.fn() };
+    const service = new ZonesService({ lift: { findMany } } as never, cache as never);
+
+    const res = await service.findAllLifts('org-1');
+
+    expect(res[0]).toMatchObject({ id: 'lift-1', zoneId: 'zone-1', branchId: 'branch-2' });
+    expect(findMany).toHaveBeenCalledTimes(1);
+    expect(findMany.mock.calls[0][0]).toMatchObject({
+      include: { zone: { select: { branchId: true } } },
+    });
+    // Список попередньої збірки (без branchId) у кеші не читається.
+    expect(cache.get).toHaveBeenCalledWith('ref:lifts:org-1:v2');
+  });
+});

@@ -24,7 +24,7 @@ import {
 } from '../../common/utils/url-guard';
 import { HOST_LOOKUP } from '../../common/utils/host-lookup.token';
 import { sameApiUrl } from '../../common/utils/trim-trailing-slashes';
-import { effectiveWorkDays, workHoursOf } from '../../common/utils/work-hours';
+import { effectiveWorkDays, workDaysOf, workHoursOf } from '../../common/utils/work-hours';
 import { PNL_SETTINGS_DEFAULTS, translateError } from '@sto/shared';
 import { getLocale } from '../../common/tenant/tenant-context';
 import {
@@ -86,7 +86,7 @@ function workHoursCacheKey(orgId: string, branchId?: string): string {
 export interface WorkHoursResponse {
   workStartHour: number;
   workEndHour: number;
-  /** Робочі дні ISO (1 = пн … 7 = нд); «кожен день» — усі сім явно. */
+  /** Робочі дні ISO (1 = пн … 7 = нд) без повторів; запасні — пн–пт (BR-CAL-016). */
   workDays: number[];
 }
 
@@ -332,7 +332,7 @@ export class SettingsService {
    * Розбір і типові години — ті самі, що в календарі (`workHoursOf`, 09–18): сітка, пікер
    * планових дат наряду й сервер, що ділить запис на дні та перевіряє BR-WO-019, бачать однакові
    * межі. Робочі дні — ті, що пропускають пікер, автокінець і розбиття запису (BR-WO-019,
-   * BR-CAL-016). Філія чужої організації чи без налаштувань — типові години й кожен день робочий,
+   * BR-CAL-016). Філія чужої організації чи без налаштувань — типові години й дні (09–18, пн–пт),
    * не 404: години не секрет, а відповідь не каже, чи існує чужа філія.
    */
   async getWorkHours(orgId: string, branchId?: string): Promise<WorkHoursResponse> {
@@ -652,7 +652,8 @@ export class SettingsService {
       orgId: s.orgId,
       workStartTime: s.workStartTime,
       workEndTime: s.workEndTime,
-      workDays: Array.isArray(s.workDays) ? (s.workDays as number[]) : [],
+      // Порожнього переліку не буває (BR-CAL-017): зіпсований — пн–пт, як скрізь.
+      workDays: [...workDaysOf(s)],
       slotDurationMinutes: s.slotDurationMinutes,
       fiscalEnabled: s.fiscalEnabled,
       checkboxApiUrl: s.checkboxApiUrl,

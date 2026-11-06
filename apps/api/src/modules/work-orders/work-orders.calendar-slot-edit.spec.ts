@@ -136,6 +136,29 @@ describe('PATCH /calendar/slots/:id для запису наряду — змі�
     expect(h.liveSlots().find(s => s.parentSlotId === null)!.id).toBe('anchor');
   });
 
+  // Рішення власника 2026-10-30 (TECH-DEBT (б) №66): внутрішня межа ланцюжка (кінець не
+  // останнього дня, початок продовження) не тягнеться — 400 замість мовчазного відкату.
+  // guards: BR-WO-024
+  it.each([
+    ['кінець якоря (не останній день) 18:00 → 17:00', 'anchor', { endAt: iso(D, '17:00') }],
+    ['початок продовження 08:00 → 09:00', 'cont', { startAt: iso(D2, '09:00') }],
+  ])('внутрішня межа ланцюжка: %s → 400, нічого не змінено', async (_l, id, change) => {
+    const h = twoDays();
+
+    const err = await rejected(h, h.service.updateCalendarSlot(ORG, id, change));
+    expect(err.message).toBe(translateError('err.calendar.chainInnerEdge', 'uk'));
+  });
+
+  // guards: BR-WO-024
+  it('крайні межі ланцюжка тягнуться: початок якоря 16:00 → 15:00 → плановий початок 15:00', async () => {
+    const h = twoDays();
+
+    await h.service.updateCalendarSlot(ORG, 'anchor', { startAt: iso(D, '15:00') });
+
+    expect(t(wo(h).plannedAt)).toBe(t(kyiv(D, '15:00')));
+    expect(t(wo(h).dueDate)).toBe(t(kyiv(D2, '10:00')));
+  });
+
   // guards: BR-WO-024
   it('запис уже розійшовся з нарядом → дати наряду — межі запису після зміни', async () => {
     const h = planned({}, { startAt: kyiv(D, '14:00'), endAt: kyiv(D, '15:00') });

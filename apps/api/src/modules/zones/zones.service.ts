@@ -16,8 +16,11 @@ import {
 const TTL = 300;
 const zonesKey = (orgId: string, branchId?: string) =>
   `ref:zones:${orgId}${branchId ? `:${branchId}` : ''}`;
+// v2: підйомник має `branchId` (BR-CAL-017) — список без поля з попередньої збірки не читається.
 const liftsKey = (orgId: string, zoneId?: string) =>
-  `ref:lifts:${orgId}${zoneId ? `:${zoneId}` : ''}`;
+  `ref:lifts:${orgId}:v2${zoneId ? `:${zoneId}` : ''}`;
+/** Філія підйомника — через зону (BR-CAL-017: форма запису рахує години філії підйомника). */
+const LIFT_INCLUDE = { zone: { select: { branchId: true } } } as const;
 
 @Injectable()
 export class ZonesService {
@@ -124,6 +127,7 @@ export class ZonesService {
       where: { orgId, ...(!showDeleted ? { deletedAt: null } : {}), ...(zoneId ? { zoneId } : {}) },
       orderBy: { name: 'asc' },
       take: 500,
+      include: LIFT_INCLUDE,
     });
     const result = items.map(item => this.toLiftDto(item));
     if (!showDeleted) await this.cache.set(key, result, TTL);
@@ -131,7 +135,10 @@ export class ZonesService {
   }
 
   async findOneLift(orgId: string, id: string): Promise<LiftResponseDto> {
-    const item = await this.prisma.lift.findFirst({ where: { id, orgId, deletedAt: null } });
+    const item = await this.prisma.lift.findFirst({
+      where: { id, orgId, deletedAt: null },
+      include: LIFT_INCLUDE,
+    });
     if (!item) throw new NotFoundException(translateError('err.lift.notFound', getLocale()));
     return this.toLiftDto(item);
   }
@@ -143,7 +150,7 @@ export class ZonesService {
       select: { id: true },
     });
     if (!zone) throw new NotFoundException(translateError('err.zone.notFound', getLocale()));
-    const item = await this.prisma.lift.create({ data: { ...dto, orgId } });
+    const item = await this.prisma.lift.create({ data: { ...dto, orgId }, include: LIFT_INCLUDE });
     await this.cache.delPattern(`ref:lifts:${orgId}*`);
     return this.toLiftDto(item);
   }
@@ -171,6 +178,7 @@ export class ZonesService {
           ? { lastMaintenanceDate: lastMaintenanceDate ? new Date(lastMaintenanceDate) : null }
           : {}),
       },
+      include: LIFT_INCLUDE,
     });
     await this.cache.delPattern(`ref:lifts:${orgId}*`);
     return this.toLiftDto(item);
@@ -227,11 +235,13 @@ export class ZonesService {
     createdAt: Date;
     updatedAt: Date;
     deletedAt?: Date | null;
+    zone: { branchId: string };
   }): LiftResponseDto {
     return {
       id: l.id,
       orgId: l.orgId,
       zoneId: l.zoneId,
+      branchId: l.zone.branchId,
       name: l.name,
       type: l.type as LiftType,
       maxWeightKg: l.maxWeightKg,

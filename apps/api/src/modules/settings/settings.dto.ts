@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   ArrayContains,
   ArrayMaxSize,
+  ArrayNotEmpty,
   ArrayUnique,
   IsArray,
   IsBoolean,
@@ -545,6 +546,18 @@ export class UpdateBranchSettingsDto {
   // До 2026-10-29 тут стояло 0…6 («0=нд»): збереження філії з неділею давало 400 (TECH-DEBT F4).
   // Робочих днів максимум 7; anti-DoS cap проти мільйон-дублікатних payload.
   @ArrayMaxSize(7, { message: 'err.dto.settings.workingDays.max' })
+  // BR-CAL-017: хоча б один робочий день і без повторів — порожній перелік раніше тлумачився
+  // по-різному (наряди й календар — «кожен день», онлайн-запис і звіти — «жодного»). Не
+  // `ArrayMinSize` / `ArrayUnique`: їхні імена глобальний exceptionFactory перекладає загальним
+  // шаблоном `err.cv.*`, і причина «оберіть хоча б один день» загубилась би.
+  @ArrayNotEmpty({ message: 'err.dto.settings.workingDays.min' })
+  @ValidateBy(
+    {
+      name: 'workDaysUnique',
+      validator: { validate: (v: unknown) => !Array.isArray(v) || new Set(v).size === v.length },
+    },
+    { message: 'err.dto.settings.workingDays.unique' },
+  )
   @IsInt({ each: true })
   @Min(1, { each: true })
   @Max(7, { each: true })

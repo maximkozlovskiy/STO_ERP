@@ -138,6 +138,9 @@ export class LiftResponseDto {
   @ApiProperty() id!: string;
   @ApiProperty() orgId!: string;
   @ApiProperty() zoneId!: string;
+  /** Філія підйомника (через зону) — форма запису календаря рахує її години й дні (BR-CAL-017). */
+  @ApiProperty({ description: 'Філія підйомника (через зону; BR-CAL-017)' })
+  branchId!: string;
   @ApiProperty() name!: string;
   @ApiProperty({ enum: LiftType }) type!: LiftType;
   @ApiPropertyOptional() maxWeightKg?: number | null;

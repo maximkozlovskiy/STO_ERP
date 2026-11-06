@@ -125,6 +125,49 @@ describe('Видалення запису наряду стирає дати н�
     expect(h.audit.record).not.toHaveBeenCalled();
   });
 
+  // Рішення власника 2026-10-30 / 2026-11-06 (TECH-DEBT (б) №60): частина багатоденного запису
+  // без наряду — будь-якого дня — видаляє весь ланцюжок; сусідній ручний запис не зачіпається.
+  // guards: BR-CAL-019
+  it.each(['plain-1', 'plain-2', 'plain-3'])(
+    'ручний запис на три дні: видалення частини %s → видалено всі три, інші записи цілі',
+    async id => {
+      const manual = { workOrderId: null, counterpartyId: CLIENT, liftId: LIFT_2 };
+      const h = planned({
+        extra: [
+          slotRow('plain-1', { ...manual, startAt: kyiv(D, '16:00'), endAt: kyiv(D, '18:00') }),
+          slotRow('plain-2', {
+            ...manual,
+            parentSlotId: 'plain-1',
+            startAt: kyiv(D2, '08:00'),
+            endAt: kyiv(D2, '18:00'),
+          }),
+          slotRow('plain-3', {
+            ...manual,
+            parentSlotId: 'plain-1',
+            startAt: kyiv('2026-05-24', '08:00'),
+            endAt: kyiv('2026-05-24', '10:00'),
+          }),
+          slotRow('neighbour', { ...manual, startAt: kyiv(D, '13:00'), endAt: kyiv(D, '14:00') }),
+        ],
+      });
+
+      await h.service.removeCalendarSlot(ORG, id, USER);
+
+      expect(['plain-1', 'plain-2', 'plain-3'].map(x => slotOf(h, x).deletedAt)).toEqual([
+        expect.any(Date),
+        expect.any(Date),
+        expect.any(Date),
+      ]);
+      expect(slotOf(h, 'neighbour').deletedAt).toBeNull();
+      expect(slotOf(h, 'anchor').deletedAt).toBeNull();
+      expect(h.audit.record).not.toHaveBeenCalled();
+      // Повторне видалення того самого ланцюжка — 404, а не друга позначка.
+      await expect(h.service.removeCalendarSlot(ORG, 'plain-2', USER)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    },
+  );
+
   // guards: BR-WO-026
   it('наряд без дат (запис привʼязано формою) → запис видалено, журнал не пишеться', async () => {
     const h = planned({ wo: { plannedAt: null, dueDate: null, plannedHours: 3 } });

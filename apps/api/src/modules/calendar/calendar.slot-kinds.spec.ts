@@ -143,6 +143,8 @@ describe('CalendarService — види слотів (BR-CAL)', () => {
           .fn()
           .mockResolvedValueOnce(null) // hasContinuation
           .mockResolvedValueOnce(existing), // existing
+        // Ланцюжок відповіді (BR-CAL-019): запис сам — одна частина.
+        findMany: vi.fn().mockResolvedValue([]),
       },
       lift: { findFirst: vi.fn() },
       employee: { findFirst: vi.fn() },

@@ -601,8 +601,9 @@ describe('Settings — HTTP Contract', () => {
       const res = await app.inject({ method: 'GET', url: '/settings/work-hours' });
       expect(res.statusCode).toBe(200);
       const body = res.json() as { workStartHour: number; workEndHour: number };
-      // Рядка налаштувань немає → кожен день робочий (BR-WO-019), усі сім явно.
-      expect(body).toEqual({ workStartHour: 9, workEndHour: 18, workDays: [1, 2, 3, 4, 5, 6, 7] });
+      // Рядка налаштувань немає → запасні пн–пт явно (BR-CAL-016), не «кожен день».
+      // guards: BR-CAL-016
+      expect(body).toEqual({ workStartHour: 9, workEndHour: 18, workDays: [1, 2, 3, 4, 5] });
     });
 
     it('повертає {8, 20} коли settings має workStartTime="08:00", workEndTime="20:00"', async () => {
@@ -679,13 +680,14 @@ describe('Settings — HTTP Contract', () => {
       expect(res.json()).toEqual({
         workStartHour: 9,
         workEndHour: 18,
-        workDays: [1, 2, 3, 4, 5, 6, 7],
+        workDays: [1, 2, 3, 4, 5],
       });
     });
 
     // Вихідні філії (рішення власника 2026-10-30): пікер і автокінець беруть робочі дні звідси.
     // guards: BR-WO-019
-    it('workDays — з рядка філії (пн–сб); порожній перелік → усі сім; select читає колонку', async () => {
+    // guards: BR-CAL-016
+    it('workDays — з рядка філії (пн–сб); порожній перелік → пн–пт; select читає колонку', async () => {
       prismaMock.branchSettings.findFirst = vi.fn().mockResolvedValue({
         workStartTime: '09:00',
         workEndTime: '18:00',
@@ -711,7 +713,7 @@ describe('Settings — HTTP Contract', () => {
       expect(empty.json()).toEqual({
         workStartHour: 9,
         workEndHour: 18,
-        workDays: [1, 2, 3, 4, 5, 6, 7],
+        workDays: [1, 2, 3, 4, 5],
       });
     });
 

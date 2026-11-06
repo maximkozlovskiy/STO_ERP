@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { translateError } from '@sto/shared';
+import { TRANSACTION_TIMEOUT_MS, translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { getLocale } from '../../common/tenant/tenant-context';
 import { CacheService } from '../../redis/cache.service';
@@ -39,10 +39,20 @@ export class BranchesService {
     return this.toDto(item);
   }
 
+  /**
+   * Нова філія разом із її налаштуваннями (BR-CAL-017): рядок `BranchSettings` з типовими
+   * значеннями моделі (пн–пт, 09:00–18:00) — у тій самій транзакції, як у майстрі налаштування.
+   * Без рядка календар, наряди, онлайн-запис і звіти раніше тлумачили робочі дні філії по-різному.
+   */
   async create(orgId: string, dto: CreateBranchDto): Promise<BranchResponseDto> {
-    const item = await this.prisma.garageBranch.create({
-      data: { ...dto, orgId },
-    });
+    const item = await this.prisma.$transaction(
+      async tx => {
+        const branch = await tx.garageBranch.create({ data: { ...dto, orgId } });
+        await tx.branchSettings.create({ data: { branchId: branch.id, orgId } });
+        return branch;
+      },
+      { timeout: TRANSACTION_TIMEOUT_MS },
+    );
     await this.cache.del(cacheKey(orgId));
     return this.toDto(item);
   }

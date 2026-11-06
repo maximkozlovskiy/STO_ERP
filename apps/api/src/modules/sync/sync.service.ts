@@ -362,9 +362,10 @@ export class SyncService {
           (existing as { syncVersion?: bigint | number | string }).syncVersion ?? 0,
         );
         if (BigInt(rec.syncVersion) > existingVersion) {
-          // BR-WO-026: запис наряду видаляється тим самим шляхом, що й `DELETE /calendar/slots/:id`
-          // — увесь ланцюжок, планові дати наряду стираються.
-          if (isSlot && existing.workOrderId && !existing.deletedAt) {
+          // Запис календаря видаляється тим самим шляхом, що й `DELETE /calendar/slots/:id`: запис
+          // наряду — увесь ланцюжок, планові дати наряду стираються (BR-WO-026); запис без наряду
+          // — увесь його ланцюжок, будь-якого дня (BR-CAL-019).
+          if (isSlot && !existing.deletedAt) {
             await this.workOrders.removeCalendarSlot(orgId, rec.id, userId);
           } else {
             await model.update({ where: { id: rec.id, orgId }, data: { deletedAt: new Date() } });

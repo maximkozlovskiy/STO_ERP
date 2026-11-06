@@ -176,6 +176,17 @@ describe('ReportsService.load — завантаженість підйомни�
       expect(r.rows[0]).toMatchObject({ liftId: 'gone', capacityHours: 20, loadPercent: 20 });
     });
 
+    // Рішення власника 2026-11-06: порожній перелік робочих днів — пн–пт, як скрізь (раніше
+    // «Завантаженість» давала місткість 0 і 0 %).
+    // guards: BR-CAL-016
+    it('порожній перелік робочих днів → пн–пт: 5 × 9 = 45 год, а не 0', async () => {
+      branchSettings = [settingsRow('br-1', { workDays: [] })];
+      lifts = [lift('a')];
+      slots = [slot('a', '2026-10-06T06:00:00.000Z', 4.5)];
+      const r = await service.load(ORG, MON, SUN);
+      expect(r.rows[0]).toMatchObject({ capacityHours: 45, loadPercent: 10 });
+    });
+
     // guards: BR-RPT-033
     it('налаштування чужої організації не застосовуються', async () => {
       branchSettings = [settingsRow('br-1', { orgId: 'org-2', workDays: [1, 2, 3, 4, 5, 6, 7] })];

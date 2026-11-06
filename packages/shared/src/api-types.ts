@@ -6884,6 +6884,8 @@ export interface components {
             id: string;
             orgId: string;
             zoneId: string;
+            /** @description Філія підйомника (через зону; BR-CAL-017) */
+            branchId: string;
             name: string;
             /** @enum {string} */
             type: "TWO_POST" | "FOUR_POST" | "ALIGNMENT" | "STENCIL" | "STAND" | "PIT" | "RAMP" | "OTHER";
@@ -8841,6 +8843,12 @@ export interface components {
             status: "AVAILABLE" | "BOOKED" | "BLOCKED";
             /** @enum {string} */
             type: "WORK" | "MAINTENANCE" | "BREAK" | "MEETING";
+            /** @description Кількість частин ланцюжка запису (1 — одноденний) */
+            chainDays: number;
+            /** @description Кінець останньої частини ланцюжка запису (ISO) */
+            chainEndAt: string;
+            /** @description Запис видалено відв'язкою від наряду (лише відповідь PATCH; BR-WO-028) */
+            removed?: boolean;
         };
         CheckConflictsDto: {
             /** Format: uuid */

@@ -280,6 +280,30 @@ describe('SyncService.push calendar_slots — видалення запису н
     expect(h.wo()).toMatchObject({ plannedAt: null, dueDate: null });
   });
 
+  // Рішення власника 2026-10-30 / 2026-11-06 (TECH-DEBT (б) №60): видалення з планшета ДРУГОЇ
+  // частини ручного запису — увесь ланцюжок, як `DELETE /calendar/slots/:id`.
+  // guards: BR-CAL-019
+  it('видалення продовження ручного дводенного запису → обидві частини, запис наряду цілий', async () => {
+    const manual = { workOrderId: null, liftId: LIFT_2, syncVersion: 1n };
+    const h = harness([
+      slotRow('m1', { ...manual, startAt: kyiv(D, '16:00'), endAt: kyiv(D, '18:00') }),
+      slotRow('m2', {
+        ...manual,
+        parentSlotId: 'm1',
+        startAt: kyiv('2026-05-23', '08:00'),
+        endAt: kyiv('2026-05-23', '09:00'),
+      }),
+    ]);
+
+    const res = await h.sync.push(ORG, [{ ...remove(5), id: 'm2' }], 'ADMIN');
+
+    expect(res).toEqual({ accepted: 1, conflicts: 0 });
+    expect(h.calendarSlot.rows.filter(r => r.deletedAt === null).map(r => r.id)).toEqual([
+      'anchor',
+    ]);
+    expect(t(h.wo().plannedAt)).toBe(t(kyiv(D, '10:00')));
+  });
+
   // guards: BR-WO-026
   it('застаріла версія видалення → прийнято без змін (LWW), дати наряду лишаються', async () => {
     const h = harness();
@@ -418,5 +442,46 @@ describe('SyncService.push calendar_slots — новий запис із нар�
     expect(h.calendarSlot.rows.find(s => s.id === 'tablet-1')).toMatchObject({
       deletedAt: expect.any(Date),
     });
+  });
+});
+
+// Рішення власника 2026-10-30 / 2026-11-06 (TECH-DEBT (б) №67): `workOrderId: null` з планшета —
+// відв'язка тим самим шляхом, що й форма: запис наряду видалено, наряд зберіг дати й підйомник.
+describe("SyncService.push calendar_slots — відв'язка запису від наряду (BR-WO-028)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ now: NOW, toFake: ['Date'] });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  // guards: BR-WO-028
+  it('workOrderId: null → ланцюжок запису наряду видалено, дати й підйомник наряду ті самі', async () => {
+    const h = harness([
+      slotRow('cont', {
+        parentSlotId: 'anchor',
+        startAt: kyiv('2026-05-23', '08:00'),
+        endAt: kyiv('2026-05-23', '09:00'),
+      }),
+    ]);
+
+    const res = await h.sync.push(ORG, [update({ workOrderId: null })], 'ADMIN');
+
+    expect(res).toEqual({ accepted: 1, conflicts: 0 });
+    expect(h.calendarSlot.rows.filter(r => r.deletedAt === null)).toEqual([]);
+    expect(h.wo()).toMatchObject({ liftId: LIFT_1 });
+    expect(t(h.wo().plannedAt)).toBe(t(kyiv(D, '10:00')));
+    expect(t(h.wo().dueDate)).toBe(t(kyiv(D, '12:00')));
+  });
+
+  // guards: BR-WO-028, BR-WO-027
+  it('відвʼязка запису наряду «В роботі» → конфлікт із причиною, запис цілий', async () => {
+    const h = harness([], { wo: { status: 'IN_PROGRESS' } });
+
+    const res = await h.sync.push(ORG, [update({ workOrderId: null })], 'ADMIN');
+
+    expect(res).toEqual({ accepted: 0, conflicts: 1 });
+    expect(h.lastErrors()[0]).toContain(translateError('err.calendar.workOrderRelinkLocked', 'uk'));
+    expect(h.liveSlots().map(s => s.id)).toEqual(['anchor']);
   });
 });

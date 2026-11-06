@@ -186,6 +186,23 @@ export class CalendarSlotResponseDto {
   employeeName?: string | null;
   @ApiProperty({ enum: CalendarSlotStatus }) status!: CalendarSlotStatus;
   @ApiProperty({ enum: CalendarSlotType }) type!: CalendarSlotType;
+  /**
+   * Ланцюжок запису (BR-CAL-019): скільки частин (днів) має багатоденний запис, частиною якого є
+   * цей (якір і продовження; запис поза ланцюжком — 1), і кінець останньої частини. Рахує сервер
+   * при читанні — web питає «Видалити всі N днів?» і знає, чи це останній день, не вгадуючи.
+   */
+  @ApiProperty({ description: 'Кількість частин ланцюжка запису (1 — одноденний)', minimum: 1 })
+  chainDays!: number;
+  @ApiProperty({ description: 'Кінець останньої частини ланцюжка запису (ISO)' })
+  chainEndAt!: string;
+  /**
+   * Лише відповідь `PATCH` з відв'язкою запису від наряду (BR-WO-028): увесь ланцюжок запису
+   * наряду видалено, наряд зберіг планові дати — у відповіді запис, яким він був до видалення.
+   */
+  @ApiPropertyOptional({
+    description: "Запис видалено відв'язкою від наряду (лише відповідь PATCH; BR-WO-028)",
+  })
+  removed?: boolean;
 }
 
 export class CreateCalendarSlotResponseDto {

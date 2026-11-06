@@ -794,6 +794,8 @@ export const uk: Record<string, string> = {
   'err.calendar.liftBusyNextDay': 'Підйомник вже зайнятий на наступний день',
   'err.calendar.employeeBusyNextDay': 'Співробітник вже зайнятий на наступний день',
   'err.calendar.slotSplitTwoDays': 'Слот розбитий на 2 дні — редагуйте кожен окремо',
+  'err.calendar.chainInnerEdge':
+    'Внутрішню межу багатоденного запису змінити не можна — змініть початок першого дня чи кінець останнього',
   'err.calendar.slotNotFound': 'Слот не знайдено',
   'err.calendar.serviceSlotNoClient':
     "Службовий запис (обслуговування, перерва, нарада) не прив'язується до клієнта, автомобіля чи наряду",
