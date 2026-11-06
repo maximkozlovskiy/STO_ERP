@@ -165,6 +165,8 @@ describe('BankReconciliationService.matchTransaction', () => {
     prisma.bankTransaction.updateMany.mockResolvedValue({ count: 1 });
     prisma.bankTransaction.findFirst.mockResolvedValue({
       id: TX_ID,
+      status: 'UNMATCHED',
+      direction: 'IN',
       amount: 500,
       bankAccountId: 'ba-1',
     });

@@ -227,6 +227,27 @@ describe('інші мутації банківських платежів', () =
     );
   });
 
+  // BR-BANK-039: скасування може сторнувати оплату постачальнику. Відмова (обрив після коміту) не
+  // доводить, що сторно не пройшло, — борги, замовлення й оплати скидаються й після неї.
+  // Mutation-verify: повернути скидання оплат у `onSuccess` → кейс падає.
+  it('unreconcile відмовив → кеші оплат постачальникам, замовлень і боргів усе одно скинуто', async () => {
+    apiFetchMock.mockRejectedValue(new Error('Мережа недоступна'));
+    const { wrapper, invalidated } = setup();
+    const { result } = renderHook(() => useUnreconcileBankTransaction(), { wrapper });
+    await act(async () => {
+      await result.current.mutateAsync({ id: 'tx-7', reason: 'дубль' }).catch(() => undefined);
+    });
+    expect(invalidated()).toEqual(
+      expect.arrayContaining([
+        'bank-transactions',
+        'cash',
+        'supplier-payments',
+        'purchase-orders',
+        'counterparties',
+      ]),
+    );
+  });
+
   // Bug #860: рознесення вхідного окремим вікном створює оплату клієнта — ті самі чужі списки,
   // що й внесення з рознесенням (рахунок лишався «Надіслано» після оплати).
   it('match: POST …/:id/match; збиває рахунки, оплати, касу, борги', async () => {

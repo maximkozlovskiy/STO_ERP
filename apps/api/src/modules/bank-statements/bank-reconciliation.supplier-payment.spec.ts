@@ -371,6 +371,21 @@ describe('BankReconciliationService.reconcile — SUPPLIER_PAYMENT, нова о�
     expect(w.row()).toMatchObject(foreignCapture);
   });
 
+  // Повтор на вже рознесеному рядку: 409 ДО перевірок нової оплати (замовлення, курс) — їхня
+  // відмова від наслідків першого рознесення була б не про те. Mutation-verify: прибрати перевірку
+  // `row.status !== 'UNMATCHED'` у reconcile → prepareCreateAndConfirm викликається.
+  // guards: BR-BANK-026
+  it('рядок уже рознесено до запиту → 409, перевірки нової оплати не запускаються', async () => {
+    const w = await makeWorld();
+    w.addRow({ status: 'MATCHED', matchedType: 'EXPENSE' });
+
+    await expect(reconcile(w, NEW)).rejects.toMatchObject({ status: 409 });
+
+    expect(w.supplierPayments.prepareCreateAndConfirm).not.toHaveBeenCalled();
+    expect(w.supplierPayments.createAndConfirmInTx).not.toHaveBeenCalled();
+    expect(w.db.rows('supplierPayment')).toEqual([]);
+  });
+
   // Маршрут під ключем ідемпотентності: відповідь — з транзакції рознесення, а не після коміту.
   // guards: BR-BANK-029
   it('відповідь читається в транзакції рознесення', async () => {

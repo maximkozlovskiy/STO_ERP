@@ -59,6 +59,8 @@ describe('BankReconciliationService.matchTransaction — CAS, лінк плат�
     prisma.bankTransaction.updateMany.mockResolvedValue({ count: 1 });
     prisma.bankTransaction.findFirst.mockResolvedValue({
       id: TX_ID,
+      status: 'UNMATCHED',
+      direction: 'IN',
       amount: 500,
       bankAccountId: 'ba-7',
     });
@@ -117,6 +119,27 @@ describe('BankReconciliationService.matchTransaction — CAS, лінк плат�
     ).rejects.toBeInstanceOf(ConflictException);
     expect(payments.createInTx).not.toHaveBeenCalled();
     expect(payments.afterCreate).not.toHaveBeenCalled();
+  });
+
+  // Повтор на вже рознесеному рядку: перевірки оплати (залишок наряду, статус рахунку) бачать
+  // наслідки ПЕРШОГО рознесення й дали б 400 не про те. Відповідь — 409, як від програного CAS.
+  // Mutation-verify: прибрати перевірку `row.status !== 'UNMATCHED'` у matchTransaction → падає.
+  // guards: BR-BANK-007
+  it('рядок уже рознесено до запиту → 409 до перевірок оплати; оплата не готується', async () => {
+    const { prisma, payments, service } = await setup();
+    prisma.bankTransaction.findFirst.mockResolvedValueOnce({
+      id: TX_ID,
+      status: 'MATCHED',
+      direction: 'IN',
+      amount: 500,
+      bankAccountId: 'ba-7',
+    });
+    payments.prepareCreate.mockRejectedValueOnce(new Error('сума понад залишок наряду'));
+    await expect(
+      service.matchTransaction(ORG, TX_ID, { counterpartyId: CP_ID, type: 'SERVICE' }),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(payments.prepareCreate).not.toHaveBeenCalled();
+    expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
   // guards: BR-BANK-008, BR-BANK-009

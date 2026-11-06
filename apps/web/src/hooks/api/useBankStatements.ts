@@ -277,14 +277,14 @@ export function useUnreconcileBankTransaction() {
         body: JSON.stringify(data),
       });
     },
-    onSuccess: () => {
-      // Вид скасованого рознесення відомий лише серверу: зворотна касова операція (зняття
-      // готівки), сторно повернення клієнту (борг), відв'язана оплата постачальнику (замовлення).
-      void qc.invalidateQueries({ queryKey: cashKeys.all });
-      invalidateSupplierPaymentEffects(qc);
-    },
+    // Вид скасованого рознесення відомий лише серверу: зворотна касова операція (зняття готівки),
+    // сторно повернення клієнту (борг), сторно чи відв'язка оплати постачальнику (борг, замовлення,
+    // BR-BANK-039). Скидаємо після БУДЬ-ЯКОГО результату: відмова (обрив зв'язку після коміту) не
+    // доводить, що сторно не пройшло, — як у `useReversePayment`.
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: bankTransactionsKeys.all });
+      void qc.invalidateQueries({ queryKey: cashKeys.all });
+      invalidateSupplierPaymentEffects(qc);
     },
   });
 }

@@ -554,6 +554,8 @@ export class CounterpartiesService {
         where: { orgId, counterpartyId: id, enabled: true, deletedAt: null },
         select: { name: true, provider: true },
         orderBy: { createdAt: 'asc' },
+        // Підключень у контрагента одиниці; межа — лише проти OOM (§1, findMany без take).
+        take: 50,
       }),
     ]);
     if (activeWo > 0) {

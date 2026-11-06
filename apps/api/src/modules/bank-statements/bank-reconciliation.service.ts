@@ -758,6 +758,12 @@ export class BankReconciliationService {
         translateError('err.bankStatement.wrongDirection', getLocale()),
       );
     }
+    // BR-BANK-007: уже рознесений рядок — 409 ДО перевірок оплати. Інакше повтор (подвійний клік,
+    // застарілий екран) отримав би відмову оплати від наслідків першого рознесення — «сума понад
+    // залишок наряду» замість «вже рознесено». Авторитетний — CAS у транзакції.
+    if (row.status !== 'UNMATCHED') {
+      throw new ConflictException(translateError('err.bankStatement.alreadyMatched', getLocale()));
+    }
     const prepared = await this.payments.prepareCreate(
       orgId,
       this.incomingPaymentInput(dto, row),
@@ -1277,6 +1283,7 @@ export class BankReconciliationService {
         amount: true,
         operationDate: true,
         purpose: true,
+        status: true,
       },
     });
     if (!row) {
@@ -1290,6 +1297,11 @@ export class BankReconciliationService {
       dto,
       async () => (await this.exchangeRates.getBaseCurrency(orgId)).id,
     );
+    // BR-BANK-007: уже рознесений рядок — 409 ДО перевірок нової оплати постачальнику (замовлення,
+    // курс): саме так відповідав би програний CAS, і так було, доки ці перевірки йшли після нього.
+    if (row.status !== 'UNMATCHED') {
+      throw new ConflictException(translateError('err.bankStatement.alreadyMatched', getLocale()));
+    }
 
     const ready = await this.prepareOutgoingPlan(orgId, row, plan);
 

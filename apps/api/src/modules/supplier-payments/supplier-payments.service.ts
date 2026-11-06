@@ -1320,11 +1320,6 @@ export class SupplierPaymentsService {
   }
 
   /**
-   * Гарантує, що заповнене рівно одне джерело коштів відповідно до sourceType:
-   * BANK_ACCOUNT → потрібен bankAccountId (без cashRegisterId);
-   * CASH_REGISTER → потрібен cashRegisterId (без bankAccountId).
-   */
-  /**
    * Пошук каси для оплати: `{ id, orgId, deletedAt: null }` + `select { id, currencyId }`.
    * Приймає ВЖЕ-резолвлений id — guard (сорс-тип/наявність) лишається у викликача.
    */
@@ -1356,6 +1351,11 @@ export class SupplierPaymentsService {
       : Promise.resolve(null);
   }
 
+  /**
+   * Гарантує, що заповнене рівно одне джерело коштів відповідно до sourceType:
+   * BANK_ACCOUNT → потрібен bankAccountId (без cashRegisterId);
+   * CASH_REGISTER → потрібен cashRegisterId (без bankAccountId).
+   */
   private assertSourceConsistency(
     sourceType: PaymentSourceType,
     bankAccountId?: string,

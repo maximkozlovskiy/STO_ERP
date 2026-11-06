@@ -280,9 +280,9 @@ cd apps/api && npx vitest run src/modules/bank-statements/<файл>.spec.ts
 | імпорт у staging, межа amountBase (BR-BANK-042)                                                                      | `bank-reconciliation.import.spec.ts`                       | 6      |
 | ручне внесення і видалення ручного рядка                                                                             | `bank-reconciliation.manual.spec.ts`                       | 25     |
 | рознесення вихідних (напрям, CAS, види без оплати; межа повернення, повернення від постачальника — BR-BANK-044, 046) | `bank-reconciliation.outgoing.spec.ts`                     | 88     |
-| рознесення вхідних / ігнорування (FSM), одна транзакція (BR-BANK-009); оплата клієнта лише клієнтам (BR-BANK-045)    | `bank-reconciliation.posting.spec.ts`                      | 33     |
+| рознесення вхідних / ігнорування (FSM), одна транзакція (BR-BANK-009); оплата клієнта лише клієнтам (BR-BANK-045)    | `bank-reconciliation.posting.spec.ts`                      | 34     |
 | сервісна логіка                                                                                                      | `bank-reconciliation.service.spec.ts`                      | 27     |
-| вихідний як оплата постачальнику (нова — одна транзакція, BR-BANK-029), кандидати                                    | `bank-reconciliation.supplier-payment.spec.ts`             | 29     |
+| вихідний як оплата постачальнику (нова — одна транзакція, BR-BANK-029), кандидати                                    | `bank-reconciliation.supplier-payment.spec.ts`             | 30     |
 | скасування рознесення; сторно оплати постачальнику, створеної з рядка (BR-BANK-039)                                  | `bank-reconciliation.unreconcile.spec.ts`                  | 42     |
 | жива БД: збій після створення оплати → ні рядка, ні оплати, ні проводки, номер не витрачено (BR-BANK-009, 029, 041)  | `bank-reconciliation.single-tx.integration.spec.ts`        | 3      |
 | парсер файлу виписки (+ напрям рядка)                                                                                | `bank-statement-parser.service.spec.ts`                    | 71     |
