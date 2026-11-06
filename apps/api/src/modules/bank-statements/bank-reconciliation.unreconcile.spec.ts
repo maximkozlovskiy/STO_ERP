@@ -35,7 +35,8 @@ import {
 //    «…на іншого клієнта в ту саму мить»; `cashOperationId` → «CASH_WITHDRAWAL в іншу касу»;
 //  · CASH_WITHDRAWAL: direction IN замість OUT або інша каса → «одна зворотна касова операція»;
 //  · CASH_WITHDRAWAL: CAS поза транзакцією касової операції → «готівки не вистачає → рядок лишається MATCHED»;
-//  · SUPPLIER_PAYMENT: покликати supplierPayments.cancel → «оплата лишається проведеною».
+//  · SUPPLIER_PAYMENT: сторнувати прив'язану оплату → «оплата … лишається проведеною»; не сторнувати
+//    створену з рядка → «…створена з цього рядка: сторно…».
 
 /** Хто скасовує — навмисно НЕ той, хто розносив (unmatchedBy ≠ matchedBy). */
 const CANCELLER = '00000000-0000-4000-8000-000000000901';
@@ -584,19 +585,74 @@ describe('BankReconciliationService.unreconcile — скасування роз�
       expect(w.db.rows('cashOperation')).toHaveLength(1);
     });
 
+    // Рішення власника 2026-11-06 (TECH-DEBT §8 L556 п. 3): прив'язану оплату (BR-BANK-027) лише
+    // відв'язують — вона проведена окремою дією. Сюди ж — оплата, створена з ІНШОГО рядка.
     // guards: BR-BANK-039
-    it('SUPPLIER_PAYMENT: рядок відв’язано, оплата постачальнику лишається проведеною — жодного сторно', async () => {
+    it.each([
+      ['прив’язана (походження немає)', null],
+      ['створена з іншого рядка', ID.tx2],
+    ])(
+      'SUPPLIER_PAYMENT, оплата %s: рядок відв’язано, оплата лишається проведеною — жодного сторно',
+      async (_name, origin) => {
+        const w = await makeWorld();
+        arrangeMatched(w, 'SUPPLIER_PAYMENT');
+        w.db.get('supplierPayment', ID.sp).originBankTransactionId = origin;
+
+        await unreconcile(w);
+
+        expect(effectCalls(w)).toEqual(NO_EFFECTS);
+        expect(w.db.get('supplierPayment', ID.sp)).toMatchObject({
+          status: 'CONFIRMED',
+          deletedAt: null,
+        });
+        expect(w.row().supplierPaymentId).toBeNull();
+      },
+    );
+
+    // Оплату СТВОРЕНО з цього рядка (BR-BANK-028): скасування рознесення її сторнує в тій самій
+    // транзакції — борг постачальнику повертається (BR-SUPPAY-012); документ проводки — рядок.
+    // Mutation-verify: прибрати виклик reverse → кейс червоніє; порівнювати походження не з txId
+    // (сторнувати будь-яку) → червоніє кейс «створена з іншого рядка» вище.
+    // guards: BR-BANK-039
+    it('SUPPLIER_PAYMENT, оплата створена з цього рядка: сторно в транзакції скасування, рядок UNMATCHED', async () => {
       const w = await makeWorld();
       arrangeMatched(w, 'SUPPLIER_PAYMENT');
+      w.db.get('supplierPayment', ID.sp).originBankTransactionId = ID.tx;
 
-      await unreconcile(w);
+      const res = await unreconcile(w);
 
-      expect(effectCalls(w)).toEqual(NO_EFFECTS);
-      expect(w.db.get('supplierPayment', ID.sp)).toMatchObject({
-        status: 'CONFIRMED',
-        deletedAt: null,
+      expect(w.supplierPayments.reverse).toHaveBeenCalledTimes(1);
+      const [org, id, ctx, client] = w.supplierPayments.reverse.mock.calls[0]!;
+      expect(org).toBe(ORG);
+      expect(id).toBe(ID.sp);
+      expect(ctx).toEqual({ bankTransactionId: ID.tx, reason: REASON, userId: CANCELLER });
+      expect(client).toBe(w.tx);
+      expect(w.db.get('supplierPayment', ID.sp).status).toBe('REVERSED');
+      expect(w.row()).toMatchObject({ ...FREE_ROW, unmatchReason: REASON });
+      expect(res).toMatchObject({ status: 'UNMATCHED', supplierPaymentFromRow: false });
+    });
+
+    // Оплату вже сторнували (або сторно відмовило з іншої причини): скасування рознесення
+    // відкочується — рядок лишається рознесеним із посиланням, зворотного запису немає.
+    // guards: BR-BANK-039
+    it('SUPPLIER_PAYMENT, створена з рядка, але вже сторнована → 400, рядок лишається MATCHED з оплатою', async () => {
+      const w = await makeWorld();
+      arrangeMatched(w, 'SUPPLIER_PAYMENT');
+      Object.assign(w.db.get('supplierPayment', ID.sp), {
+        originBankTransactionId: ID.tx,
+        status: 'REVERSED',
       });
-      expect(w.row().supplierPaymentId).toBeNull();
+
+      await expect(unreconcile(w)).rejects.toMatchObject({ status: 400 });
+
+      expect(w.row()).toMatchObject({
+        status: 'MATCHED',
+        matchedType: 'SUPPLIER_PAYMENT',
+        supplierPaymentId: ID.sp,
+        unmatchReason: null,
+        unmatchedAt: null,
+      });
+      expect(w.db.get('supplierPayment', ID.sp).status).toBe('REVERSED');
     });
 
     // guards: BR-BANK-039

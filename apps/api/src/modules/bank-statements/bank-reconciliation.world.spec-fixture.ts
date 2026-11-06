@@ -78,6 +78,7 @@ export const ID = {
   sp: uuid(90),
   spNew: uuid(91),
   cashOp: uuid(95),
+  payment: uuid(990),
 } as const;
 
 /** Власний IBAN рахунку `ID.account` (BR-BANK-020: не може стати IBAN контрагента). */
@@ -592,6 +593,7 @@ export function supplierPaymentRow(over: Rec = {}): Rec {
     method: 'bank',
     notes: null,
     documentDate: OP_DATE,
+    originBankTransactionId: null,
     createdAt: new Date('2026-09-28T08:00:00.000Z'),
     updatedAt: new Date('2026-09-28T08:00:00.000Z'),
     deletedAt: null,
@@ -722,14 +724,22 @@ function seedWorld(db: FakeDb): void {
 /**
  * Моки сусідніх сервісів. Там, де правило спирається на перевірку СУСІДА (роль постачальника,
  * належність замовлення — BR-BANK-028 «з усіма його правилами»), мок її відтворює: тест не знає,
- * чи BankReconciliationService перевіряє сам, чи покладається на SupplierPaymentsService.create.
+ * чи BankReconciliationService перевіряє сам, чи покладається на SupplierPaymentsService.
+ *
+ * Запис оплат (`payments.createInTx`, `supplierPayments.createAndConfirmInTx`, `reverse`) іде
+ * ЧЕРЕЗ ПЕРЕДАНИЙ клієнт — журнальований tx відкочує його разом із транзакцією (Bug #1023: рядок,
+ * оплата й посилання — одна транзакція). Мок, якому передали `root`, писав би повз журнал, і тест
+ * «збій після створення оплати → оплати немає» це побачив би.
  */
 function makeDeps(db: FakeDb, root: FakeClient) {
   const live = (model: string, id: unknown) =>
     db.rows(model).find(r => r.id === id && r.orgId === ORG && r.deletedAt == null);
+  /** Чи пише клієнт через журнал транзакції (tx), а не повз нього (root). */
+  const journaled = (client: unknown): boolean => client !== root;
 
   const supplierPayments = {
-    create: asyncMock((orgId: string, dto: Rec, _userId?: string) => {
+    /** Перевірки створення й проведення без запису (BR-SUPPAY-*), як справжній сервіс. */
+    prepareCreateAndConfirm: asyncMock((orgId: string, dto: Rec, opts?: { rateDate?: Date }) => {
       const supplier = live('counterparty', dto.supplierId);
       if (!supplier || orgId !== ORG) throw new NotFoundException('Контрагента не знайдено');
       if (supplier.type === 'CLIENT')
@@ -742,40 +752,51 @@ function makeDeps(db: FakeDb, root: FakeClient) {
         }
       }
       const account = live('bankAccount', dto.bankAccountId);
-      // Перша чернетка має відомий id (ID.spNew), наступні — згенеровані (повторне рознесення).
-      const taken = db.rows('supplierPayment').some(r => r.id === ID.spNew);
-      const rec = db.insert(
-        'supplierPayment',
-        supplierPaymentRow({
-          id: taken ? db.nextId() : ID.spNew,
-          status: 'DRAFT',
-          supplierId: dto.supplierId,
-          purchaseOrderId: dto.purchaseOrderId ?? null,
-          sourceType: dto.sourceType,
-          bankAccountId: dto.bankAccountId ?? null,
-          amount: dec(Number(dto.amount)),
-          currencyId: account?.currencyId ?? ID.uah,
-          totalAmountBase: null,
-          rateUsed: null,
-          number: 'ОПП-20261009-000007',
-        }),
-        false,
-      );
-      return { ...rec, amount: Number(dto.amount) };
+      return {
+        orgId,
+        dto,
+        currencyId: account?.currencyId ?? ID.uah,
+        rateDate: opts?.rateDate,
+      };
     }),
-    confirm: asyncMock((_orgId: string, id: string, _userId: string, _opts?: unknown) => {
-      const rec = db.get('supplierPayment', id);
-      rec.status = 'CONFIRMED';
-      return { ...rec, amount: Number(rec.amount) };
-    }),
-    cancel: asyncMock((_orgId: string, id: string, ..._rest: unknown[]) => {
-      const rec = db.get('supplierPayment', id);
-      // Як справжній cancel: скасувати можна лише чернетку (проведена оплата сторно не має).
-      if (rec.status !== 'DRAFT') {
-        throw new BadRequestException(`Неможливо скасувати оплату у статусі ${String(rec.status)}`);
-      }
-      rec.status = 'CANCELLED';
-      return { ...rec, amount: Number(rec.amount) };
+    /** Оплата з номером і одразу проведена — записом через переданий клієнт. */
+    createAndConfirmInTx: asyncMock(
+      (
+        client: FakeClient,
+        prepared: { dto: Rec; currencyId: string },
+        _userId: string,
+        opts?: { originBankTransactionId?: string },
+      ) => {
+        const { dto } = prepared;
+        // Перша оплата має відомий id (ID.spNew), наступні — згенеровані (повторне рознесення).
+        const taken = db.rows('supplierPayment').some(r => r.id === ID.spNew);
+        const rec = db.insert(
+          'supplierPayment',
+          supplierPaymentRow({
+            id: taken ? db.nextId() : ID.spNew,
+            status: 'CONFIRMED',
+            supplierId: dto.supplierId,
+            purchaseOrderId: dto.purchaseOrderId ?? null,
+            sourceType: dto.sourceType,
+            bankAccountId: dto.bankAccountId ?? null,
+            amount: dec(Number(dto.amount)),
+            currencyId: prepared.currencyId,
+            documentDate: new Date(`${String(dto.documentDate)}T00:00:00.000Z`),
+            number: 'ОПП-20261009-000007',
+            originBankTransactionId: opts?.originBankTransactionId ?? null,
+          }),
+          journaled(client),
+        );
+        return { id: rec.id as string, number: rec.number as string, cashOperation: null };
+      },
+    ),
+    /** Сторно (BR-BANK-039): CAS «Проведено» → «Сторновано» через переданий клієнт. */
+    reverse: vi.fn(async (orgId: string, id: string, _ctx: Rec, client: FakeClient) => {
+      const res = await client.supplierPayment.updateMany({
+        where: { id, orgId, deletedAt: null, status: 'CONFIRMED' },
+        data: { status: 'REVERSED' },
+      });
+      if (res.count === 0) throw new BadRequestException('Оплату постачальнику вже сторновано');
     }),
     findOne: asyncMock((_orgId: string, id: string) => db.get('supplierPayment', id)),
   };
@@ -864,7 +885,31 @@ function makeDeps(db: FakeDb, root: FakeClient) {
   };
 
   const audit = { record: vi.fn().mockResolvedValue(undefined) };
-  const payments = { create: vi.fn().mockResolvedValue({ id: uuid(990) }) };
+  // Оплата клієнта (BR-BANK-008): перевірки — `prepareCreate`, запис — `createInTx` через
+  // переданий клієнт, ефекти після коміту — `afterCreate`.
+  const payments = {
+    prepareCreate: asyncMock((orgId: string, dto: Rec, userId?: string) => ({
+      orgId,
+      dto,
+      userId,
+    })),
+    createInTx: asyncMock((client: FakeClient, prepared: { orgId: string; dto: Rec }) => {
+      const taken = db.rows('payment').some(r => r.id === ID.payment);
+      const rec = db.insert(
+        'payment',
+        {
+          id: taken ? db.nextId() : ID.payment,
+          orgId: prepared.orgId,
+          counterpartyId: prepared.dto.counterpartyId,
+          amount: dec(Number(prepared.dto.amount)),
+          bankAccountId: prepared.dto.bankAccountId ?? null,
+        },
+        journaled(client),
+      );
+      return { payment: rec, statusSteps: [], cashOperation: null };
+    }),
+    afterCreate: vi.fn().mockResolvedValue(undefined),
+  };
 
   return { supplierPayments, settlements, cash, audit, payments, exchange, openingBalances };
 }
@@ -938,23 +983,22 @@ export async function makeWorld() {
 
 export type World = Awaited<ReturnType<typeof makeWorld>>;
 
-/** Жоден грошовий побічний ефект не стався (проведення, каса, оплата постачальнику, Payment). */
+/** Жоден грошовий побічний ефект не стався (проведення, каса, оплата постачальнику, Payment, сторно). */
 export function effectCalls(w: World): Record<string, number> {
   return {
     'settlements.createTransaction': w.settlements.createTransaction.mock.calls.length,
     'cash.createOperation': w.cash.createOperation.mock.calls.length,
-    'supplierPayments.create': w.supplierPayments.create.mock.calls.length,
-    'supplierPayments.confirm': w.supplierPayments.confirm.mock.calls.length,
-    'supplierPayments.cancel': w.supplierPayments.cancel.mock.calls.length,
-    'payments.create': w.payments.create.mock.calls.length,
+    'supplierPayments.createAndConfirmInTx':
+      w.supplierPayments.createAndConfirmInTx.mock.calls.length,
+    'supplierPayments.reverse': w.supplierPayments.reverse.mock.calls.length,
+    'payments.createInTx': w.payments.createInTx.mock.calls.length,
   };
 }
 
 export const NO_EFFECTS: Record<string, number> = {
   'settlements.createTransaction': 0,
   'cash.createOperation': 0,
-  'supplierPayments.create': 0,
-  'supplierPayments.confirm': 0,
-  'supplierPayments.cancel': 0,
-  'payments.create': 0,
+  'supplierPayments.createAndConfirmInTx': 0,
+  'supplierPayments.reverse': 0,
+  'payments.createInTx': 0,
 };

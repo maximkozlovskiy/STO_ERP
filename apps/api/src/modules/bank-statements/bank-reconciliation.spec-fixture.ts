@@ -9,7 +9,7 @@ import { buildService } from './bank-reconciliation.world.spec-fixture';
 export const ORG = 'org-1';
 
 export function makePrisma() {
-  return {
+  const prisma = {
     counterparty: { findMany: vi.fn(), findFirst: vi.fn() },
     invoice: { findMany: vi.fn(), findFirst: vi.fn() },
     workOrder: { findMany: vi.fn() },
@@ -23,8 +23,15 @@ export function makePrisma() {
       count: vi.fn(),
     },
     bankAccount: { findFirst: vi.fn() },
-    $transaction: vi.fn(),
+    // Колбек виконується на тому самому моку (tx = prisma): рознесення вхідного рядка — одна
+    // транзакція (BR-BANK-009), і запити всередині видно на тих самих шпигунах.
+    $transaction: vi.fn((arg: unknown): Promise<unknown> =>
+      typeof arg === 'function'
+        ? Promise.resolve((arg as (tx: unknown) => unknown)(prisma))
+        : Promise.all(arg as unknown[]),
+    ),
   };
+  return prisma;
 }
 
 export function makeExchange() {
@@ -37,8 +44,21 @@ export function makeExchange() {
   };
 }
 
+/**
+ * PaymentsService у рознесенні (BR-BANK-008/009): перевірки — `prepareCreate`, запис у транзакції
+ * рознесення — `createInTx`, ефекти після коміту — `afterCreate`. `createInTx` віддає оплату
+ * `pay-1`; кейс задає свою через `mockResolvedValueOnce`.
+ */
 export function makePayments() {
-  return { create: vi.fn() };
+  return {
+    prepareCreate: vi.fn((orgId: string, dto: Record<string, unknown>, userId?: string) =>
+      Promise.resolve({ orgId, dto, userId }),
+    ),
+    createInTx: vi.fn((_tx: unknown, _prepared: unknown) =>
+      Promise.resolve({ payment: { id: 'pay-1' }, statusSteps: [], cashOperation: null }),
+    ),
+    afterCreate: vi.fn().mockResolvedValue(undefined),
+  };
 }
 
 /**

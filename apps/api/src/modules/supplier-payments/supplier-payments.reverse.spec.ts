@@ -18,6 +18,7 @@
  */
 import { describe, it, expect, vi } from 'vitest';
 import { BadRequestException } from '@nestjs/common';
+import { translateError } from '@sto/shared';
 import { SupplierPaymentsService } from './supplier-payments.service';
 import { exchangeRatesProvider } from './supplier-payments.spec-fixture';
 import { memoryTable, type MemRow } from '../cash/cash.spec-fixture';
@@ -37,6 +38,13 @@ const STORNO_OP = '88888888-8888-4888-8888-888888888888';
 const BASE = 'uah-id';
 
 const CTX = { cashOperationId: STORNO_OP, reason: 'оплачено не тому постачальнику', userId: USER };
+/** Скасування рознесення рядка виписки, з якого оплату створено (BR-BANK-039). */
+const BANK_TX = '99999999-0000-4000-8000-000000000039';
+const BANK_CTX = {
+  bankTransactionId: BANK_TX,
+  reason: 'рознесено не на того постачальника',
+  userId: USER,
+};
 
 interface Seed {
   sp?: MemRow;
@@ -145,8 +153,9 @@ function makeHarness(seed: Seed = {}) {
   );
 
   const reverse = (orgId = ORG, id = SP) => service.reverse(orgId, id, CTX, tx as never);
+  const reverseFromBank = () => service.reverse(ORG, SP, BANK_CTX, tx as never);
 
-  return { service, tables, tx, settlementRows, cash, sp, po, reverse };
+  return { service, tables, tx, settlementRows, cash, sp, po, reverse, reverseFromBank };
 }
 
 describe('SupplierPaymentsService.reverse — статус оплати', () => {
@@ -355,5 +364,57 @@ describe('SupplierPaymentsService.reverse — «сплачено» замовл�
     expect(h.settlementRows).toHaveLength(1);
     expect(h.po).toMatchObject({ paidAmount: 1000 });
     expect(h.po?.paidAt).not.toBeNull();
+  });
+});
+
+// Рішення власника 2026-11-06 (TECH-DEBT §8 L556 п. 3): скасування рознесення рядка виписки, з
+// якого оплату СТВОРЕНО, її сторнує — той самий `reverse`, але документ проводки — рядок виписки, а
+// помилки — словами оплати («Оплату постачальнику вже сторновано»), а не каси.
+// Mutation-verify: лишити `documentType: 'CashOperation'` для банківського входу → «документ
+// проводки — рядок виписки»; лишити ключі каси → «вже сторновано — словами оплати».
+describe('SupplierPaymentsService.reverse — скасування рознесення рядка виписки (BR-BANK-039)', () => {
+  // guards: BR-BANK-039, BR-SUPPAY-012
+  it('документ проводки — рядок виписки; сума й курс оригіналу; «сплачено» замовлення назад; у tx викликача', async () => {
+    const h = makeHarness();
+
+    await h.reverseFromBank();
+
+    expect(h.sp.status).toBe('REVERSED');
+    expect(h.settlementRows).toHaveLength(1);
+    expect(h.settlementRows[0]).toMatchObject({
+      orgId: ORG,
+      counterpartyId: SUPPLIER,
+      type: 'SUPPLIER_PAYMENT_CANCEL',
+      documentType: 'BankTransaction',
+      documentId: BANK_TX,
+      notes: BANK_CTX.reason,
+      conversion: { rateUsed: 1, amountBase: 400 },
+      __tx: h.tx,
+    });
+    expect(Number(h.po?.paidAmount)).toBe(600);
+    expect(h.po?.paidAt).toBeNull();
+    expect(h.cash.createOperation).not.toHaveBeenCalled();
+  });
+
+  // guards: BR-BANK-039
+  it('вже сторновано → 400 словами оплати, а не каси; проводки немає', async () => {
+    const h = makeHarness({ sp: { status: 'REVERSED' } });
+
+    await expect(h.reverseFromBank()).rejects.toThrow(
+      translateError('err.supplierPayment.alreadyReversed', 'uk'),
+    );
+    expect(h.settlementRows).toEqual([]);
+    // Касовий вхід — як був.
+    await expect(h.reverse()).rejects.toThrow(translateError('err.cash.alreadyReversed', 'uk'));
+  });
+
+  // guards: BR-BANK-039
+  it('проводки оплати не знайдено (курсу оригіналу немає) → 400 «оплата змінилась», нічого не проведено', async () => {
+    const h = makeHarness({ sp: { totalAmountBase: null } });
+
+    await expect(h.reverseFromBank()).rejects.toThrow(
+      translateError('err.supplierPayment.reversalStateChanged', 'uk'),
+    );
+    expect(h.settlementRows).toEqual([]);
   });
 });

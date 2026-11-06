@@ -2,53 +2,14 @@ import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { ConflictException } from '@nestjs/common';
 import type { BankReconciliationService, RawTx } from './bank-reconciliation.service';
 import { toBankTransactionResponseDto } from './bank-statement.dto';
-import { buildService } from './bank-reconciliation.world.spec-fixture';
+import { build, makeExchange, makePayments, makePrisma } from './bank-reconciliation.spec-fixture';
 
 const ORG = 'org-1';
 
 // ── Мок-фабрики ─────────────────────────────────────────────────────────────────
-function makePrisma() {
-  return {
-    counterparty: { findMany: vi.fn(), findFirst: vi.fn() },
-    invoice: { findMany: vi.fn(), findFirst: vi.fn() },
-    workOrder: { findMany: vi.fn() },
-    purchaseOrder: { findMany: vi.fn().mockResolvedValue([]) },
-    bankTransaction: {
-      findMany: vi.fn(),
-      findFirst: vi.fn(),
-      findFirstOrThrow: vi.fn(),
-      updateMany: vi.fn(),
-      createMany: vi.fn(),
-    },
-    bankAccount: { findFirst: vi.fn() },
-    $transaction: vi.fn(),
-  };
-}
-
-function makeExchange() {
-  return {
-    resolveBaseConversion: vi
-      .fn()
-      .mockImplementation(async (_o: string, _c: string, _d: Date, amount: number) => ({
-        rateUsed: 1,
-        amountBase: amount,
-      })),
-  };
-}
-
-function makePayments() {
-  return { create: vi.fn() };
-}
-
-// Через DI за токенами класів, а не `new Service(a, b, c)`: конструктор росте разом із видами
-// рознесення (BR-BANK-025…040), і позиційні аргументи ламали б цей файл при кожній залежності.
-function build(
-  prisma: ReturnType<typeof makePrisma>,
-  exchange: ReturnType<typeof makeExchange>,
-  payments: ReturnType<typeof makePayments>,
-): Promise<BankReconciliationService> {
-  return buildService(prisma, { exchange, payments });
-}
+// Спільні з аспектними спеками (`bank-reconciliation.spec-fixture.ts`): `$transaction(fn)` виконує
+// колбек на тому самому моку, а PaymentsService — `prepareCreate` / `createInTx` / `afterCreate`
+// (рознесення вхідного рядка — одна транзакція, BR-BANK-009).
 
 const CP = (id: string, extra: Record<string, unknown> = {}) => ({
   id,
@@ -232,17 +193,17 @@ describe('BankReconciliationService.matchTransaction', () => {
       createdAt: new Date('2026-09-01'),
     });
     const payments = makePayments();
-    payments.create.mockResolvedValue({ id: 'pay-1' });
     const service = await build(prisma, makeExchange(), payments);
     return { prisma, payments, service };
   }
 
   // guards: BR-BANK-008
-  it('SERVICE → settlementType PAYMENT у payments.create', async () => {
+  it('SERVICE → settlementType PAYMENT в оплаті', async () => {
     const { payments, service } = await setupMatch();
     await service.matchTransaction(ORG, TX_ID, { counterpartyId: CP_ID, type: 'SERVICE' });
-    expect(payments.create).toHaveBeenCalledTimes(1);
-    const [, dto] = payments.create.mock.calls[0]!;
+    expect(payments.prepareCreate).toHaveBeenCalledTimes(1);
+    expect(payments.createInTx).toHaveBeenCalledTimes(1);
+    const [, dto] = payments.prepareCreate.mock.calls[0]!;
     expect(dto.settlementType).toBe('PAYMENT');
     expect(dto.method).toBe('bank');
     expect(dto.sourceType).toBe('BANK_ACCOUNT');
@@ -252,7 +213,7 @@ describe('BankReconciliationService.matchTransaction', () => {
   it('PREPAYMENT → settlementType PREPAYMENT', async () => {
     const { payments, service } = await setupMatch();
     await service.matchTransaction(ORG, TX_ID, { counterpartyId: CP_ID, type: 'PREPAYMENT' });
-    const [, dto] = payments.create.mock.calls[0]!;
+    const [, dto] = payments.prepareCreate.mock.calls[0]!;
     expect(dto.settlementType).toBe('PREPAYMENT');
   });
 
@@ -260,7 +221,7 @@ describe('BankReconciliationService.matchTransaction', () => {
   it('REFUND → settlementType REFUND', async () => {
     const { payments, service } = await setupMatch();
     await service.matchTransaction(ORG, TX_ID, { counterpartyId: CP_ID, type: 'REFUND' });
-    const [, dto] = payments.create.mock.calls[0]!;
+    const [, dto] = payments.prepareCreate.mock.calls[0]!;
     expect(dto.settlementType).toBe('REFUND');
   });
 
@@ -268,29 +229,31 @@ describe('BankReconciliationService.matchTransaction', () => {
   it('подвійний match → CAS count 0 → Conflict', async () => {
     const { prisma, payments, service } = await setupMatch();
     prisma.bankTransaction.updateMany.mockResolvedValueOnce({ count: 0 }); // CAS не захопив
-    prisma.bankTransaction.findFirst.mockResolvedValueOnce({ id: TX_ID }); // існує, але вже MATCHED
+    // Існує, але вже MATCHED (читання до транзакції і пояснення програного CAS у ній).
+    prisma.bankTransaction.findFirst.mockResolvedValue({ id: TX_ID, status: 'MATCHED' });
     await expect(
       service.matchTransaction(ORG, TX_ID, { counterpartyId: CP_ID, type: 'SERVICE' }),
     ).rejects.toBeInstanceOf(ConflictException);
-    expect(payments.create).not.toHaveBeenCalled();
+    expect(payments.createInTx).not.toHaveBeenCalled();
   });
 
+  // Bug #1023: компенсації «повернути рядок в UNMATCHED» більше немає — відкочує транзакція.
   // guards: BR-BANK-009
-  it('payments.create кинув → відкат status=UNMATCHED, помилка проброшена', async () => {
+  it('оплата відмовила в транзакції → помилка проброшена, ручного запису UNMATCHED немає', async () => {
     const { prisma, payments, service } = await setupMatch();
-    payments.create.mockRejectedValueOnce(new Error('currency mismatch'));
+    payments.createInTx.mockRejectedValueOnce(new Error('currency mismatch'));
     await expect(
       service.matchTransaction(ORG, TX_ID, { counterpartyId: CP_ID, type: 'SERVICE' }),
     ).rejects.toThrow('currency mismatch');
-    // Відкат: другий updateMany з data status=UNMATCHED.
     const rollbackCall = prisma.bankTransaction.updateMany.mock.calls.find(
       c => (c[0] as { data?: { status?: string } }).data?.status === 'UNMATCHED',
     );
-    expect(rollbackCall).toBeDefined();
+    expect(rollbackCall).toBeUndefined();
+    expect(payments.afterCreate).not.toHaveBeenCalled();
   });
 
   // guards: BR-BANK-008
-  it('INVOICE → settlementType PAYMENT + invoiceId переданий у payments.create; сума=amount tx', async () => {
+  it('INVOICE → settlementType PAYMENT + invoiceId переданий в оплату; сума=amount tx', async () => {
     const INV_ID = '33333333-3333-4333-8333-333333333333';
     const { prisma, payments, service } = await setupMatch();
     prisma.invoice.findFirst.mockResolvedValue({ id: INV_ID, counterpartyId: CP_ID }); // валідація рахунку у межах org
@@ -299,7 +262,7 @@ describe('BankReconciliationService.matchTransaction', () => {
       type: 'INVOICE',
       invoiceId: INV_ID,
     });
-    const [, dto] = payments.create.mock.calls[0]!;
+    const [, dto] = payments.prepareCreate.mock.calls[0]!;
     // INVOICE — це звичайна оплата рахунку → settlement PAYMENT (не PREPAYMENT/REFUND).
     expect(dto.settlementType).toBe('PAYMENT');
     expect(dto.invoiceId).toBe(INV_ID);
@@ -308,12 +271,12 @@ describe('BankReconciliationService.matchTransaction', () => {
   });
 
   // guards: BR-BANK-010
-  it('INVOICE без invoiceId → BadRequest, payments.create НЕ викликаний, CAS не чіпається', async () => {
+  it('INVOICE без invoiceId → BadRequest, оплата не створюється, CAS не чіпається', async () => {
     const { prisma, payments, service } = await setupMatch();
     await expect(
       service.matchTransaction(ORG, TX_ID, { counterpartyId: CP_ID, type: 'INVOICE' }),
     ).rejects.toMatchObject({ status: 400 });
-    expect(payments.create).not.toHaveBeenCalled();
+    expect(payments.createInTx).not.toHaveBeenCalled();
     expect(prisma.bankTransaction.updateMany).not.toHaveBeenCalled();
   });
 
@@ -324,7 +287,7 @@ describe('BankReconciliationService.matchTransaction', () => {
     await expect(
       service.matchTransaction(ORG, TX_ID, { counterpartyId: CP_ID, type: 'SERVICE' }),
     ).rejects.toMatchObject({ status: 404 });
-    expect(payments.create).not.toHaveBeenCalled();
+    expect(payments.createInTx).not.toHaveBeenCalled();
     expect(prisma.bankTransaction.updateMany).not.toHaveBeenCalled();
   });
 });

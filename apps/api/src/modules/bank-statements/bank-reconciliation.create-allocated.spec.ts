@@ -14,19 +14,21 @@ import {
 } from './bank-reconciliation.world.spec-fixture';
 
 // Аспект: внесення платежу разом із рознесенням — BankReconciliationService.createManual з
-// `allocation` (BR-BANK-041). Одна дія: платіж внесено й рознесено; рознесення не вдалося —
-// платежу немає. Правила рознесення самі по собі — BR-BANK-008…010, 025…035 (їхні спеки:
-// posting / outgoing / supplier-payment).
+// `allocation` (BR-BANK-041). Одна дія і ОДНА транзакція БД для всіх видів (з 2026-11-06, Bug
+// #1023): платіж внесено й рознесено; рознесення не вдалося — немає нічого (ні рядка, ні оплати).
+// Правила рознесення самі по собі — BR-BANK-008…010, 025…035 (їхні спеки: posting / outgoing /
+// supplier-payment).
 //
 // Mutation-verify (кожна мутація валить названі кейси):
 //  · `planAllocation` після вставки рядка (а не до)          → «перевірка до вставки: … рядка не вставлено»;
 //  · прибрати перевірку напряму для вхідних видів              → «SERVICE на вихідному → 400»;
 //  · прибрати «без контрагента → 400» для вхідних              → «вхідний вид без контрагента»;
-//  · вихідні: `this.prisma.bankTransaction.create` замість `tx.` → «відмова в транзакції — рядка немає»;
-//  · прибрати `discardUnallocated` із catch                    → «відмова оплати → рядок прибрано»;
-//  · `discardUnallocated` без `status: 'UNMATCHED'`            → «оплату створено, а далі збій → рядок лишається».
+//  · `this.prisma.bankTransaction.create` замість `tx.`         → «відмова в транзакції — рядка немає»,
+//    «відмова оплати → ні рядка, ні оплати»;
+//  · `payments.createInTx(this.prisma, …)` замість `tx`         → «оплату створено, а далі збій → нічого»;
+//  · `createAndConfirmInTx(this.prisma, …)` замість `tx`        → «оплату постачальнику створено, а далі збій».
 
-const PAYMENT_ID = '00000000-0000-4000-8000-000000000990';
+const PAYMENT_ID = ID.payment;
 const INVOICE = '00000000-0000-4000-8000-000000000501';
 const INVOICE_OTHER_CP = '00000000-0000-4000-8000-000000000502';
 
@@ -97,8 +99,10 @@ describe('createManual з allocation — вхідні види (BR-BANK-041)', (
       matchedBy: USER,
       deletedAt: null,
     });
-    expect(w.payments.create).toHaveBeenCalledTimes(1);
-    expect(w.payments.create.mock.calls[0]![1]).toMatchObject({
+    expect(w.payments.createInTx).toHaveBeenCalledTimes(1);
+    expect(w.payments.createInTx.mock.calls[0]![0]).toBe(w.tx);
+    expect(w.payments.afterCreate).toHaveBeenCalledTimes(1);
+    expect(w.payments.prepareCreate.mock.calls[0]![1]).toMatchObject({
       counterpartyId: ID.client,
       invoiceId: undefined,
       amount: 2400.75,
@@ -125,7 +129,7 @@ describe('createManual з allocation — вхідні види (BR-BANK-041)', (
       matchedType: 'INVOICE',
       paymentId: PAYMENT_ID,
     });
-    expect(w.payments.create.mock.calls[0]![1]).toMatchObject({
+    expect(w.payments.prepareCreate.mock.calls[0]![1]).toMatchObject({
       invoiceId: INVOICE,
       settlementType: 'PAYMENT',
     });
@@ -151,12 +155,12 @@ describe('createManual з allocation — вхідні види (BR-BANK-041)', (
   });
 
   // guards: BR-BANK-041, BR-BANK-009
-  it('відмова оплати (сума більша за залишок рахунку) → рядок прибрано, клієнт отримує ту саму помилку', async () => {
+  it('відмова оплати (сума більша за залишок рахунку) → ні рядка, ні оплати, клієнт отримує ту саму помилку', async () => {
     const w = await world();
     const refusal = new BadRequestException(
       'Сума перевищує залишок до сплати за рахунком (100.00)',
     );
-    w.payments.create.mockRejectedValueOnce(refusal);
+    w.payments.createInTx.mockRejectedValueOnce(refusal);
 
     await expect(
       w.service.createManual(
@@ -166,37 +170,35 @@ describe('createManual з allocation — вхідні види (BR-BANK-041)', (
       ),
     ).rejects.toBe(refusal);
 
-    const row = only(w);
-    expect(row.deletedAt).toBeInstanceOf(Date);
-    // Колонки, яких вставка не задала, у підробці відсутні (у БД — NULL).
-    expect(row.status).toBe('UNMATCHED');
-    expect(row.paymentId ?? null).toBeNull();
-    expect(live(w)).toEqual([]);
-    // М'яке видалення, не жорстке.
-    expect(w.calls('bankTransaction', 'delete')).toEqual([]);
-    expect(w.calls('bankTransaction', 'deleteMany')).toEqual([]);
+    // Рядок вставлено в ту саму транзакцію — він відкотився разом з нею; м'якого видалення немає.
+    expect(w.db.rows('bankTransaction')).toEqual([]);
+    expect(w.db.rows('payment')).toEqual([]);
+    expect(w.tx.bankTransaction.create).toHaveBeenCalledTimes(1);
+    expect(w.prisma.bankTransaction.create).not.toHaveBeenCalled();
+    expect(w.payments.afterCreate).not.toHaveBeenCalled();
   });
 
   // guards: BR-BANK-041
-  it('повтор після відмови проходить: лишається один живий рядок, рознесений', async () => {
+  it('повтор після відмови проходить: один рядок, рознесений, одна оплата', async () => {
     const w = await world();
-    w.payments.create.mockRejectedValueOnce(new BadRequestException('Рахунок уже оплачено'));
+    w.payments.createInTx.mockRejectedValueOnce(new BadRequestException('Рахунок уже оплачено'));
     const body = incoming({ type: 'SERVICE', counterpartyId: ID.client });
 
     await expect(w.service.createManual(ORG, body, USER)).rejects.toThrow('Рахунок уже оплачено');
     await w.service.createManual(ORG, body, USER);
 
-    expect(w.db.rows('bankTransaction')).toHaveLength(2);
     expect(live(w)).toHaveLength(1);
-    expect(live(w)[0]).toMatchObject({ status: 'MATCHED', paymentId: PAYMENT_ID });
+    expect(only(w)).toMatchObject({ status: 'MATCHED', paymentId: PAYMENT_ID });
+    expect(w.db.rows('payment')).toHaveLength(1);
   });
 
-  // Оплату створено (payments.create відпрацював), а запис paymentId у рядок упав: рядок уже
-  // рознесено, і прибрати його означало б, що повторне внесення заплатить удруге.
-  // guards: BR-BANK-041
-  it('оплату створено, а далі збій → рядок лишається рознесеним, не прибирається', async () => {
+  // Оплату створено (createInTx відпрацював), а запис paymentId у рядок упав. До 2026-11-06 рядок
+  // лишався MATCHED без посилання (кілька комітів); тепер відкочується все — і оплата теж, тож
+  // повторне внесення не заплатить удруге (Bug #1023).
+  // guards: BR-BANK-041, BR-BANK-009
+  it('оплату створено, а далі збій → немає ні рядка, ні оплати, ефектів після коміту немає', async () => {
     const w = await world();
-    const updateMany = w.prisma.bankTransaction.updateMany;
+    const updateMany = w.tx.bankTransaction.updateMany;
     const real = updateMany.getMockImplementation()!;
     updateMany
       .mockImplementationOnce(real) // CAS-захоплення
@@ -206,12 +208,28 @@ describe('createManual з allocation — вхідні види (BR-BANK-041)', (
       w.service.createManual(ORG, incoming({ type: 'SERVICE', counterpartyId: ID.client }), USER),
     ).rejects.toThrow('БД недоступна');
 
-    expect(w.payments.create).toHaveBeenCalledTimes(1);
-    expect(only(w)).toMatchObject({
-      status: 'MATCHED',
-      deletedAt: null,
-      counterpartyId: ID.client,
-    });
+    expect(w.payments.createInTx).toHaveBeenCalledTimes(1);
+    expect(w.db.rows('payment')).toEqual([]);
+    expect(w.db.rows('bankTransaction')).toEqual([]);
+    expect(w.payments.afterCreate).not.toHaveBeenCalled();
+  });
+
+  // Відповідь читається в транзакції (маршрут під ключем ідемпотентності), ефекти — після коміту.
+  // guards: BR-BANK-041
+  it('вхідний вид: відповідь читається в транзакції, пост-комітні ефекти — після неї', async () => {
+    const w = await world();
+
+    const res = await w.service.createManual(
+      ORG,
+      incoming({ type: 'SERVICE', counterpartyId: ID.client }),
+      USER,
+    );
+
+    expect(w.tx.bankTransaction.findFirstOrThrow).toHaveBeenCalledTimes(1);
+    expect(w.prisma.bankTransaction.findFirstOrThrow).not.toHaveBeenCalled();
+    expect(w.payments.afterCreate).toHaveBeenCalledTimes(1);
+    expect(w.payments.afterCreate.mock.calls[0]![1].payment.id).toBe(PAYMENT_ID);
+    expect(res).toMatchObject({ status: 'MATCHED', paymentId: PAYMENT_ID });
   });
 });
 
@@ -357,13 +375,14 @@ describe('createManual з allocation — вихідні види (BR-BANK-041)',
       USER,
     );
 
-    expect(only(w)).toMatchObject({
+    const row = only(w);
+    expect(row).toMatchObject({
       status: 'MATCHED',
       matchedType: 'SUPPLIER_PAYMENT',
       counterpartyId: ID.supplier,
       supplierPaymentId: ID.spNew,
     });
-    expect(w.supplierPayments.create.mock.calls[0]![1]).toMatchObject({
+    expect(w.supplierPayments.prepareCreateAndConfirm.mock.calls[0]![1]).toMatchObject({
       supplierId: ID.supplier,
       sourceType: 'BANK_ACCOUNT',
       bankAccountId: ID.account,
@@ -371,7 +390,12 @@ describe('createManual з allocation — вихідні види (BR-BANK-041)',
       documentDate: '2026-10-09',
       purchaseOrderId: ID.po,
     });
-    expect(w.db.get('supplierPayment', ID.spNew).status).toBe('CONFIRMED');
+    expect(w.supplierPayments.createAndConfirmInTx.mock.calls[0]![0]).toBe(w.tx);
+    // Оплата пам'ятає рядок, з якого її створено (BR-BANK-039).
+    expect(w.db.get('supplierPayment', ID.spNew)).toMatchObject({
+      status: 'CONFIRMED',
+      originBankTransactionId: row.id,
+    });
   });
 
   // Відмова всередині транзакції: рядок вставлено тим самим tx-клієнтом, тож відкочується з нею.
@@ -407,11 +431,10 @@ describe('createManual з allocation — вихідні види (BR-BANK-041)',
   });
 
   // guards: BR-BANK-041, BR-BANK-029
-  it('нова оплата постачальнику не провелась (чернетка) → чернетку скасовано, рядок прибрано', async () => {
+  it('нова оплата постачальнику не провелась → ні рядка, ні оплати, клієнт отримує ту саму помилку', async () => {
     const w = await world();
-    w.supplierPayments.confirm.mockRejectedValueOnce(
-      new BadRequestException('Курсу на дату немає'),
-    );
+    const refusal = new BadRequestException('Курсу на дату немає');
+    w.supplierPayments.createAndConfirmInTx.mockRejectedValueOnce(refusal);
 
     await expect(
       w.service.createManual(
@@ -419,21 +442,22 @@ describe('createManual з allocation — вихідні види (BR-BANK-041)',
         dto({ type: 'SUPPLIER_PAYMENT', counterpartyId: ID.supplier }),
         USER,
       ),
-    ).rejects.toThrow('Курсу на дату немає');
+    ).rejects.toBe(refusal);
 
-    expect(w.db.get('supplierPayment', ID.spNew).status).toBe('CANCELLED');
-    expect(only(w).deletedAt).toBeInstanceOf(Date);
-    expect(live(w)).toEqual([]);
+    expect(w.db.rows('bankTransaction')).toEqual([]);
+    expect(w.db.rows('supplierPayment')).toEqual([]);
   });
 
-  // BR-BANK-029: проведена оплата рядка не втрачає — прибрати його означало б заплатити двічі.
+  // До 2026-11-06 проведена оплата лишала рядок MATCHED (компенсація, BR-BANK-029 стара редакція);
+  // тепер збій після проведення відкочує й саму оплату — платити вдруге нема чим.
   // guards: BR-BANK-041, BR-BANK-029
-  it('оплату постачальнику вже проведено, а далі збій → рядок НЕ прибирається, лишається з оплатою', async () => {
+  it('оплату постачальнику створено й проведено, а далі збій → немає ні рядка, ні оплати', async () => {
     const w = await world();
-    w.supplierPayments.confirm.mockImplementationOnce((_o: string, id: string) => {
-      w.db.get('supplierPayment', id).status = 'CONFIRMED';
-      return Promise.reject(new Error('обрив після коміту'));
-    });
+    const updateMany = w.tx.bankTransaction.updateMany;
+    const real = updateMany.getMockImplementation()!;
+    updateMany
+      .mockImplementationOnce(real) // CAS-захоплення
+      .mockImplementationOnce(() => Promise.reject(new Error('БД недоступна'))); // посилання
 
     await expect(
       w.service.createManual(
@@ -441,13 +465,11 @@ describe('createManual з allocation — вихідні види (BR-BANK-041)',
         dto({ type: 'SUPPLIER_PAYMENT', counterpartyId: ID.supplier }),
         USER,
       ),
-    ).rejects.toThrow('обрив після коміту');
+    ).rejects.toThrow('БД недоступна');
 
-    expect(only(w)).toMatchObject({
-      deletedAt: null,
-      status: 'MATCHED',
-      supplierPaymentId: ID.spNew,
-    });
+    expect(w.supplierPayments.createAndConfirmInTx).toHaveBeenCalledTimes(1);
+    expect(w.db.rows('supplierPayment')).toEqual([]);
+    expect(w.db.rows('bankTransaction')).toEqual([]);
   });
 });
 

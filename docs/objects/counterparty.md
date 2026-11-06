@@ -219,20 +219,21 @@ cd apps/api && npx vitest run src/modules/counterparties/<файл>.spec.ts
 
 **Маршрути UI:** `/counterparties`, `/vehicles`
 
-| Аспект                                                                                                                                                                       | Тест                                            | Кейсів |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- | ------ |
-| audit snapshot                                                                                                                                                               | `counterparties.audit-snapshot.spec.ts`         | 4      |
-| HTTP-контракт (DTO, статуси, валідація)                                                                                                                                      | `counterparties.contract.spec.ts`               | 21     |
-| counterparty contracts                                                                                                                                                       | `counterparties.counterparty-contracts.spec.ts` | 32     |
-| crud search                                                                                                                                                                  | `counterparties.crud-search.spec.ts`            | 17     |
-| гаражі (isDefault, гараж з авто й блокування рядка — BR-CP-015)                                                                                                              | `counterparties.garages.spec.ts`                | 8      |
-| пов'язані документи                                                                                                                                                          | `counterparties.linked-docs.spec.ts`            | 5      |
-| рахунок розрахунків (SettlementAccount)                                                                                                                                      | `counterparties.settlement-account.spec.ts`     | 3      |
-| статуси-мітки (assign / unassign)                                                                                                                                            | `counterparties.status-labels.spec.ts`          | 9      |
-| комірник читає постачальників (BR-CP-014)                                                                                                                                    | `counterparties.storekeeper-suppliers.spec.ts`  | 22     |
-| supplier naming (+ назва обов'язкова)                                                                                                                                        | `counterparties.supplier-naming.spec.ts`        | 6      |
-| IBAN з реквізиту для автозіставлення виписок (BR-CP-018)                                                                                                                     | `counterparties.iban.spec.ts`                   | 12     |
-| згода на повідомлення й підписка на бот; тіло через схему контролера — поля згоди не губляться, `vatPayer` не скидається частковим PATCH (BR-AUT-041, 042; Bug #1000, #1001) | `counterparties.consent.spec.ts`                | 6      |
+| Аспект                                                                                                                                                                       | Тест                                                 | Кейсів |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- | ------ |
+| audit snapshot                                                                                                                                                               | `counterparties.audit-snapshot.spec.ts`              | 4      |
+| HTTP-контракт (DTO, статуси, валідація)                                                                                                                                      | `counterparties.contract.spec.ts`                    | 21     |
+| counterparty contracts                                                                                                                                                       | `counterparties.counterparty-contracts.spec.ts`      | 32     |
+| crud search                                                                                                                                                                  | `counterparties.crud-search.spec.ts`                 | 17     |
+| видалення з увімкненим підключенням до API постачальника → 409 (BR-CP-019)                                                                                                   | `counterparties.remove-supplier-connections.spec.ts` | 7      |
+| гаражі (isDefault, гараж з авто й блокування рядка — BR-CP-015)                                                                                                              | `counterparties.garages.spec.ts`                     | 8      |
+| пов'язані документи                                                                                                                                                          | `counterparties.linked-docs.spec.ts`                 | 5      |
+| рахунок розрахунків (SettlementAccount)                                                                                                                                      | `counterparties.settlement-account.spec.ts`          | 3      |
+| статуси-мітки (assign / unassign)                                                                                                                                            | `counterparties.status-labels.spec.ts`               | 9      |
+| комірник читає постачальників (BR-CP-014)                                                                                                                                    | `counterparties.storekeeper-suppliers.spec.ts`       | 22     |
+| supplier naming (+ назва обов'язкова)                                                                                                                                        | `counterparties.supplier-naming.spec.ts`             | 6      |
+| IBAN з реквізиту для автозіставлення виписок (BR-CP-018)                                                                                                                     | `counterparties.iban.spec.ts`                        | 12     |
+| згода на повідомлення й підписка на бот; тіло через схему контролера — поля згоди не губляться, `vatPayer` не скидається частковим PATCH (BR-AUT-041, 042; Bug #1000, #1001) | `counterparties.consent.spec.ts`                     | 6      |
 
 Разом: **145** кейсів (цифри з `vitest --reporter=json`, не з grep).
 

@@ -19,6 +19,8 @@ import { BANK_TX_IN_MATCH_TYPES } from './bank-statement.dto';
 
 // Аспект: рознесення рядка в платіж та ігнорування (FSM статусу, matchTransaction / ignoreTransaction / list). Правила BR-BANK — docs/objects/bank-statements.md.
 // Кожен кейс доведений мутацією продукт-коду (зламав правило → червоний → відкотив).
+// З 2026-11-06 (Bug #1023) рознесення — одна транзакція: `payments.prepareCreate` до неї,
+// `payments.createInTx(tx, …)` і посилання в ній, `payments.afterCreate` після коміту.
 
 describe('BankReconciliationService.matchTransaction — CAS, лінк платежу, валідація рахунку', () => {
   const CP_ID = '22222222-2222-4222-8222-222222222222';
@@ -62,7 +64,6 @@ describe('BankReconciliationService.matchTransaction — CAS, лінк плат�
     });
     prisma.bankTransaction.findFirstOrThrow.mockResolvedValue(ROW);
     const payments = makePayments();
-    payments.create.mockResolvedValue({ id: 'pay-1' });
     return { prisma, payments, service: await build(prisma, makeExchange(), payments) };
   }
 
@@ -90,18 +91,36 @@ describe('BankReconciliationService.matchTransaction — CAS, лінк плат�
   });
 
   // guards: BR-BANK-007
-  it('рядка не існує (або чужа організація) → 404, payments.create НЕ викликаний', async () => {
+  it('рядка не існує (або чужа організація) → 404, оплата не готується й не створюється', async () => {
     const { prisma, payments, service } = await setup();
-    prisma.bankTransaction.updateMany.mockResolvedValueOnce({ count: 0 });
     prisma.bankTransaction.findFirst.mockResolvedValueOnce(null);
     await expect(
       service.matchTransaction(ORG, TX_ID, { counterpartyId: CP_ID, type: 'SERVICE' }),
     ).rejects.toMatchObject({ status: 404 });
-    expect(payments.create).not.toHaveBeenCalled();
+    expect(payments.prepareCreate).not.toHaveBeenCalled();
+    expect(payments.createInTx).not.toHaveBeenCalled();
+    expect(prisma.bankTransaction.updateMany).not.toHaveBeenCalled();
+    expect(prisma.bankTransaction.findFirst.mock.calls[0]![0].where).toEqual({
+      id: TX_ID,
+      orgId: ORG,
+      deletedAt: null,
+    });
   });
 
-  // guards: BR-BANK-008
-  it('платіж створюється на рахунок рядка, а його id лінкується у paymentId рядка', async () => {
+  // Рядок прочитано, а між читанням і транзакцією його розніс інший запит: CAS не захоплює.
+  // guards: BR-BANK-007
+  it('CAS у транзакції програв (рядок уже рознесено) → 409, оплата не створюється, ефектів немає', async () => {
+    const { prisma, payments, service } = await setup();
+    prisma.bankTransaction.updateMany.mockResolvedValueOnce({ count: 0 });
+    await expect(
+      service.matchTransaction(ORG, TX_ID, { counterpartyId: CP_ID, type: 'SERVICE' }),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(payments.createInTx).not.toHaveBeenCalled();
+    expect(payments.afterCreate).not.toHaveBeenCalled();
+  });
+
+  // guards: BR-BANK-008, BR-BANK-009
+  it('платіж створюється на рахунок рядка в транзакції рознесення, а його id лінкується у paymentId рядка', async () => {
     const { prisma, payments, service } = await setup();
     const res = await service.matchTransaction(
       ORG,
@@ -109,8 +128,8 @@ describe('BankReconciliationService.matchTransaction — CAS, лінк плат�
       { counterpartyId: CP_ID, type: 'SERVICE' },
       'user-1',
     );
-    expect(payments.create).toHaveBeenCalledTimes(1);
-    const [org, dto, userId] = payments.create.mock.calls[0]!;
+    expect(payments.prepareCreate).toHaveBeenCalledTimes(1);
+    const [org, dto, userId] = payments.prepareCreate.mock.calls[0]!;
     expect(org).toBe(ORG);
     expect(userId).toBe('user-1');
     expect(dto).toMatchObject({
@@ -121,34 +140,37 @@ describe('BankReconciliationService.matchTransaction — CAS, лінк плат�
     });
     // SERVICE не прив'язує платіж до рахунку-фактури.
     expect(dto.invoiceId).toBeUndefined();
+    // Оплата пишеться клієнтом транзакції рознесення (тут — той самий мок), підготовкою з prepareCreate.
+    expect(payments.createInTx).toHaveBeenCalledTimes(1);
+    expect(payments.createInTx.mock.calls[0]![1]).toBe(
+      await payments.prepareCreate.mock.results[0]!.value,
+    );
     const link = prisma.bankTransaction.updateMany.mock.calls.find(
       c => (c[0] as { data: { paymentId?: string } }).data.paymentId !== undefined,
     );
     expect(link).toBeDefined();
+    // `paymentId: null` у where: оплата лягає лише в рядок, у якого її ще немає (одна ↔ один).
     expect(link![0]).toEqual({
-      where: { id: TX_ID, orgId: ORG, status: 'MATCHED' },
+      where: { id: TX_ID, orgId: ORG, status: 'MATCHED', paymentId: null },
       data: { paymentId: 'pay-1' },
     });
     expect(res.paymentId).toBe('pay-1');
+    expect(payments.afterCreate).toHaveBeenCalledTimes(1);
   });
 
+  // Bug #1023: до 2026-11-06 після збою оплати рядок повертався в UNMATCHED окремим записом
+  // (компенсація); тепер відкочує транзакція — ручного запису «назад» немає, пост-комітних ефектів теж.
   // guards: BR-BANK-009
-  it('відкат після збою платежу — умовний: лише MATCHED без paymentId → UNMATCHED, контрагент і тип очищено', async () => {
+  it('збій оплати в транзакції → помилка проброшена; лише CAS, без ручного відкату й без ефектів після коміту', async () => {
     const { prisma, payments, service } = await setup();
-    payments.create.mockRejectedValueOnce(new Error('boom'));
+    payments.createInTx.mockRejectedValueOnce(new Error('boom'));
     await expect(
       service.matchTransaction(ORG, TX_ID, { counterpartyId: CP_ID, type: 'SERVICE' }),
     ).rejects.toThrow('boom');
-    expect(prisma.bankTransaction.updateMany).toHaveBeenCalledTimes(2);
-    const rollback = prisma.bankTransaction.updateMany.mock.calls[1]![0];
-    // Умова відкату — рівно ця: без `paymentId: null` відкат зняв би статус із рядка, платіж якого
-    // вже створено. У data правило вимагає три поля; чи очищати ще й matchedAt / matchedBy — не його справа.
-    expect(rollback.where).toEqual({ id: TX_ID, orgId: ORG, status: 'MATCHED', paymentId: null });
-    expect(rollback.data).toMatchObject({
-      status: 'UNMATCHED',
-      counterpartyId: null,
-      matchedType: null,
-    });
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(prisma.bankTransaction.updateMany).toHaveBeenCalledTimes(1);
+    expect(prisma.bankTransaction.updateMany.mock.calls[0]![0].data.status).toBe('MATCHED');
+    expect(payments.afterCreate).not.toHaveBeenCalled();
   });
 
   // guards: BR-BANK-010
@@ -162,7 +184,7 @@ describe('BankReconciliationService.matchTransaction — CAS, лінк плат�
         invoiceId: INV_ID,
       }),
     ).rejects.toMatchObject({ status: 404 });
-    expect(payments.create).not.toHaveBeenCalled();
+    expect(payments.createInTx).not.toHaveBeenCalled();
     expect(prisma.bankTransaction.updateMany).not.toHaveBeenCalled();
   });
 
@@ -178,7 +200,7 @@ describe('BankReconciliationService.matchTransaction — CAS, лінк плат�
       }),
     ).rejects.toThrow('Рахунок виписано на іншого контрагента');
     expect(prisma.bankTransaction.updateMany).not.toHaveBeenCalled();
-    expect(payments.create).not.toHaveBeenCalled();
+    expect(payments.createInTx).not.toHaveBeenCalled();
   });
 
   // guards: BR-BANK-016
@@ -245,7 +267,7 @@ describe('BankReconciliationService.ignoreTransaction', () => {
       where: { id: TX_ID, orgId: ORG, deletedAt: null, status: 'UNMATCHED', paymentId: null },
       data: { status: 'IGNORED', ignoreReason: 'помилковий переказ' },
     });
-    expect(payments.create).not.toHaveBeenCalled();
+    expect(payments.createInTx).not.toHaveBeenCalled();
     expect(res.status).toBe('IGNORED');
     expect(res.ignoreReason).toBe('помилковий переказ');
   });
@@ -397,7 +419,7 @@ describe('BankReconciliationService.matchTransaction — лише вхідний
         message: translateError('err.bankStatement.wrongDirection', 'uk'),
       });
 
-      expect(w.payments.create).not.toHaveBeenCalled();
+      expect(w.payments.createInTx).not.toHaveBeenCalled();
       expect(w.row()).toMatchObject({
         status: 'UNMATCHED',
         matchedType: null,
@@ -419,8 +441,8 @@ describe('BankReconciliationService.matchTransaction — лише вхідний
       USER,
     );
 
-    expect(w.payments.create).toHaveBeenCalledTimes(1);
-    expect(w.payments.create.mock.calls[0]![1]).toMatchObject({
+    expect(w.payments.createInTx).toHaveBeenCalledTimes(1);
+    expect(w.payments.prepareCreate.mock.calls[0]![1]).toMatchObject({
       counterpartyId: ID.client,
       amount: ROW_AMOUNT,
       bankAccountId: ID.account,
@@ -457,7 +479,7 @@ describe('BankReconciliationService — вхідні види оплати кл�
         message: translateError('err.counterparty.notAClient', 'uk'),
       });
 
-      expect(w.payments.create).not.toHaveBeenCalled();
+      expect(w.payments.createInTx).not.toHaveBeenCalled();
       expect(w.row()).toMatchObject({ status: 'UNMATCHED', matchedType: null, paymentId: null });
     },
   );
@@ -480,7 +502,7 @@ describe('BankReconciliationService — вхідні види оплати кл�
       ),
     ).rejects.toMatchObject({ status: 400 });
 
-    expect(w.payments.create).not.toHaveBeenCalled();
+    expect(w.payments.createInTx).not.toHaveBeenCalled();
     expect(w.db.rows('bankTransaction')).toEqual([]);
   });
 
@@ -496,7 +518,70 @@ describe('BankReconciliationService — вхідні види оплати кл�
       USER,
     );
 
-    expect(w.payments.create).toHaveBeenCalledTimes(1);
+    expect(w.payments.createInTx).toHaveBeenCalledTimes(1);
     expect(w.row()).toMatchObject({ status: 'MATCHED', counterpartyId: ID.both });
+  });
+});
+
+// Bug #1023 (рішення власника 2026-11-06): захоплення рядка, оплата й посилання — одна транзакція.
+// Підробка БД відкочує записи tx-клієнта, тож видно, що лишилось після збою.
+// Mutation-verify: `payments.createInTx(this.prisma, …)` замість `tx` (оплата повз транзакцію) →
+// «збій ПІСЛЯ створення оплати» червоніє: оплата лишається в базі.
+describe('BankReconciliationService.matchTransaction — одна транзакція (BR-BANK-009)', () => {
+  // guards: BR-BANK-009
+  it('збій ПІСЛЯ створення оплати (запис посилання) → рядок UNMATCHED без контрагента й типу, оплати немає', async () => {
+    const w = await makeWorld();
+    w.addRow({ direction: 'IN' });
+    const updateMany = w.tx.bankTransaction.updateMany;
+    const real = updateMany.getMockImplementation()!;
+    updateMany
+      .mockImplementationOnce(real) // CAS-захоплення
+      .mockImplementationOnce(() => Promise.reject(new Error('БД недоступна'))); // посилання
+
+    await expect(
+      w.service.matchTransaction(
+        W_ORG,
+        ID.tx,
+        { counterpartyId: ID.client, type: 'SERVICE' },
+        USER,
+      ),
+    ).rejects.toThrow('БД недоступна');
+
+    expect(w.payments.createInTx).toHaveBeenCalledTimes(1);
+    expect(w.db.rows('payment')).toEqual([]);
+    expect(w.row()).toMatchObject({
+      status: 'UNMATCHED',
+      matchedType: null,
+      counterpartyId: null,
+      paymentId: null,
+      matchedAt: null,
+      matchedBy: null,
+    });
+    // Чек, бали й аудит — лише після коміту, а коміту не було.
+    expect(w.payments.afterCreate).not.toHaveBeenCalled();
+  });
+
+  // guards: BR-BANK-009
+  it('успіх: оплата пишеться клієнтом транзакції, ефекти після коміту — з тією самою оплатою', async () => {
+    const w = await makeWorld();
+    w.addRow({ direction: 'IN' });
+
+    const res = await w.service.matchTransaction(
+      W_ORG,
+      ID.tx,
+      { counterpartyId: ID.client, type: 'SERVICE' },
+      USER,
+    );
+
+    expect(w.payments.createInTx.mock.calls[0]![0]).toBe(w.tx);
+    expect(w.row()).toMatchObject({ status: 'MATCHED', paymentId: ID.payment });
+    expect(w.payments.afterCreate).toHaveBeenCalledTimes(1);
+    const [prepared, created] = w.payments.afterCreate.mock.calls[0]!;
+    expect(prepared).toBe(await w.payments.prepareCreate.mock.results[0]!.value);
+    expect(created.payment.id).toBe(ID.payment);
+    // Відповідь — з транзакції рознесення (маршрут під ключем ідемпотентності).
+    expect(w.tx.bankTransaction.findFirstOrThrow).toHaveBeenCalledTimes(1);
+    expect(w.prisma.bankTransaction.findFirstOrThrow).not.toHaveBeenCalled();
+    expect(res).toMatchObject({ status: 'MATCHED', paymentId: ID.payment });
   });
 });

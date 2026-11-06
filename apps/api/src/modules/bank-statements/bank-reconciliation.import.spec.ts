@@ -43,7 +43,7 @@ describe('BankReconciliationService.applyImport — ідемпотентніст
       bankAccountId: 'ba-1',
       rows: [{ externalId: 'e1', operationDate: '2026-09-01', amount: 100 }],
     });
-    expect(payments.create).not.toHaveBeenCalled();
+    expect(payments.createInTx).not.toHaveBeenCalled();
   });
 
   // guards: BR-BANK-006

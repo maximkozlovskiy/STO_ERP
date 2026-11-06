@@ -38,6 +38,7 @@ describe('CounterpartiesService', () => {
     workOrder: PrismaModelMock;
     purchaseOrder: PrismaModelMock;
     invoice: PrismaModelMock;
+    supplierConnection: PrismaModelMock;
     $transaction: ReturnType<typeof vi.fn>;
   };
 
@@ -59,6 +60,8 @@ describe('CounterpartiesService', () => {
       workOrder: { count: vi.fn().mockResolvedValue(0) },
       purchaseOrder: { count: vi.fn().mockResolvedValue(0) },
       invoice: { count: vi.fn().mockResolvedValue(0) },
+      // BR-CP-019: увімкнених підключень до API постачальника немає (кейси — у remove-supplier-connections).
+      supplierConnection: { findMany: vi.fn().mockResolvedValue([]) },
       // findAll використовує $transaction([findMany, count]) — виконуємо масив як є
       $transaction: vi.fn().mockImplementation((ops: Promise<unknown>[]) => Promise.all(ops)),
     };

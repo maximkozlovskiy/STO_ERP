@@ -20,23 +20,21 @@ import {
 } from './bank-reconciliation.world.spec-fixture';
 
 // Аспект: вихідний платіж як оплата постачальнику — прив'язка до проведеної оплати, створення
-// нової з рядка, відкат невдалого проведення, список кандидатів для прив'язки.
+// нової з рядка (одна транзакція, Bug #1023), список кандидатів для прив'язки.
 // Правила BR-BANK-027, 028, 029 (+ 026, 038) — docs/objects/bank-statements.md.
 //
-// Написано ДО реалізації (2026-10-09) з контракту: reconcile(orgId, txId, dto, userId),
-// listSupplierPaymentCandidates(orgId, txId), SupplierPaymentsService.create / confirm(…, { rateDate }) / cancel.
+// Написано ДО реалізації (2026-10-09) з контракту; 2026-11-06 нова оплата переписана на одну
+// транзакцію: SupplierPaymentsService.prepareCreateAndConfirm(…, { rateDate }) до неї,
+// createAndConfirmInTx(tx, prepared, userId, { originBankTransactionId }) у ній.
 //
 // Mutation-verify (кожна мутація мусить валити названі кейси):
 //  · прив'язка: прибрати будь-яку з перевірок (status CONFIRMED, sourceType, bankAccountId, amount,
 //    currencyId) → відповідний рядок «оплата … → 400»; не ловити P2002 → «унікальний індекс → 409»;
-//  · прив'язка: покликати supplierPayments.confirm або settlements.createTransaction → «нічого не проводиться»;
-//  · нова: передати в create суму з dto / не передати bankAccountId рядка / documentDate = сьогодні →
-//    «створює і проводить оплату з даними рядка»; не передати `{ rateDate }` у confirm → той самий кейс;
-//  · нова: прибрати cancel у catch → «проведення впало → чернетку скасовано»; не повертати рядок
-//    в UNMATCHED або не чистити supplierPaymentId → той самий кейс і «можна рознести знову»;
-//  · нова: прибрати `matchedAt: capturedAt` із where запису посилання → «…захопили знову іншим запитом»;
-//    із where відкату → «проведення впало, а рядок уже захоплено іншим запитом»;
-//  · нова: звільняти рядок, коли cancel відмовив для ПРОВЕДЕНОЇ оплати → «проведення закомічено, але confirm кинув»;
+//  · прив'язка: покликати settlements.createTransaction → «нічого не проводиться»;
+//  · нова: передати в оплату суму з dto / не передати bankAccountId рядка / documentDate = сьогодні /
+//    без `{ rateDate }` / без `originBankTransactionId` → «створює і проводить оплату з даними рядка»;
+//  · нова: `createAndConfirmInTx(this.prisma, …)` → «оплату створено й проведено, а запис посилання впав»;
+//  · нова: прибрати `status: 'UNMATCHED'` з CAS → «рядок уже захопив інший запит»;
 //  · кандидати: прибрати будь-яку умову відбору → «лише проведені банківські оплати…».
 
 const MISMATCH = translateError('err.bankStatement.supplierPaymentMismatch', 'uk');
@@ -189,10 +187,9 @@ describe('BankReconciliationService.reconcile — SUPPLIER_PAYMENT, нова о�
 
     await reconcile(w, forged);
 
-    expect(w.supplierPayments.create).toHaveBeenCalledTimes(1);
-    const [createOrg, created, createUser] = w.supplierPayments.create.mock.calls[0]!;
-    expect(createOrg).toBe(ORG);
-    expect(createUser).toBe(USER);
+    expect(w.supplierPayments.prepareCreateAndConfirm).toHaveBeenCalledTimes(1);
+    const [prepOrg, created, prepOpts] = w.supplierPayments.prepareCreateAndConfirm.mock.calls[0]!;
+    expect(prepOrg).toBe(ORG);
     expect(created).toMatchObject({
       supplierId: ID.supplier,
       sourceType: 'BANK_ACCOUNT',
@@ -202,14 +199,16 @@ describe('BankReconciliationService.reconcile — SUPPLIER_PAYMENT, нова о�
     });
     // Дата документа = календарна дата операції рядка (YYYY-MM-DD), не «сьогодні» і не з запиту.
     expect(String(created.documentDate).slice(0, 10)).toBe('2026-09-28');
-
-    expect(w.supplierPayments.confirm).toHaveBeenCalledTimes(1);
-    const [confirmOrg, confirmedId, confirmUser, opts] = w.supplierPayments.confirm.mock.calls[0]!;
-    expect(confirmOrg).toBe(ORG);
-    expect(confirmedId).toBe(ID.spNew);
-    expect(confirmUser).toBe(USER);
     // Курс проведення — на дату операції рядка.
-    expect((opts as { rateDate?: Date } | undefined)?.rateDate).toEqual(OP_DATE);
+    expect((prepOpts as { rateDate?: Date } | undefined)?.rateDate).toEqual(OP_DATE);
+
+    // Створення й проведення — у транзакції рознесення, з походженням «цей рядок» (BR-BANK-039).
+    expect(w.supplierPayments.createAndConfirmInTx).toHaveBeenCalledTimes(1);
+    const [client, prepared, user, opts] = w.supplierPayments.createAndConfirmInTx.mock.calls[0]!;
+    expect(client).toBe(w.tx);
+    expect(prepared).toBe(await w.supplierPayments.prepareCreateAndConfirm.mock.results[0]!.value);
+    expect(user).toBe(USER);
+    expect(opts).toEqual({ originBankTransactionId: ID.tx });
 
     expect(w.row()).toMatchObject({
       status: 'MATCHED',
@@ -217,11 +216,13 @@ describe('BankReconciliationService.reconcile — SUPPLIER_PAYMENT, нова о�
       supplierPaymentId: ID.spNew,
       counterpartyId: ID.supplier,
     });
-    expect(w.db.get('supplierPayment', ID.spNew).status).toBe('CONFIRMED');
-    // Проведення йде ЛИШЕ через SupplierPaymentsService.confirm — сам сервіс виписки не проводить.
+    expect(w.db.get('supplierPayment', ID.spNew)).toMatchObject({
+      status: 'CONFIRMED',
+      originBankTransactionId: ID.tx,
+    });
+    // Проведення йде ЛИШЕ через SupplierPaymentsService — сам сервіс виписки не проводить.
     expect(w.settlements.createTransaction).not.toHaveBeenCalled();
     expect(w.cash.createOperation).not.toHaveBeenCalled();
-    expect(w.supplierPayments.cancel).not.toHaveBeenCalled();
   });
 
   // guards: BR-BANK-028
@@ -231,7 +232,7 @@ describe('BankReconciliationService.reconcile — SUPPLIER_PAYMENT, нова о�
 
     await reconcile(w, NEW);
 
-    const created = w.supplierPayments.create.mock.calls[0]![1];
+    const created = w.supplierPayments.prepareCreateAndConfirm.mock.calls[0]![1];
     expect(created.purchaseOrderId ?? null).toBeNull();
     expect(w.row()).toMatchObject({ status: 'MATCHED', supplierPaymentId: ID.spNew });
   });
@@ -246,8 +247,8 @@ describe('BankReconciliationService.reconcile — SUPPLIER_PAYMENT, нова о�
     ).rejects.toMatchObject({ status: 400 });
 
     expect(w.row()).toMatchObject(FREE_ROW);
-    expect(w.supplierPayments.confirm).not.toHaveBeenCalled();
-    expect(w.db.rows('supplierPayment').filter(p => p.status === 'CONFIRMED')).toEqual([]);
+    expect(w.supplierPayments.createAndConfirmInTx).not.toHaveBeenCalled();
+    expect(w.db.rows('supplierPayment')).toEqual([]);
   });
 
   // guards: BR-BANK-038
@@ -263,7 +264,7 @@ describe('BankReconciliationService.reconcile — SUPPLIER_PAYMENT, нова о�
     });
 
     expect(w.row()).toMatchObject(FREE_ROW);
-    expect(w.supplierPayments.confirm).not.toHaveBeenCalled();
+    expect(w.supplierPayments.createAndConfirmInTx).not.toHaveBeenCalled();
   });
 
   // guards: BR-BANK-028
@@ -276,130 +277,76 @@ describe('BankReconciliationService.reconcile — SUPPLIER_PAYMENT, нова о�
     ).rejects.toMatchObject({ status: 400 });
 
     expect(w.row()).toMatchObject(FREE_ROW);
-    expect(w.supplierPayments.confirm).not.toHaveBeenCalled();
+    expect(w.supplierPayments.createAndConfirmInTx).not.toHaveBeenCalled();
   });
 
+  // Перевірки оплати (постачальник, замовлення, курс) — до транзакції: їх відмова рядка не чіпає.
+  // guards: BR-BANK-028, BR-BANK-029
+  it('перевірки оплати відмовили (немає курсу на дату) → рядок не захоплювався, транзакції не було', async () => {
+    const w = await makeWorld();
+    w.addRow();
+    const refusal = new BadRequestException('Немає курсу на дату операції');
+    w.supplierPayments.prepareCreateAndConfirm.mockRejectedValueOnce(refusal);
+
+    await expect(reconcile(w, NEW)).rejects.toBe(refusal);
+
+    expect(w.statusWrites('MATCHED')).toEqual([]);
+    expect(w.prisma.$transaction).not.toHaveBeenCalled();
+    expect(w.row()).toMatchObject({ ...FREE_ROW, matchedAt: null, matchedBy: null });
+  });
+
+  // Bug #1023: до 2026-11-06 — чернетка, посилання, проведення окремими комітами й ручний відкат.
   // guards: BR-BANK-029
-  it('проведення впало → чернетку скасовано, рядок знову UNMATCHED без посилань, клієнт бачить початкову помилку', async () => {
+  it('проведення відмовило в транзакції → оплати немає, рядок UNMATCHED без посилань, клієнт бачить початкову помилку', async () => {
     const w = await makeWorld();
     w.addRow();
     const original = new BadRequestException('Валюта оплати не збігається з валютою замовлення');
-    w.supplierPayments.confirm.mockRejectedValueOnce(original);
+    w.supplierPayments.createAndConfirmInTx.mockRejectedValueOnce(original);
 
     await expect(reconcile(w, NEW)).rejects.toBe(original);
 
-    expect(w.supplierPayments.cancel).toHaveBeenCalledTimes(1);
-    const [cancelOrg, cancelledId] = w.supplierPayments.cancel.mock.calls[0]!;
-    expect(cancelOrg).toBe(ORG);
-    expect(cancelledId).toBe(ID.spNew);
     expect(w.row()).toMatchObject({ ...FREE_ROW, matchedAt: null, matchedBy: null });
-    expect(w.db.get('supplierPayment', ID.spNew).status).toBe('CANCELLED');
+    expect(w.db.rows('supplierPayment')).toEqual([]);
+  });
+
+  // Збій ПІСЛЯ створення й проведення оплати: відкочується все, разом з оплатою. Старий порядок
+  // (оплата власними комітами) лишив би проведену оплату без рядка — платити вдруге.
+  // Mutation-verify: `createAndConfirmInTx(this.prisma, …)` замість `tx` → кейс червоніє.
+  // guards: BR-BANK-029
+  it('оплату створено й проведено, а запис посилання впав → немає ні оплати, ні захоплення рядка', async () => {
+    const w = await makeWorld();
+    w.addRow();
+    const updateMany = w.tx.bankTransaction.updateMany;
+    const real = updateMany.getMockImplementation()!;
+    updateMany
+      .mockImplementationOnce(real) // CAS-захоплення
+      .mockImplementationOnce(() => Promise.reject(new Error('БД недоступна'))); // посилання
+
+    await expect(reconcile(w, NEW)).rejects.toThrow('БД недоступна');
+
+    expect(w.supplierPayments.createAndConfirmInTx).toHaveBeenCalledTimes(1);
+    expect(w.db.rows('supplierPayment')).toEqual([]);
+    expect(w.row()).toMatchObject({ ...FREE_ROW, matchedAt: null, matchedBy: null });
   });
 
   // guards: BR-BANK-029
   it('після невдалого проведення рядок можна рознести знову', async () => {
     const w = await makeWorld();
     w.addRow();
-    w.supplierPayments.confirm.mockRejectedValueOnce(new BadRequestException('збій'));
+    w.supplierPayments.createAndConfirmInTx.mockRejectedValueOnce(new BadRequestException('збій'));
     await expect(reconcile(w, NEW)).rejects.toThrow('збій');
 
     await reconcile(w, NEW);
 
     const row = w.row();
     expect(row).toMatchObject({ status: 'MATCHED', matchedType: 'SUPPLIER_PAYMENT' });
-    expect(row.supplierPaymentId).not.toBe(ID.spNew);
+    expect(w.db.rows('supplierPayment')).toHaveLength(1);
     expect(w.db.get('supplierPayment', row.supplierPaymentId as string).status).toBe('CONFIRMED');
   });
 
-  // guards: BR-BANK-029
-  it('навіть якщо скасування чернетки теж упало — рядок звільнено і клієнт бачить ПОЧАТКОВУ помилку', async () => {
-    const w = await makeWorld();
-    w.addRow();
-    const original = new BadRequestException('Немає курсу на дату операції');
-    w.supplierPayments.confirm.mockRejectedValueOnce(original);
-    w.supplierPayments.cancel.mockRejectedValueOnce(new Error('cancel теж упав'));
-
-    await expect(reconcile(w, NEW)).rejects.toBe(original);
-
-    expect(w.row()).toMatchObject(FREE_ROW);
-  });
-
-  // guards: BR-BANK-029
-  it('створення чернетки впало → рядок звільнено; скасовувати нічого, проведення не було', async () => {
-    const w = await makeWorld();
-    w.addRow();
-    const original = new BadRequestException('Не вдалося видати номер документа');
-    w.supplierPayments.create.mockRejectedValueOnce(original);
-
-    await expect(reconcile(w, NEW)).rejects.toBe(original);
-
-    expect(w.row()).toMatchObject({ ...FREE_ROW, matchedAt: null, matchedBy: null });
-    expect(w.supplierPayments.cancel).not.toHaveBeenCalled();
-    expect(w.supplierPayments.confirm).not.toHaveBeenCalled();
-  });
-
-  // `confirm` закомітив свою транзакцію і впав уже на читанні відповіді: оплата ПРОВЕДЕНА.
-  // Звільнений рядок дозволив би заплатити постачальнику вдруге.
-  // guards: BR-BANK-029
-  it('проведення закомічено, але confirm кинув → рядок лишається MATCHED з посиланням на проведену оплату', async () => {
-    const w = await makeWorld();
-    w.addRow();
-    const original = new Error('з’єднання обірвалось на читанні відповіді');
-    w.supplierPayments.confirm.mockImplementationOnce(async (_orgId: string, id: string) => {
-      w.db.get('supplierPayment', id).status = 'CONFIRMED';
-      throw original;
-    });
-
-    await expect(reconcile(w, NEW)).rejects.toBe(original);
-
-    expect(w.db.get('supplierPayment', ID.spNew).status).toBe('CONFIRMED');
-    expect(w.row()).toMatchObject({
-      status: 'MATCHED',
-      matchedType: 'SUPPLIER_PAYMENT',
-      counterpartyId: ID.supplier,
-      supplierPaymentId: ID.spNew,
-    });
-  });
-
-  // Скасування впало, і стан оплати з'ясувати не вдалося — безпечний бік: рядок не звільняється.
-  // guards: BR-BANK-029
-  it('скасування чернетки впало і стан оплати невідомий → рядок лишається MATCHED з посиланням', async () => {
-    const w = await makeWorld();
-    w.addRow();
-    w.supplierPayments.confirm.mockRejectedValueOnce(new Error('БД недоступна'));
-    w.supplierPayments.cancel.mockRejectedValueOnce(new Error('БД недоступна'));
-    w.prisma.supplierPayment.findFirst.mockRejectedValueOnce(new Error('БД недоступна'));
-
-    await expect(reconcile(w, NEW)).rejects.toThrow('БД недоступна');
-
-    expect(w.row()).toMatchObject({ status: 'MATCHED', supplierPaymentId: ID.spNew });
-  });
-
-  // Кроки нової оплати йдуть НЕ однією транзакцією. Поки створювалась чернетка, рядок звільнили
-  // (скасування рознесення) — проводити оплату для вже нічийного рядка не можна.
+  // Рядок рознесли між читанням і транзакцією (інший запит): CAS програє, оплата не створюється.
   // guards: BR-BANK-026, BR-BANK-029
-  it('рядок звільнили, поки створювалась чернетка → 409, оплата не проводиться, чернетку скасовано', async () => {
-    const w = await makeWorld();
-    w.addRow();
-    const create = w.supplierPayments.create.getMockImplementation()!;
-    w.supplierPayments.create.mockImplementationOnce(async (...args) => {
-      const draft = await create(...args);
-      Object.assign(w.row(), { ...FREE_ROW, matchedAt: null, matchedBy: null });
-      return draft;
-    });
-
-    await expect(reconcile(w, NEW)).rejects.toMatchObject({ status: 409 });
-
-    expect(w.supplierPayments.confirm).not.toHaveBeenCalled();
-    expect(w.db.get('supplierPayment', ID.spNew).status).toBe('CANCELLED');
-    expect(w.row()).toMatchObject(FREE_ROW);
-  });
-
-  // Те саме, але рядок устигли ще й захопити ЗНОВУ тим самим видом (інший запит, інший
-  // постачальник): статус і вид збігаються з нашими, посилання ще порожнє. Без мітки захоплення
-  // наша чернетка прив'язалась би до чужого рознесення й провелась би.
-  // guards: BR-BANK-026, BR-BANK-029
-  it('рядок звільнили й захопили знову іншим запитом → 409, наша оплата не проводиться, чуже захоплення ціле', async () => {
+  it('рядок уже захопив інший запит → 409, оплата не створюється, чуже захоплення ціле', async () => {
     const w = await makeWorld();
     w.addRow();
     const foreignCapture = {
@@ -410,41 +357,36 @@ describe('BankReconciliationService.reconcile — SUPPLIER_PAYMENT, нова о�
       matchedAt: new Date('2030-01-01T00:00:00.000Z'),
       matchedBy: '00000000-0000-4000-8000-000000000902',
     };
-    const create = w.supplierPayments.create.getMockImplementation()!;
-    w.supplierPayments.create.mockImplementationOnce(async (...args) => {
-      const draft = await create(...args);
+    const prepare = w.supplierPayments.prepareCreateAndConfirm.getMockImplementation()!;
+    w.supplierPayments.prepareCreateAndConfirm.mockImplementationOnce(async (...args) => {
+      const prepared = await prepare(...args);
       Object.assign(w.row(), foreignCapture);
-      return draft;
+      return prepared;
     });
 
     await expect(reconcile(w, NEW)).rejects.toMatchObject({ status: 409 });
 
-    expect(w.supplierPayments.confirm).not.toHaveBeenCalled();
-    expect(w.db.get('supplierPayment', ID.spNew).status).toBe('CANCELLED');
+    expect(w.supplierPayments.createAndConfirmInTx).not.toHaveBeenCalled();
+    expect(w.db.rows('supplierPayment')).toEqual([]);
     expect(w.row()).toMatchObject(foreignCapture);
   });
 
-  // Проведення впало, а рядок тим часом уже чужий: відкат не має його звільняти.
+  // Маршрут під ключем ідемпотентності: відповідь — з транзакції рознесення, а не після коміту.
   // guards: BR-BANK-029
-  it('проведення впало, а рядок уже захоплено іншим запитом → відкат чужого захоплення не чіпає', async () => {
+  it('відповідь читається в транзакції рознесення', async () => {
     const w = await makeWorld();
     w.addRow();
-    const foreignCapture = {
+
+    const res = await reconcile(w, NEW);
+
+    expect(w.tx.bankTransaction.findFirstOrThrow).toHaveBeenCalledTimes(1);
+    expect(w.prisma.bankTransaction.findFirstOrThrow).not.toHaveBeenCalled();
+    expect(res).toMatchObject({
       status: 'MATCHED',
-      matchedType: 'SUPPLIER_PAYMENT',
-      counterpartyId: ID.supplier2,
-      matchedAt: new Date('2030-01-01T00:00:00.000Z'),
-    };
-    w.supplierPayments.confirm.mockImplementationOnce(async () => {
-      // Чуже захоплення успадкувало б наше посилання лише в підробці — у житті воно має своє;
-      // для відкату важить мітка: рядок більше не наш.
-      Object.assign(w.row(), foreignCapture);
-      throw new BadRequestException('збій проведення');
+      supplierPaymentId: ID.spNew,
+      supplierPaymentNumber: 'ОПП-20261009-000007',
+      supplierPaymentFromRow: true,
     });
-
-    await expect(reconcile(w, NEW)).rejects.toThrow('збій проведення');
-
-    expect(w.row()).toMatchObject(foreignCapture);
   });
 });
 
