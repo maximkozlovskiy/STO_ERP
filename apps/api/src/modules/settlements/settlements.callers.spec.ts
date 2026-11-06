@@ -145,7 +145,8 @@ const CALL_SITES: Record<string, CallSite> = {
   },
 
   // ── Оплати клієнтів ────────────────────────────────────────────────────────────────────
-  'modules/payments/payments.service.ts#create:PAYMENT|PREPAYMENT': {
+  // createInTx — тіло транзакції create (Bug #1023: банк розносить у власній транзакції через createInTx).
+  'modules/payments/payments.service.ts#createInTx:PAYMENT|PREPAYMENT': {
     guard:
       'Проводка 1:1 із щойно створеним документом Payment у тій самій tx (documentId = created.id) — ' +
       'повторної проводки для того самого Payment не буває. Від повторного створення самого Payment: ' +
