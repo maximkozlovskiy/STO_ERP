@@ -116,6 +116,11 @@ export class SupplierConnectionsService {
     if (dto.counterpartyId && dto.counterpartyId !== current.counterpartyId) {
       await this.assertSupplier(orgId, dto.counterpartyId);
       await this.assertNoDuplicate(orgId, dto.counterpartyId, current.provider, id);
+    } else if (dto.enabled === true && !current.enabled) {
+      // BR-CP-019 у зворотний бік (Bug #1055): контрагента видаляють лише з вимкненими
+      // підключеннями — увімкнення такого підключення повернуло б роботу «у нікуди» (каталог і
+      // замовлення на видаленого постачальника). Увімкнути можна лише за живого постачальника.
+      await this.assertSupplier(orgId, current.counterpartyId);
     }
     if (dto.apiUrl !== undefined) this.assertApiUrl(dto.apiUrl);
     const options =

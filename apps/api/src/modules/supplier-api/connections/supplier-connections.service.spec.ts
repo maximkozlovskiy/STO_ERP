@@ -96,7 +96,7 @@ function setup(queueAdd = vi.fn(() => Promise.resolve({}))) {
     SupplierUrlPolicy.fromEnv({ NODE_ENV: 'test' }),
     { add: queueAdd } as unknown as Queue,
   );
-  return { service, supplierConnection, queueAdd };
+  return { service, supplierConnection, queueAdd, prisma };
 }
 
 const base = { counterpartyId: SUPPLIER_CP, provider: 'AVD_TRADE' as const };
@@ -129,6 +129,27 @@ describe('SupplierConnectionsService — підключення (BR-SCON-001…0
     expect(s.supplierConnection.rows[0].deletedAt).toBeInstanceOf(Date);
     await expect(s.service.findOne(ORG, first.id)).rejects.toThrow(NotFoundException);
     await expect(s.service.create(ORG, base)).resolves.toBeDefined();
+  });
+
+  // Bug #1055: BR-CP-019 пускає видалити контрагента лише з ВИМКНЕНИМИ підключеннями; без цієї
+  // перевірки підключення видаленого постачальника вмикалось (200) — каталог і замовлення «у нікуди».
+  // Збереження вже ввімкненого (картка шле `enabled` завжди) не перевіряє заново.
+  // Mutation-verify: прибрати гілку `dto.enabled === true && !current.enabled` → кейс падає.
+  // guards: BR-SCON-001, BR-CP-019
+  it('увімкнути підключення видаленого контрагента → 400 notSupplier; вимкнене лишається вимкненим', async () => {
+    const c = await s.service.create(ORG, { ...base, enabled: false });
+    const supplier = (s.prisma.counterparty as unknown as { rows: Record<string, unknown>[] })
+      .rows[0];
+    supplier.deletedAt = new Date('2026-11-06T10:00:00Z');
+    await expect(s.service.update(ORG, c.id, { enabled: true })).rejects.toThrow(
+      'Контрагент не є постачальником',
+    );
+    expect(s.supplierConnection.rows[0]).toMatchObject({ enabled: false });
+    // Живий постачальник — вмикається.
+    supplier.deletedAt = null;
+    await expect(s.service.update(ORG, c.id, { enabled: true })).resolves.toMatchObject({
+      enabled: true,
+    });
   });
 
   // guards: BR-SCON-002
