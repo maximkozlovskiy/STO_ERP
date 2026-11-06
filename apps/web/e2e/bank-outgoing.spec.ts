@@ -211,10 +211,14 @@ test.describe('Банківські платежі — вихідні', () => {
  * «Сторновано», борг постачальнику повертається; оплату, до якої рядок лише ПРИВ'ЯЗАЛИ, — лише
  * відв'язує, вона лишається проведеною. Платежі вносяться, розносяться й знімаються через вікна;
  * API — лише для передумов (постачальник, проведена оплата для прив'язки) і перевірок стану.
- * Дані — «000 E2E …»; прибирання в afterAll (постачальник прив'язаної оплати лишається: його
- * борг не нульовий, а сторно банківської оплати поза рознесенням у системі немає).
+ * Дані — «000 E2E …»; прибирання в afterAll. Постачальник прив'язаної оплати — ОДИН на всі прогони
+ * (`SP_LINK_SUPPLIER`, знаходиться за назвою): його проведену банківську оплату не сторнувати (сторно
+ * банківської оплати поза рознесенням у системі немає), і борг не нульовий — тож видалити його не
+ * можна; новий постачальник на кожен прогін засмічував би довідник.
  */
 const SP_ACCOUNT = '000 E2E Банк UAH (рознесення)';
+/** Постачальник сценарію «прив'язка» — спільний для всіх прогонів (див. опис блоку). */
+const SP_LINK_SUPPLIER = "000 E2E Постачальник прив'язка (спільний)";
 
 interface SpState {
   token: string;
@@ -277,6 +281,27 @@ async function spSupplier(page: Page, state: SpState, name: string): Promise<str
   });
   expect(res.status, `постачальник ${name}`).toBeLessThan(300);
   state.supplierIds.push(res.body.id);
+  return res.body.id;
+}
+
+/** Постачальник за точною назвою; немає — створюється. Не потрапляє в прибирання afterAll. */
+async function spSharedSupplier(page: Page, token: string, name: string): Promise<string> {
+  const found = itemsOf(
+    (
+      await spApi(
+        page,
+        token,
+        'GET',
+        `/counterparties?q=${encodeURIComponent(name)}&types=SUPPLIER&limit=30`,
+      )
+    ).body,
+  ).find(c => (c as Named & { companyName?: string }).companyName === name);
+  if (found) return found.id;
+  const res = await spApi<{ id: string }>(page, token, 'POST', '/counterparties', {
+    type: 'SUPPLIER',
+    companyName: name,
+  });
+  expect(res.status, `постачальник ${name}`).toBeLessThan(300);
   return res.body.id;
 }
 
@@ -415,8 +440,7 @@ test.describe('Банківські платежі — скасування ро
     page,
   }) => {
     const stamp = Date.now();
-    const supplierName = `000 E2E Постачальник прив'язка ${stamp}`;
-    const supplierId = await spSupplier(page, state, supplierName);
+    const supplierId = await spSharedSupplier(page, state.token, SP_LINK_SUPPLIER);
     const purpose = `000 E2E прив'язка ${stamp}`;
     const amount = uniqueAmount();
     // Передумова: оплата постачальнику, проведена окремою дією з цього рахунку на цю суму.
