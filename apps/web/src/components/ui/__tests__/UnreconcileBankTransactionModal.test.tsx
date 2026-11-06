@@ -1,13 +1,15 @@
 // Скасування рознесення банківського платежу (BR-BANK-039):
 //   - причина обов'язкова; пробіли — не причина;
 //   - payload `{ reason }` — обрізаний, на POST …/:id/unreconcile;
-//   - наслідок показано ДО відправки й залежить від виду рознесення;
+//   - наслідок показано ДО відправки й залежить від виду рознесення; оплата постачальнику,
+//     створена з рядка, — «буде сторновано», прив'язана — «лишиться проведеною» (BR-BANK-039);
 //   - відмова сервера лишається в модалці його текстом.
 //
 // Mutation-verify:
 //   - `disabled={!canSubmit}` → `disabled={mut.isPending}`      → «без причини» і «пробіли» падають;
 //   - `reason: parsed.data.reason` → `reason`                   → «payload обрізаний» падає;
-//   - `consequence.${matchedType}` → `consequence.EXPENSE`      → кейси наслідку падають.
+//   - `consequence.${matchedType}` → `consequence.EXPENSE`      → кейси наслідку падають;
+//   - прибрати гілку `supplierPaymentFromRow` у consequenceKey  → «створена з рядка — сторно» падає.
 
 import { act, screen, waitFor, fireEvent } from '@testing-library/react';
 import { vi, it, expect, describe, beforeEach } from 'vitest';
@@ -39,6 +41,7 @@ const TX: BankTransaction = {
   source: 'FILE_IMPORT',
   status: 'MATCHED',
   matchedType: 'SUPPLIER_PAYMENT',
+  supplierPaymentFromRow: false,
   createdAt: '2026-10-01T00:00:00.000Z',
 };
 
@@ -141,6 +144,33 @@ describe('UnreconcileBankTransactionModal', () => {
       />,
     );
     expect(screen.getByRole('note')).toHaveTextContent(text);
+  });
+
+  // guards: BR-BANK-039
+  it('оплата постачальнику, створена з рядка: наслідок — сторно й повернення боргу, а не «лишиться проведеною»', () => {
+    renderWithQueryClient(
+      <UnreconcileBankTransactionModal
+        open
+        onClose={() => {}}
+        transaction={{ ...TX, matchedType: 'SUPPLIER_PAYMENT', supplierPaymentFromRow: true }}
+      />,
+    );
+    const note = screen.getByRole('note');
+    expect(note).toHaveTextContent(/буде сторновано — борг постачальнику повернеться/i);
+    expect(note).not.toHaveTextContent(/лишиться проведеною/i);
+  });
+
+  // Ознака стосується лише оплати постачальнику: для інших видів текст — за видом.
+  // guards: BR-BANK-039
+  it('ознака «створена з рядка» на іншому виді наслідок не змінює', () => {
+    renderWithQueryClient(
+      <UnreconcileBankTransactionModal
+        open
+        onClose={() => {}}
+        transaction={{ ...TX, matchedType: 'EXPENSE', supplierPaymentFromRow: true }}
+      />,
+    );
+    expect(screen.getByRole('note')).toHaveTextContent(/лише класифікацію платежу/i);
   });
 
   it('відмова сервера лишається в модалці його текстом; модалка не закривається', async () => {

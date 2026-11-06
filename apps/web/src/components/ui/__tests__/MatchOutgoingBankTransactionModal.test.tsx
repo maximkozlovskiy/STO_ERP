@@ -102,6 +102,7 @@ const TX: BankTransaction = {
   externalId: 'ext-1',
   source: 'FILE_IMPORT',
   status: 'UNMATCHED',
+  supplierPaymentFromRow: false,
   createdAt: '2026-10-01T00:00:00.000Z',
   bankAccountCurrencyCode: 'UAH',
 };

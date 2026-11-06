@@ -227,6 +227,7 @@
     "counter": "{{count}} / {{max}}",
     "consequence": {
       "SUPPLIER_PAYMENT": "The supplier payment stays confirmed; the row becomes free.",
+      "SUPPLIER_PAYMENT_REVERSE": "The supplier payment created from this row will be reversed — the debt to the supplier is restored and the order's paid amount decreases. The row becomes free.",
       "CLIENT_REFUND": "A reversing posting for the same amount will be made.",
       "CASH_WITHDRAWAL": "The same amount will be written off the cash register. If there is not enough cash, the reconciliation will not be undone.",
       "EXPENSE": "Only the payment classification is removed — there were no postings or cash operations.",

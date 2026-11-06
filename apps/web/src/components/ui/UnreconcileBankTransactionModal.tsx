@@ -20,7 +20,17 @@ interface Props {
 /**
  * Скасування рознесення (BR-BANK-039): причина обов'язкова, наслідок залежить від виду —
  * його показуємо ДО відправки, бо для повернення клієнту й зняття готівки це зворотний запис.
+ * Оплата постачальнику: створену з цього рядка сервер сторнує (`supplierPaymentFromRow`), а
+ * прив'язану лише відв'язує — тексти різні.
  */
+function consequenceKey(transaction: BankTransaction): string | null {
+  if (!transaction.matchedType) return null;
+  if (transaction.matchedType === 'SUPPLIER_PAYMENT' && transaction.supplierPaymentFromRow) {
+    return 'SUPPLIER_PAYMENT_REVERSE';
+  }
+  return transaction.matchedType;
+}
+
 export function UnreconcileBankTransactionModal({ open, onClose, transaction, onDone }: Props) {
   const { t } = useTranslation('bankStatements');
   const mut = useUnreconcileBankTransaction();
@@ -41,6 +51,7 @@ export function UnreconcileBankTransactionModal({ open, onClose, transaction, on
   // Та сама схема, що й на бекенді: пробіли — не причина.
   const parsed = bankTransactionUnreconcileFormSchema.safeParse({ reason });
   const canSubmit = parsed.success && !mut.isPending;
+  const consequence = transaction ? consequenceKey(transaction) : null;
 
   const handleSubmit = async () => {
     if (!transaction || !parsed.success || mut.isPending || submittingRef.current) return;
@@ -105,12 +116,12 @@ export function UnreconcileBankTransactionModal({ open, onClose, transaction, on
           </div>
         )}
 
-        {transaction?.matchedType && (
+        {consequence && (
           <div
             role="note"
             className="text-[13px] text-warning bg-warning-subtle border border-warning/30 rounded-lg px-3 py-2"
           >
-            {t(`unreconcile.consequence.${transaction.matchedType}`, { defaultValue: '' })}
+            {t(`unreconcile.consequence.${consequence}`, { defaultValue: '' })}
           </div>
         )}
 
