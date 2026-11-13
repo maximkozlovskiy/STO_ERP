@@ -780,10 +780,12 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
 
   /**
    * Сторож переходу, що прибирає відкриту форму (BR-CAL-018): інша дата чи місяць, «Відкрити
-   * день», «ще N», «Новий запис на цю дату», картка іншого запису. Форма без змін закривається й
-   * `proceed` виконується одразу; з незбереженими змінами — підтвердження «Закрити форму без
-   * збереження?», відмова лишає і форму, і дату. Раніше форма лишалась відкритою на новій даті, і
-   * «Оновити» переносило запис туди (форма рахує час від дати сторінки).
+   * день», «ще N», «Новий запис на цю дату», картка іншого запису, клік по вільному місцю сітки
+   * дня (і початок малювання нового запису), «+ Слот» при відкритій формі, «Статистика». Форма без
+   * змін закривається й `proceed` виконується одразу; з незбереженими змінами — підтвердження
+   * «Закрити форму без збереження?», відмова лишає і форму, і дату. Раніше форма лишалась відкритою
+   * на новій даті, і «Оновити» переносило запис туди (форма рахує час від дати сторінки).
+   * «Скасувати» у формі — свідома відмова: `handleModalClose` одразу, без питання.
    */
   const leaveForm = useCallback(
     (proceed: () => void) => {
@@ -811,6 +813,9 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
     },
     [confirm, t, handleModalClose],
   );
+  // Для слухача `pointerdown` сітки: той підписується один раз, а не на кожну нову `leaveForm`.
+  const leaveFormRef = useRef(leaveForm);
+  leaveFormRef.current = leaveForm;
 
   /** Дата сторінки — через сторож форми (BR-CAL-018); та сама дата нічого не змінює. */
   const setDate = useCallback(
@@ -957,10 +962,10 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
       if (!timelineRef.current?.contains(target)) return;
       if (target.closest('[data-calendar-slot]')) return;
       if (target.closest('[data-pending-slot]')) return;
+      // Клік по вільному місцю сітки при відкритій формі лише закриває її — через сторож
+      // (BR-CAL-018): з незбереженими змінами — питання; малювання нового запису не починається.
       if (showAddRef.current) {
-        setPendingSlot(null);
-        setShowAdd(false);
-        setError('');
+        leaveFormRef.current(() => {});
         return;
       }
       // generic-параметр, а не каст: closest() віддає Element, а .dataset є лише в HTMLElement.
@@ -1562,17 +1567,38 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
     [applyDate, canManageSlots, leaveForm],
   );
 
-  /** «+ Слот» у шапці: відкриває порожню форму нового запису або закриває відкриту. */
+  /**
+   * «+ Слот» у шапці: відкриває порожню форму нового запису або закриває відкриту — через сторож
+   * (BR-CAL-018): незбережені зміни не губляться без питання.
+   */
   const toggleNewSlot = useCallback(() => {
-    const opening = !showAddRef.current;
+    if (showAddRef.current) {
+      leaveForm(() => {
+        setForm(EMPTY_FORM);
+        setCpDisplay('');
+      });
+      return;
+    }
     setPendingSlot(null);
     setEditingSlotId(null);
     setError('');
     setCpDisplay('');
-    formBaseRef.current = opening ? EMPTY_FORM : null;
+    formBaseRef.current = EMPTY_FORM;
     setForm(EMPTY_FORM);
-    setShowAdd(opening);
-  }, []);
+    setShowAdd(true);
+  }, [leaveForm]);
+
+  /**
+   * Перемикач виду. «Статистика» форми не показує — перехід туди закриває її через сторож
+   * (BR-CAL-018); «День» ↔ «Місяць» форму лишає (та сама дата).
+   */
+  const switchView = useCallback(
+    (v: CalView) => {
+      if (v === 'stats') leaveForm(() => setCalView(v));
+      else setCalView(v);
+    },
+    [leaveForm, setCalView],
+  );
 
   return {
     /** Право створювати й змінювати записи (BR-CAL-010): механіку — лише перегляд. */
@@ -1581,6 +1607,7 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
     // URL / view
     calView,
     setCalView,
+    switchView,
     dayLayout,
     setDayLayout,
     date,
@@ -1639,13 +1666,11 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
     setForm,
     adjustForm,
     showAdd,
-    setShowAdd,
     formMounted,
     formVisible,
     formCollapseRef,
     formInnerRef,
     editingSlotId,
-    setEditingSlotId,
     isEditingPast,
     savedMechanic,
     editingWorkOrder,

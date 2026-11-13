@@ -137,13 +137,7 @@ function CalendarPageClient() {
               <button
                 key={v}
                 type="button"
-                onClick={() => {
-                  cs.setCalView(v);
-                  if (v === 'stats') {
-                    cs.setShowAdd(false);
-                    cs.setEditingSlotId(null);
-                  }
-                }}
+                onClick={() => cs.switchView(v)}
                 className={`flex items-center gap-1.5 px-3 py-1.5 transition-colors ${cs.calView === v ? 'bg-primary text-primary-foreground' : 'bg-surface text-muted-foreground hover:bg-secondary'}`}
               >
                 <Icon className="h-3.5 w-3.5" />
