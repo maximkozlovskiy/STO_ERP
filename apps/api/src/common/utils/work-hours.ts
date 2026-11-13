@@ -27,8 +27,6 @@ export interface WorkHours {
   readonly workDays?: readonly number[];
 }
 
-export { DEFAULT_WORK_DAYS };
-
 /** Типові години й дні — філія без рядка налаштувань, запис без підйомника, збій читання. */
 export const DEFAULT_BRANCH_HOURS: WorkHours = Object.freeze({
   ...DEFAULT_WORK_HOURS,

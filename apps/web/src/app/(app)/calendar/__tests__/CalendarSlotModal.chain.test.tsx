@@ -310,3 +310,36 @@ describe('CalendarSlotModal — ланцюжки (BR-CAL-019, BR-WO-024)', () =>
     expect(screen.getByTestId('slot-chain-hint').textContent).toMatch(/Запис на 2 дні/);
   });
 });
+
+describe('CalendarSlotModal — перевірка зайнятості за тим кінцем, який збережеться (BR-CAL-007)', () => {
+  const conflictBodies = () =>
+    callsTo('/calendar/slots/check-conflicts', 'POST').map(
+      ([, i]) => JSON.parse(i!.body!) as { startAt: string; endAt: string },
+    );
+
+  // guards: BR-CAL-007
+  it('зміна ручного запису 17:00–20:00: перевіряється 17:00–20:00 того ж дня, не «завтра до 11:00»', async () => {
+    // Зміну ручного запису сервер не ділить на дні — і конфлікт шукається на тому ж проміжку.
+    render(
+      <Harness
+        initial={{ startAt: '17:00', endAt: '20:00', normoHours: '3' }}
+        editingSlotId="s1"
+      />,
+    );
+    await waitFor(() => expect(conflictBodies().length).toBeGreaterThan(0));
+    expect(conflictBodies().at(-1)).toMatchObject({
+      startAt: '2026-10-20T14:00:00.000Z',
+      endAt: '2026-10-20T17:00:00.000Z',
+    });
+  });
+
+  // guards: BR-CAL-007
+  it('контроль: новий запис 17:00 + 3 год — перевіряється до 11:00 наступного робочого дня', async () => {
+    render(<Harness initial={{ startAt: '17:00', endAt: '20:00', normoHours: '3' }} />);
+    await waitFor(() => expect(conflictBodies().length).toBeGreaterThan(0));
+    expect(conflictBodies().at(-1)).toMatchObject({
+      startAt: '2026-10-20T14:00:00.000Z',
+      endAt: '2026-10-21T08:00:00.000Z',
+    });
+  });
+});

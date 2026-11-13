@@ -612,8 +612,10 @@ export function CalendarSlotModal({
     }
     const startIso = form.startAt ? kyivDateTimeToISO(date, form.startAt) : null;
     // Кінець — справжній (на дні завершення), як у збереженні: багатоденний запис перевіряється
-    // на всіх днях, а не на «кінці» першого дня.
-    const realEnd = startLocal && endLocal ? slotRealEnd(startLocal, endLocal, wh) : '';
+    // на всіх днях, а не на «кінці» першого дня. Зміну ручного запису сервер не ділить (`splits`)
+    // — 17:00–20:00 лишається 17:00–20:00, а не «завтра до 11:00».
+    const realEnd =
+      startLocal && endLocal ? slotRealEnd(startLocal, endLocal, splits ? wh : NO_SPLIT) : '';
     const endIso = realEnd ? kyivDateTimeToISO(realEnd.slice(0, 10), realEnd.slice(11, 16)) : null;
     if (!startIso || !endIso) {
       clearConflict();
@@ -634,6 +636,7 @@ export function CalendarSlotModal({
     startLocal,
     endLocal,
     wh,
+    splits,
     date,
     editingSlotId,
     checkConflict,

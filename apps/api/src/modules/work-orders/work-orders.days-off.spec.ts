@@ -12,7 +12,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { BadRequestException } from '@nestjs/common';
 import { translateError } from '@sto/shared';
 import { plannedDatesError } from './work-order-planned-dates';
-import { overflowEnd, workHoursBetween } from './work-order-slot-move';
+import { overflowEnd } from '../../common/utils/work-hours';
+import { workHoursBetween } from './work-order-slot-move';
 import {
   LIFT_1,
   NOW,
