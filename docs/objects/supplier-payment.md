@@ -178,22 +178,24 @@ cd apps/api && npx vitest run src/modules/supplier-payments/<файл>.spec.ts
 
 **Модуль:** `apps/api/src/modules/supplier-payments/`
 
-| Аспект                                                                                  | Тест                                                 | Кейсів |
-| --------------------------------------------------------------------------------------- | ---------------------------------------------------- | ------ |
-| cancel remove                                                                           | `supplier-payments.cancel-remove.spec.ts`            | 5      |
-| confirm                                                                                 | `supplier-payments.confirm.spec.ts`                  | 9      |
-| HTTP-контракт (DTO, статуси, валідація)                                                 | `supplier-payments.contract.spec.ts`                 | 21     |
-| документ, позначений на видалення, — лише перегляд (BR-WO-012)                          | `supplier-payments.with-deleted.spec.ts`             | 8      |
-| create                                                                                  | `supplier-payments.create.spec.ts`                   | 10     |
-| без ПРРО і лояльності (статичний сторож)                                                | `supplier-payments.no-fiscal-loyalty.spec.ts`        | 14     |
-| payables fx                                                                             | `supplier-payments.payables-fx.spec.ts`              | 12     |
-| schedule                                                                                | `supplier-payments.schedule.spec.ts`                 | 26     |
-| сортування (whitelist orderBy)                                                          | `supplier-payments.sort.spec.ts`                     | 9      |
-| create guards (невідомий рахунок, замовлення іншого постачальника)                      | `supplier-payments.create-guards.spec.ts`            | 2      |
-| оплата однією транзакцією, статус замовлення-підстави, `POST /pay` (BR-SUPPAY-013, 015) | `supplier-payments.pay.spec.ts`                      | 21     |
-| номер відкочується з транзакцією — жива БД (BR-SUPPAY-013)                              | `supplier-payments.pay-rollback.integration.spec.ts` | 2      |
+| Аспект                                                                                                                                                | Тест                                                    | Кейсів |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- | ------ |
+| cancel remove                                                                                                                                         | `supplier-payments.cancel-remove.spec.ts`               | 5      |
+| confirm                                                                                                                                               | `supplier-payments.confirm.spec.ts`                     | 9      |
+| HTTP-контракт (DTO, статуси, валідація)                                                                                                               | `supplier-payments.contract.spec.ts`                    | 21     |
+| документ, позначений на видалення, — лише перегляд (BR-WO-012)                                                                                        | `supplier-payments.with-deleted.spec.ts`                | 8      |
+| create                                                                                                                                                | `supplier-payments.create.spec.ts`                      | 10     |
+| без ПРРО і лояльності (статичний сторож)                                                                                                              | `supplier-payments.no-fiscal-loyalty.spec.ts`           | 14     |
+| payables fx                                                                                                                                           | `supplier-payments.payables-fx.spec.ts`                 | 12     |
+| schedule                                                                                                                                              | `supplier-payments.schedule.spec.ts`                    | 26     |
+| сортування (whitelist orderBy)                                                                                                                        | `supplier-payments.sort.spec.ts`                        | 9      |
+| create guards (невідомий рахунок, замовлення іншого постачальника)                                                                                    | `supplier-payments.create-guards.spec.ts`               | 2      |
+| оплата однією транзакцією, статус замовлення-підстави, `POST /pay` (BR-SUPPAY-013, 015)                                                               | `supplier-payments.pay.spec.ts`                         | 21     |
+| номер відкочується з транзакцією — жива БД (BR-SUPPAY-013)                                                                                            | `supplier-payments.pay-rollback.integration.spec.ts`    | 2      |
+| сторно банківської оплати окремою дією: HTTP (ключ, ролі, причина), відмови до запису, проводка на документ-оплату, порядок блокувань (BR-SUPPAY-017) | `supplier-payments.reverse-bank.spec.ts`                | 25     |
+| компенсація хибних FX передоплати — SQL міграції на живій БД, з відкатом (BR-SUPPAY-019)                                                              | `supplier-payments.fx-compensation.integration.spec.ts` | 1      |
 
-Разом: **137** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **163** кейси (цифри з `vitest --reporter=json`, не з grep).
 
 **Component-тест вкладки графіка:**
 `apps/web/src/app/(app)/purchase-orders/__tests__/SupplierPaymentScheduleTab.test.tsx` — 3 кейси:
@@ -206,12 +208,18 @@ cd apps/api && npx vitest run src/modules/supplier-payments/<файл>.spec.ts
 скасування, пікер `payable=true` (BR-SUPPAY-013, 015), спосіб і валюта суми за джерелом коштів (BR-SUPPAY-011),
 повторне вікно з передзаповненням не «змінене» (Bug #1027); `hooks/api/useSupplierPayments.test.tsx` — ключ у
 `pay` і `confirm`; `app/(app)/purchase-orders/__tests__/SupplierPaymentsTab.test.tsx` — «Чернетки»,
-«Провести» з ключем, «Скасувати», відмова над таблицею (BR-SUPPAY-014);
+«Провести» з ключем, «Скасувати», відмова над таблицею (BR-SUPPAY-014), «Сторнувати» лише в рядку
+«Проведено» з банком, тіло `{ reason }` і ключ на відкриття вікна, відмова сервера у вікні (BR-SUPPAY-017);
+`useReverseSupplierPayment` у `useSupplierPayments.test.tsx` — запит і скидання кешів (BR-SUPPAY-017);
 `components/ui/__tests__/PurchaseOrderCreateModal.pay-role.test.tsx` — «Оплатити» лише на статусах оплати
 (BR-SUPPAY-015) і картка бухгалтера на перегляді (BR-PO-015); `lib/__tests__/linked-configs.test.tsx` —
 суми у валюті документа (BR-SUPPAY-016). E2E через інтерфейс — `apps/web/e2e/supplier-payment-pay.spec.ts`
 (5 кейсів: «Оплатити» → одна проведена оплата без скасованих; відмова каси без документа; чернетка
 замовлення без «Оплатити»; «Чернетки» → провести / скасувати; повтор прийому з тим самим ключем).
+`apps/web/e2e/supplier-payment-reverse.spec.ts` (BR-SUPPAY-017, 2 кейси): банківська оплата через «Оплатити» →
+«Сторнувати» з причиною → «Сторновано», борг постачальника й «сплачено» замовлення назад; рядок виписки
+рознесено на оплату → «спершу зніміть рознесення» у вікні, після зняття та сама спроба проходить.
+FX передоплати при прийомі (BR-SUPPAY-018) — `purchase-orders.receive-fx.spec.ts` (реєстр `purchase-order.md`).
 
 **Чого тут НЕМА.** Інваріантного спеку (`*.invariants.spec.ts`) немає, хоча агрегат на шляху грошей або статусів: властивості на кшталт «фінальний статус без виходів» не стережуться нічим. Свідома прогалина — кандидат на окремий крок.
 
@@ -219,5 +227,4 @@ cd apps/api && npx vitest run src/modules/supplier-payments/<файл>.spec.ts
 - Race-safety проведення перевірена на моках (CAS повернув `count=0` → settlement не пишеться). Двох справжніх одночасних транзакцій проти БД не ганяє ніхто — потрібен integration-спек (unit-тестом не закривається: на моках немає ані блокувань, ані ізоляції транзакцій).
 - Графік оплат: trade-off зі звітом «Взаєморозрахунки» (`schedule.totals.total ≤ reports.settlements.totalCredit`, Bug #600) не стережеться — це нерівність між двома модулями, unit-тест одного сервісу її не бачить; потрібен integration-спек, що викликає обидва сервіси на одних даних. Take-cap 5000 стережеться лише як число в запиті; що буде з графіком, коли рядків справді більше 5000 (тихе обрізання найновіших PO), не перевіряє ніхто.
 - Drill-down: компонентний тест вкладки стереже «некликабельність» синтетичного рядка на рівні DOM (role/tabIndex/клік). Справжній браузер (фокус Tab-ом, скрін-рідер) — лише E2E, якого для вкладки графіка немає.
-- **Тимчасово (2026-11-13):** BR-SUPPAY-017, BR-SUPPAY-018, BR-SUPPAY-019 — контракт блоку 1b закладено раніше за код; тести з'являться разом із реалізацією в тому ж блоці, і цей рядок тоді прибирається (TECH-DEBT (б) №90, №91).
 - Payables FX і мультивалюта (блоки під Prisma-моделлю) мають свій спек (`payables-fx`), але не мають BR-ID — у простежуваність «правило → тест» не входять. Присвоїти їм номери означає написати нові правила; це рішення людини, а не розмітка.
