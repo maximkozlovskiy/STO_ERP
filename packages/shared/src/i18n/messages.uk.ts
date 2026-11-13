@@ -802,8 +802,6 @@ export const uk: Record<string, string> = {
   'err.calendar.employeeBusy': 'Співробітник вже зайнятий на цей час',
   'err.calendar.liftBusyNextDay': 'Підйомник вже зайнятий в один із наступних днів запису',
   'err.calendar.employeeBusyNextDay': 'Співробітник вже зайнятий в один із наступних днів запису',
-  'err.calendar.slotSplitTwoDays':
-    'Запис займає кілька днів — перший день не змінюється: наступні дні редагуйте окремо або видаліть запис цілком і створіть заново',
   'err.calendar.chainInnerEdge':
     'Внутрішню межу багатоденного запису змінити не можна — змініть початок першого дня чи кінець останнього',
   'err.calendar.slotConcurrentChange':

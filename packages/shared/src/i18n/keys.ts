@@ -863,7 +863,6 @@ export const VALIDATION_KEYS = [
   'err.calendar.employeeBusy',
   'err.calendar.liftBusyNextDay',
   'err.calendar.employeeBusyNextDay',
-  'err.calendar.slotSplitTwoDays',
   'err.calendar.chainInnerEdge',
   'err.calendar.slotConcurrentChange',
   'err.calendar.slotNotFound',

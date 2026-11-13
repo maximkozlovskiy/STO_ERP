@@ -118,6 +118,19 @@ export class UpdateCalendarSlotDto {
   @IsOptional()
   @IsBoolean()
   dropMechanicNotOnLift?: boolean;
+
+  /**
+   * Частина багатоденного запису без наряду (BR-CAL-020): `startAt` / `endAt` — нові початок і
+   * кінець УСЬОГО ланцюжка (форма, перетягування в «Дні»). Без нього — межі самої частини: крайня
+   * змінює межі ланцюжка, внутрішня — 400. Запис поза ланцюжком і запис наряду поле ігнорують.
+   */
+  @ApiPropertyOptional({
+    description:
+      'Частина багатоденного запису без наряду: startAt/endAt — межі всього ланцюжка (BR-CAL-020)',
+  })
+  @IsOptional()
+  @IsBoolean()
+  chainSpan?: boolean;
 }
 
 /**
@@ -195,6 +208,12 @@ export class CalendarSlotResponseDto {
   chainDays!: number;
   @ApiProperty({ description: 'Кінець останньої частини ланцюжка запису (ISO)' })
   chainEndAt!: string;
+  /**
+   * Початок першої частини ланцюжка (BR-CAL-020): форма, відкрита з будь-якого дня багатоденного
+   * запису, показує межі всього ланцюжка.
+   */
+  @ApiProperty({ description: 'Початок першої частини ланцюжка запису (ISO)' })
+  chainStartAt!: string;
   /**
    * Лише відповідь `PATCH` з відв'язкою запису від наряду (BR-WO-028): увесь ланцюжок запису
    * наряду видалено, наряд зберіг планові дати — у відповіді запис, яким він був до видалення.

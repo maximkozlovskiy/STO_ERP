@@ -320,6 +320,7 @@ export class SyncService {
         deletedAt: true,
         ...(isSlot && {
           workOrderId: true,
+          parentSlotId: true,
           liftId: true,
           employeeId: true,
           startAt: true,
@@ -441,7 +442,15 @@ export class SyncService {
       // наряду, статус наряду; відмова — конфлікт із причиною).
       const edit = isSlot ? slotEdit(safePayload) : null;
       const state = edit ? slotState(existing) : null;
-      if (edit && state && (movesWorkOrderSlot(state, edit) || relinksSlot(state, edit))) {
+      // BR-CAL-020: частина багатоденного запису без наряду — тим самим шляхом: крайня межа змінює
+      // межі ланцюжка (перебудова), внутрішня — конфлікт із причиною, решта полів — для всіх частин.
+      if (
+        edit &&
+        state &&
+        (movesWorkOrderSlot(state, edit) ||
+          relinksSlot(state, edit) ||
+          (!state.workOrderId && (await this.isManualChainPart(orgId, existing))))
+      ) {
         await this.workOrders.updateCalendarSlot(orgId, rec.id, edit, userId);
         return;
       }
@@ -498,6 +507,23 @@ export class SyncService {
       // Та сама причина, що й у 400 API: «у відпустці» окремо від «не закріплений».
       throw new Error(err(MECHANIC_REJECT_KEY[mechanic.reason]));
     }
+  }
+
+  /**
+   * Запис календаря — частина багатоденного ланцюжка (BR-CAL-020): продовження або якір із живим
+   * продовженням.
+   */
+  private async isManualChainPart(
+    orgId: string,
+    existing: Record<string, unknown>,
+  ): Promise<boolean> {
+    if (typeof existing.parentSlotId === 'string' && existing.parentSlotId) return true;
+    if (typeof existing.id !== 'string') return false;
+    const continuation = await this.prisma.calendarSlot.findFirst({
+      where: { orgId, parentSlotId: existing.id, deletedAt: null },
+      select: { id: true },
+    });
+    return continuation !== null;
   }
 
   /** Поточний пробіг авто (для монотонного mileage max-wins). 0 якщо null/не знайдено. */

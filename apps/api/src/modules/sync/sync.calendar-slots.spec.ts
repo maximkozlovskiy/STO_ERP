@@ -64,12 +64,26 @@ const ON_LEAVE_MSG = translateError('err.calendar.employeeOnLeave', 'uk');
 const NOT_FOUND = translateError('err.calendar.employeeNotFound', 'uk');
 const ROLE_FORBIDDEN = translateError('err.calendar.syncRoleForbidden', 'uk');
 
-function harness(existing: Record<string, unknown> | null = null) {
+/**
+ * `existing` — запис, який читає синхронізація; `continuations` — живі продовження ланцюжка, які
+ * знаходить проба «чи запис — якір багатоденного» (BR-CAL-020): `where` з `parentSlotId`
+ * виконується над ними, а не віддає заготовку.
+ */
+function harness(
+  existing: Record<string, unknown> | null = null,
+  continuations: Record<string, unknown>[] = [],
+) {
   const exists = () =>
     vi.fn(({ where }: { where: { id: string } }) => Promise.resolve({ id: where.id }));
   const prisma = {
     calendarSlot: {
-      findFirst: vi.fn().mockResolvedValue(existing),
+      findFirst: vi.fn(({ where }: { where: Record<string, unknown> }) =>
+        Promise.resolve(
+          'parentSlotId' in where
+            ? (continuations.find(c => matchesWhere(c, where)) ?? null)
+            : existing,
+        ),
+      ),
       create: vi.fn().mockResolvedValue({}),
       update: vi.fn().mockResolvedValue({}),
     },
@@ -108,7 +122,7 @@ function harness(existing: Record<string, unknown> | null = null) {
     prisma.syncJob.create.mock.calls.map(
       c => (c[0] as { data: { lastError: string; status: string } }).data,
     );
-  return { service, prisma, lastErrors };
+  return { service, prisma, lastErrors, workOrders };
 }
 
 const record = (over: Partial<SyncRecord> & { payload?: Record<string, unknown> }): SyncRecord =>
@@ -304,5 +318,59 @@ describe('SyncService.push calendar_slots — скасований наряд (B
     );
     expect(res).toEqual({ accepted: 1, conflicts: 0 });
     expect(h.prisma.calendarSlot.create).toHaveBeenCalledTimes(1);
+  });
+});
+
+// Частина багатоденного запису без наряду змінюється як ланцюжок (BR-CAL-020): планшет іде тим
+// самим шляхом, що й `PATCH /calendar/slots/:id` (`WorkOrdersService.updateCalendarSlot` →
+// `CalendarService.updateSlot`): крайня межа — перебудова, внутрішня — конфлікт із причиною.
+// Прямий `update` частини розірвав би ланцюжок. Одноденний запис — як раніше, прямим записом.
+describe('SyncService.push calendar_slots — частина ручного ланцюжка (BR-CAL-020)', () => {
+  const slot = (over: Record<string, unknown>) => ({
+    id: SLOT_ID,
+    syncVersion: 1n,
+    deletedAt: null,
+    workOrderId: null,
+    parentSlotId: null,
+    liftId: LIFT_1,
+    employeeId: null,
+    startAt: new Date('2026-06-15T07:00:00.000Z'),
+    endAt: new Date('2026-06-15T08:00:00.000Z'),
+    ...over,
+  });
+  const payload = { startAt: '2026-06-15T07:00:00.000Z', endAt: '2026-06-15T09:00:00.000Z' };
+
+  // guards: BR-CAL-020
+  it.each([
+    ['продовження', slot({ parentSlotId: '44444444-4444-4444-8444-0000000000aa' }), []],
+    [
+      'якір із живим продовженням',
+      slot({}),
+      [{ id: 'c', orgId: ORG, parentSlotId: SLOT_ID, deletedAt: null }],
+    ],
+  ])('%s: зміна часу — шляхом API, не прямим update', async (_l, existing, continuations) => {
+    const h = harness(existing, continuations);
+    const res = await h.service.push(ORG, [record({ operation: 'UPDATE', payload })], 'ADMIN');
+
+    expect(res).toEqual({ accepted: 1, conflicts: 0 });
+    expect(h.workOrders.updateCalendarSlot).toHaveBeenCalledWith(
+      ORG,
+      SLOT_ID,
+      expect.objectContaining(payload),
+      undefined,
+    );
+    expect(h.prisma.calendarSlot.update).not.toHaveBeenCalled();
+  });
+
+  // guards: BR-CAL-020
+  it('одноденний запис і якір, чиє продовження видалено, — прямий update, як раніше', async () => {
+    const h = harness(slot({}), [
+      { id: 'c', orgId: ORG, parentSlotId: SLOT_ID, deletedAt: new Date() },
+    ]);
+    const res = await h.service.push(ORG, [record({ operation: 'UPDATE', payload })], 'ADMIN');
+
+    expect(res).toEqual({ accepted: 1, conflicts: 0 });
+    expect(h.workOrders.updateCalendarSlot).not.toHaveBeenCalled();
+    expect(h.prisma.calendarSlot.update).toHaveBeenCalledTimes(1);
   });
 });

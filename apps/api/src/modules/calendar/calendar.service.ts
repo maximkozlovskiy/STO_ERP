@@ -5,6 +5,7 @@ import {
   EmployeeStatus,
   Prisma,
   WorkOrderStatus,
+  type CalendarSlot,
 } from '@prisma/client';
 import { formatPersonName, TRANSACTION_TIMEOUT_MS } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -35,6 +36,7 @@ import {
   type MechanicRejectReason,
 } from './calendar-mechanic';
 import { assertServiceSlotUnlinked } from './calendar-slot-type';
+import { bounds, chainBounds } from './calendar-chain';
 
 /** Новий запис календаря без наряду (`createSlot`): запис наряду створює наряд (BR-WO-028). */
 export type FreeSlotInput = Omit<CreateCalendarSlotDto, 'workOrderId'> & { workOrderId?: never };
@@ -127,13 +129,18 @@ const notOfWorkOrder = (workOrderId: string) => ({
  * Зайнятість ресурсу (BR-CAL-005): живі записи організації на `resource` (підйомник, механік чи
  * `OR` обох), що перетинають хоч один із проміжків `intervals` — half-open, дотик меж не є
  * перетином. Записи видаленого наряду не рахуються (BR-CAL-011). Не конфлікт: `exclude.ids` — сам
- * запис чи власні записи наряду; `exclude.workOrderId` — усі записи наряду.
+ * запис чи власні записи наряду; `exclude.workOrderId` — усі записи наряду; `exclude.chainOf` —
+ * увесь ланцюжок якоря (якір і продовження, BR-CAL-020).
  */
 function busyWhere(
   orgId: string,
   resource: Prisma.CalendarSlotWhereInput,
   intervals: readonly TimeSegment[],
-  exclude: { ids?: readonly string[] | undefined; workOrderId?: string | undefined } = {},
+  exclude: {
+    ids?: readonly string[] | undefined;
+    workOrderId?: string | undefined;
+    chainOf?: string | undefined;
+  } = {},
 ): Prisma.CalendarSlotWhereInput {
   return {
     orgId,
@@ -143,9 +150,46 @@ function busyWhere(
     AND: [
       OF_LIVE_WORK_ORDER,
       ...(exclude.workOrderId ? [notOfWorkOrder(exclude.workOrderId)] : []),
+      ...(exclude.chainOf
+        ? [{ NOT: { OR: [{ id: exclude.chainOf }, { parentSlotId: exclude.chainOf }] } }]
+        : []),
       { OR: intervals.map(i => ({ startAt: { lt: i.endAt }, endAt: { gt: i.startAt } })) },
     ],
   };
+}
+
+/**
+ * Зайнятість підйомника й механіка на всіх частинах запису разом (BR-CAL-005, BR-CAL-007): перетин
+ * із першою частиною — «зайнятий», лише з наступними — «зайнятий в один із наступних днів» (як
+ * запис наряду, BR-WO-020). `excludeIds` — власні частини запису, що змінюється (BR-CAL-020).
+ */
+async function assertResourcesFree(
+  tx: Prisma.TransactionClient,
+  orgId: string,
+  segments: readonly TimeSegment[],
+  resources: { liftId?: string | null | undefined; employeeId?: string | null | undefined },
+  excludeIds: readonly string[] = [],
+): Promise<void> {
+  const [first] = segments as readonly [TimeSegment, ...TimeSegment[]];
+  const busy = (resource: Prisma.CalendarSlotWhereInput) =>
+    tx.calendarSlot.findFirst({
+      where: busyWhere(orgId, resource, segments, { ids: excludeIds }),
+      select: { startAt: true, endAt: true },
+    });
+  const [liftHit, employeeHit] = await Promise.all([
+    resources.liftId ? busy({ liftId: resources.liftId }) : null,
+    resources.employeeId ? busy({ employeeId: resources.employeeId }) : null,
+  ]);
+  const key = (hit: TimeSegment, sameDay: string, nextDay: string) =>
+    err(hit.startAt < first.endAt && hit.endAt > first.startAt ? sameDay : nextDay);
+  if (liftHit)
+    throw new BadRequestException(
+      key(liftHit, 'err.calendar.liftBusy', 'err.calendar.liftBusyNextDay'),
+    );
+  if (employeeHit)
+    throw new BadRequestException(
+      key(employeeHit, 'err.calendar.employeeBusy', 'err.calendar.employeeBusyNextDay'),
+    );
 }
 
 /**
@@ -174,16 +218,24 @@ function manualSlotSegments(startAt: Date, endAt: Date, hours: WorkHours): TimeS
   return [{ startAt, endAt: head.endAt }, ...rest];
 }
 
-/** Ланцюжок запису (BR-CAL-019): кількість частин і кінець останньої. */
+/**
+ * Ланцюжок запису (BR-CAL-019): кількість частин, кінець останньої й початок першої (BR-CAL-020 —
+ * форма з будь-якого дня показує межі всього ланцюжка).
+ */
 interface ChainInfo {
   chainDays: number;
   chainEndAt: string;
+  chainStartAt: string;
 }
 
 /** Ланцюжок із його частин, уже прочитаних разом (новий запис). */
-function chainOf(parts: readonly { endAt: Date }[]): ChainInfo {
-  const end = Math.max(...parts.map(p => p.endAt.getTime()));
-  return { chainDays: parts.length, chainEndAt: new Date(end).toISOString() };
+function chainOf(parts: readonly TimeSegment[]): ChainInfo {
+  const { start, end } = bounds(parts);
+  return {
+    chainDays: parts.length,
+    chainEndAt: end.toISOString(),
+    chainStartAt: start.toISOString(),
+  };
 }
 
 /** DTO запису без полів ланцюжка — їх додає `chainsOf` (BR-CAL-019). */
@@ -191,19 +243,43 @@ type SlotDtoBase = Omit<CalendarSlotResponseDto, keyof ChainInfo>;
 
 /** Ланцюжок запису з прочитаних; запис поза ланцюжком — сам собі ланцюжок з однієї частини. */
 function chainFor(
-  slot: { id: string; parentSlotId?: string | null; endAt: Date },
+  slot: { id: string; parentSlotId?: string | null; startAt: Date; endAt: Date },
   chains: ReadonlyMap<string, ChainInfo>,
 ): ChainInfo {
   return (
     chains.get(slot.parentSlotId ?? slot.id) ?? {
       chainDays: 1,
       chainEndAt: new Date(slot.endAt).toISOString(),
+      chainStartAt: new Date(slot.startAt).toISOString(),
     }
   );
 }
 
 /** Стеля частин ланцюжків, прочитаних для однієї відповіді. */
 const CHAIN_MEMBERS_TAKE = 10_000;
+/** Стеля частин одного ланцюжка, що змінюється (як записів наряду, `findWorkOrderSlots`). */
+const CHAIN_PARTS_TAKE = 500;
+
+/** Мить зі зміни або збережена; нерозбірна дата (планшет) — 400, а не `Invalid Date` у БД. */
+function instantOr(value: string | undefined, stored: Date): Date {
+  if (!value) return stored;
+  const at = new Date(value);
+  if (Number.isNaN(at.getTime()))
+    throw new BadRequestException(err('err.calendar.invalidDateFormat'));
+  return at;
+}
+
+/** Значення зі зміни (`null` — стерти) або збережене. */
+const valueOr = <T>(value: T | null | undefined, stored: T | null): T | null =>
+  value !== undefined ? value : stored;
+
+/** Відповідь зміни запису з причиною зняття механіка (BR-CAL-012), якщо його знято. */
+function withMechanicDrop(
+  res: CalendarSlotResponseDto,
+  reason: MechanicRejectReason | null,
+): CalendarSlotResponseDto {
+  return reason ? { ...res, mechanicDropped: true, mechanicDroppedReason: reason } : res;
+}
 
 /** Стеля записів на добу у видачі (як було для запиту одного дня). */
 const DAY_SLOTS_TAKE = 500;
@@ -369,13 +445,13 @@ export class CalendarService {
   }
 
   /**
-   * Ланцюжки записів (BR-CAL-019): для кожного якоря (`parentSlotId ?? id`) — кількість живих
-   * частин і кінець останньої, ОДНИМ запитом на всю відповідь (не на кожен запис). Частини, що
-   * вже прочитані, теж рахуються — на випадок, коли запит їх не повернув.
+   * Ланцюжки записів (BR-CAL-019, BR-CAL-020): для кожного якоря (`parentSlotId ?? id`) — кількість
+   * живих частин, кінець останньої й початок першої, ОДНИМ запитом на всю відповідь (не на кожен
+   * запис). Частини, що вже прочитані, теж рахуються — на випадок, коли запит їх не повернув.
    */
   private async chainsOf(
     orgId: string,
-    slots: readonly { id: string; parentSlotId?: string | null; endAt: Date }[],
+    slots: readonly { id: string; parentSlotId?: string | null; startAt: Date; endAt: Date }[],
   ): Promise<ReadonlyMap<string, ChainInfo>> {
     const anchors = [...new Set(slots.map(s => s.parentSlotId ?? s.id))];
     if (anchors.length === 0) return new Map();
@@ -385,24 +461,37 @@ export class CalendarService {
         deletedAt: null,
         OR: [{ id: { in: anchors } }, { parentSlotId: { in: anchors } }],
       },
-      select: { id: true, parentSlotId: true, endAt: true },
+      select: { id: true, parentSlotId: true, startAt: true, endAt: true },
       take: CHAIN_MEMBERS_TAKE,
     });
-    const members = new Map<string, { anchor: string; endMs: number }>();
+    const members = new Map<string, { anchor: string; startMs: number; endMs: number }>();
     const wanted = new Set(anchors);
     for (const m of [...(Array.isArray(fetched) ? fetched : []), ...slots]) {
       const anchor = m.parentSlotId ?? m.id;
-      if (wanted.has(anchor)) members.set(m.id, { anchor, endMs: new Date(m.endAt).getTime() });
+      if (wanted.has(anchor))
+        members.set(m.id, {
+          anchor,
+          startMs: new Date(m.startAt).getTime(),
+          endMs: new Date(m.endAt).getTime(),
+        });
     }
-    const out = new Map<string, { days: number; endMs: number }>();
-    for (const { anchor, endMs } of members.values()) {
+    const out = new Map<string, { days: number; startMs: number; endMs: number }>();
+    for (const { anchor, startMs, endMs } of members.values()) {
       const cur = out.get(anchor);
-      out.set(anchor, { days: (cur?.days ?? 0) + 1, endMs: Math.max(cur?.endMs ?? 0, endMs) });
+      out.set(anchor, {
+        days: (cur?.days ?? 0) + 1,
+        startMs: Math.min(cur?.startMs ?? startMs, startMs),
+        endMs: Math.max(cur?.endMs ?? 0, endMs),
+      });
     }
     return new Map(
       [...out].map(([anchor, c]) => [
         anchor,
-        { chainDays: c.days, chainEndAt: new Date(c.endMs).toISOString() },
+        {
+          chainDays: c.days,
+          chainEndAt: new Date(c.endMs).toISOString(),
+          chainStartAt: new Date(c.startMs).toISOString(),
+        },
       ]),
     );
   }
@@ -493,31 +582,7 @@ export class CalendarService {
     try {
       slots = await this.prisma.$transaction(
         async tx => {
-          // Зайнятість — на всіх днях запису разом; перетин із першим днем — «зайнятий», лише з
-          // наступними — «зайнятий наступного дня» (як запис наряду, BR-WO-020).
-          const busy = (resource: Prisma.CalendarSlotWhereInput) =>
-            tx.calendarSlot.findFirst({
-              where: busyWhere(orgId, resource, segments),
-              select: { startAt: true, endAt: true },
-            });
-          const [liftHit, employeeHit] = await Promise.all([
-            dto.liftId ? busy({ liftId: dto.liftId }) : null,
-            dto.employeeId ? busy({ employeeId: dto.employeeId }) : null,
-          ]);
-          const onFirstDay = (hit: TimeSegment) =>
-            hit.startAt < first.endAt && hit.endAt > first.startAt;
-          if (liftHit)
-            throw new BadRequestException(
-              err(onFirstDay(liftHit) ? 'err.calendar.liftBusy' : 'err.calendar.liftBusyNextDay'),
-            );
-          if (employeeHit)
-            throw new BadRequestException(
-              err(
-                onFirstDay(employeeHit)
-                  ? 'err.calendar.employeeBusy'
-                  : 'err.calendar.employeeBusyNextDay',
-              ),
-            );
+          await assertResourcesFree(tx, orgId, segments, dto);
 
           const slotData = {
             orgId,
@@ -567,21 +632,19 @@ export class CalendarService {
   /**
    * Зміна запису сама по собі. Зміну часу чи підйомника запису НАРЯДУ проводить наряд
    * (`WorkOrdersService.updateCalendarSlot`, BR-WO-024) — сюди вона не доходить: і
-   * `PATCH /calendar/slots/:id`, і синхронізація з планшета ідуть через нього.
+   * `PATCH /calendar/slots/:id`, і синхронізація з планшета ідуть через нього. Частина
+   * багатоденного запису без наряду змінюється як ціле (BR-CAL-020, `updateManualChain`).
    */
   async updateSlot(
     orgId: string,
     id: string,
     dto: CalendarSlotEdit,
   ): Promise<CalendarSlotResponseDto> {
-    // MVP: slots that have a continuation (split across days) must be edited individually.
-    const hasContinuation = await this.prisma.calendarSlot.findFirst({
+    // Продовження запису — він якір багатоденного ланцюжка (BR-CAL-020).
+    const continuation = await this.prisma.calendarSlot.findFirst({
       where: { parentSlotId: id, orgId, deletedAt: null },
       select: { id: true },
     });
-    if (hasContinuation) {
-      throw new BadRequestException(err('err.calendar.slotSplitTwoDays'));
-    }
 
     // Existing slot + independent FK ownership checks run in parallel; error priority preserved below
     const checkLift = dto.liftId !== undefined && dto.liftId !== null;
@@ -633,31 +696,20 @@ export class CalendarService {
       throw new NotFoundException(err('err.calendar.clientNotFound'));
     if (checkVehicle && !vehicle) throw new NotFoundException(err('err.calendar.vehicleNotFound'));
 
+    const liftId = dto.liftId !== undefined ? dto.liftId : existing.liftId;
+    if (existing.workOrderId === null && (existing.parentSlotId !== null || continuation))
+      return this.updateManualChain(orgId, existing, dto, liftId ?? null);
+
     const startAt = dto.startAt ? new Date(dto.startAt) : existing.startAt;
     const endAt = dto.endAt ? new Date(dto.endAt) : existing.endAt;
     if (endAt <= startAt) throw new BadRequestException(err('err.calendar.endBeforeStart'));
 
-    const liftId = dto.liftId !== undefined ? dto.liftId : existing.liftId;
-
-    let employeeId = dto.employeeId !== undefined ? dto.employeeId : existing.employeeId;
-    let mechanicDroppedReason: MechanicRejectReason | null = null;
-
-    // BR-CAL-012: механіка перевіряє лише зміна механіка чи підйомника. Форма шле обидва поля
-    // щоразу, тож порівнюється з БД, а не «поле є в запиті»: збережений механік, якого вже
-    // звільнили чи відкріпили, не заважає змінити час чи нотатки запису.
-    if (employeeId && (employeeId !== existing.employeeId || liftId !== existing.liftId)) {
-      const mechanic = await findMechanicOnLift(this.prisma, orgId, employeeId, liftId);
-      // Перетягування у «Дні» (`dropMechanicNotOnLift`) знімає СВІЙ механік запису, не
-      // закріплений за новим підйомником (чи у відпустці), замість 400 — з причиною у відповіді.
-      // Явно обраного іншого механіка не знімає: це вибір користувача, і він отримує 400, як у
-      // формі.
-      if (!mechanic.ok) {
-        const drop = dto.dropMechanicNotOnLift === true && employeeId === existing.employeeId;
-        if (!drop) throw new BadRequestException(err(MECHANIC_REJECT_KEY[mechanic.reason]));
-        employeeId = null;
-        mechanicDroppedReason = mechanic.reason;
-      }
-    }
+    const { employeeId, mechanicDroppedReason } = await this.resolveMechanic(
+      orgId,
+      existing,
+      dto,
+      liftId ?? null,
+    );
 
     let updated;
     try {
@@ -706,7 +758,182 @@ export class CalendarService {
 
     const chains = await this.chainsOf(orgId, [updated]);
     const res = { ...this.toDto(updated), ...chainFor(updated, chains) };
-    return mechanicDroppedReason ? { ...res, mechanicDropped: true, mechanicDroppedReason } : res;
+    return withMechanicDrop(res, mechanicDroppedReason);
+  }
+
+  /**
+   * BR-CAL-012: механік запису після зміни. Перевіряє лише зміна механіка чи підйомника — форма шле
+   * обидва поля щоразу, тож порівнюється з БД, а не «поле є в запиті»: збережений механік, якого
+   * вже звільнили чи відкріпили, не заважає змінити час чи нотатки запису. Перетягування у «Дні»
+   * (`dropMechanicNotOnLift`) знімає СВІЙ механік запису, не закріплений за новим підйомником (чи у
+   * відпустці), замість 400 — з причиною у відповіді. Явно обраного іншого механіка не знімає: це
+   * вибір користувача, і він отримує 400, як у формі.
+   */
+  private async resolveMechanic(
+    orgId: string,
+    existing: { employeeId: string | null; liftId: string | null },
+    dto: CalendarSlotEdit,
+    liftId: string | null,
+  ): Promise<{ employeeId: string | null; mechanicDroppedReason: MechanicRejectReason | null }> {
+    const employeeId = dto.employeeId !== undefined ? dto.employeeId : existing.employeeId;
+    if (!employeeId || (employeeId === existing.employeeId && liftId === existing.liftId))
+      return { employeeId: employeeId ?? null, mechanicDroppedReason: null };
+    const mechanic = await findMechanicOnLift(this.prisma, orgId, employeeId, liftId);
+    if (mechanic.ok) return { employeeId, mechanicDroppedReason: null };
+    const drop = dto.dropMechanicNotOnLift === true && employeeId === existing.employeeId;
+    if (!drop) throw new BadRequestException(err(MECHANIC_REJECT_KEY[mechanic.reason]));
+    return { employeeId: null, mechanicDroppedReason: mechanic.reason };
+  }
+
+  /**
+   * BR-CAL-020 (TECH-DEBT (б) №92): частина багатоденного запису без наряду змінюється як ланцюжок.
+   * З `chainSpan` `startAt` / `endAt` — межі всього ланцюжка (форма, перетягування в «Дні»); без
+   * нього — межі частини (ручки в «Дні», планшет): крайня змінює межі ланцюжка, внутрішня — 400
+   * (`chainBounds`, як BR-WO-024). Нові межі чи підйомник перебудовують ланцюжок поділом створення
+   * (`manualSlotSegments`, години й дні філії НОВОГО підйомника, BR-CAL-007/016/017): якір —
+   * перша частина, наявні продовження — наступні по порядку, бракує — створюються, зайві — soft
+   * delete; зайнятість — на всіх частинах без власних. Інакше поля зміни пишуться в усі частини.
+   * Відповідь — змінена частина, а якщо її прибрала перебудова — якір.
+   */
+  private async updateManualChain(
+    orgId: string,
+    existing: CalendarSlot,
+    dto: CalendarSlotEdit,
+    liftId: string | null,
+  ): Promise<CalendarSlotResponseDto> {
+    const anchorId = existing.parentSlotId ?? existing.id;
+    const found = await this.prisma.calendarSlot.findMany({
+      where: { orgId, deletedAt: null, OR: [{ id: anchorId }, { parentSlotId: anchorId }] },
+      select: {
+        id: true,
+        parentSlotId: true,
+        startAt: true,
+        endAt: true,
+        liftId: true,
+        employeeId: true,
+      },
+      orderBy: { startAt: 'asc' },
+      take: CHAIN_PARTS_TAKE,
+    });
+    // Якір — першим, продовження — за часом: у такому порядку частини отримують нові відрізки.
+    const chain = [...found].sort(
+      (a, b) =>
+        Number(a.parentSlotId !== null) - Number(b.parentSlotId !== null) ||
+        a.startAt.getTime() - b.startAt.getTime(),
+    );
+    const stored = bounds(chain);
+    const part = {
+      startAt: instantOr(dto.startAt, existing.startAt),
+      endAt: instantOr(dto.endAt, existing.endAt),
+    };
+    if (part.endAt <= part.startAt)
+      throw new BadRequestException(err('err.calendar.endBeforeStart'));
+    const { start, end } = dto.chainSpan
+      ? { start: part.startAt, end: part.endAt }
+      : chainBounds(chain, existing.id, part);
+
+    const { employeeId, mechanicDroppedReason } = await this.resolveMechanic(
+      orgId,
+      existing,
+      dto,
+      liftId,
+    );
+    const ids = chain.map(p => p.id);
+    const rebuild =
+      start.getTime() !== stored.start.getTime() ||
+      end.getTime() !== stored.end.getTime() ||
+      chain.some(p => p.liftId !== liftId);
+
+    try {
+      if (rebuild) {
+        const hours = await this.resolveWorkHours(orgId, await this.liftBranchId(orgId, liftId));
+        const segments = manualSlotSegments(start, end, hours);
+        const data = {
+          liftId,
+          employeeId,
+          counterpartyId: valueOr(dto.counterpartyId, existing.counterpartyId),
+          vehicleId: valueOr(dto.vehicleId, existing.vehicleId),
+          notes: valueOr(dto.notes, existing.notes),
+          status: existing.status,
+          type: existing.type,
+        };
+        await this.prisma.$transaction(
+          async tx => {
+            await assertResourcesFree(tx, orgId, segments, { liftId, employeeId }, ids);
+            // Спершу прибрати всі частини: перенесена частина інакше перетнулась би зі старою
+            // частиною того ж ланцюжка на тому ж підйомнику (EXCLUDE). Перевикористані частини
+            // повертаються нижче з новим часом, зайві лишаються видаленими.
+            await tx.calendarSlot.updateMany({
+              where: { orgId, id: { in: ids }, deletedAt: null },
+              data: { deletedAt: new Date() },
+            });
+            for (const [i, seg] of segments.entries()) {
+              const reuse = chain[i];
+              if (reuse) {
+                await tx.calendarSlot.update({
+                  where: { id: reuse.id, orgId },
+                  data: { ...data, startAt: seg.startAt, endAt: seg.endAt, deletedAt: null },
+                  select: { id: true },
+                });
+              } else {
+                await tx.calendarSlot.create({
+                  data: {
+                    ...data,
+                    orgId,
+                    workOrderId: null,
+                    parentSlotId: anchorId,
+                    startAt: seg.startAt,
+                    endAt: seg.endAt,
+                  },
+                  select: { id: true },
+                });
+              }
+            }
+          },
+          { timeout: TRANSACTION_TIMEOUT_MS },
+        );
+      } else {
+        const data = {
+          ...(dto.liftId !== undefined && { liftId }),
+          ...((dto.employeeId !== undefined || mechanicDroppedReason !== null) && { employeeId }),
+          ...(dto.counterpartyId !== undefined && { counterpartyId: dto.counterpartyId }),
+          ...(dto.vehicleId !== undefined && { vehicleId: dto.vehicleId }),
+          ...(dto.notes !== undefined && { notes: dto.notes }),
+        };
+        const byTime = [...chain].sort((a, b) => a.startAt.getTime() - b.startAt.getTime());
+        await this.prisma.$transaction(
+          async tx => {
+            // Механік, якого ще немає на якійсь частині, — вільний на всіх днях ланцюжка.
+            if (employeeId && chain.some(p => p.employeeId !== employeeId))
+              await assertResourcesFree(tx, orgId, byTime, { employeeId }, ids);
+            if (Object.keys(data).length > 0)
+              await tx.calendarSlot.updateMany({
+                where: { orgId, id: { in: ids }, deletedAt: null },
+                data,
+              });
+          },
+          { timeout: TRANSACTION_TIMEOUT_MS },
+        );
+      }
+    } catch (e) {
+      throwIfExclusionConflict(e, slotExclusionMessages());
+    }
+
+    const saved =
+      (await this.findSlotById(orgId, existing.id)) ??
+      (chain[0] ? await this.findSlotById(orgId, chain[0].id) : null);
+    if (!saved) throw new NotFoundException(err('err.calendar.slotNotFound'));
+    return withMechanicDrop(saved, mechanicDroppedReason);
+  }
+
+  /** Філія підйомника (години запису, BR-CAL-016/017); `null` — без підйомника чи його немає. */
+  private async liftBranchId(orgId: string, liftId: string | null): Promise<string | null> {
+    if (!liftId) return null;
+    const lift = await this.prisma.lift.findFirst({
+      where: { id: liftId, orgId, deletedAt: null },
+      select: { zone: { select: { branchId: true } } },
+    });
+    return lift?.zone?.branchId ?? null;
   }
 
   async checkConflicts(orgId: string, dto: CheckConflictsDto): Promise<CheckConflictsResponseDto> {
@@ -725,10 +952,19 @@ export class CalendarService {
       throw new BadRequestException(err('err.calendar.invalidTimeInterval'));
     }
     // excludeWorkOrderId — записи самого наряду (картка наряду перевіряє власний час) не конфлікт;
-    // записи без наряду лишаються конфліктом (`busyWhere`, BR-WO-020).
+    // записи без наряду лишаються конфліктом (`busyWhere`, BR-WO-020). excludeSlotId — увесь
+    // ланцюжок запису: форма багатоденного запису перевіряє межі всього ланцюжка, і його власні
+    // дні — не конфлікт (BR-CAL-020).
+    const excluded = dto.excludeSlotId
+      ? await this.prisma.calendarSlot.findFirst({
+          where: { id: dto.excludeSlotId, orgId, deletedAt: null },
+          select: { parentSlotId: true },
+        })
+      : null;
     const exclude = {
       ids: dto.excludeSlotId ? [dto.excludeSlotId] : undefined,
       workOrderId: dto.excludeWorkOrderId,
+      chainOf: dto.excludeSlotId ? (excluded?.parentSlotId ?? dto.excludeSlotId) : undefined,
     };
     // findMany without take violates OOM guard — realistic upper bound for a time window is a few dozen slots.
     const CONFLICT_TAKE = 50;

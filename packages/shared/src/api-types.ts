@@ -8864,6 +8864,8 @@ export interface components {
             chainDays: number;
             /** @description Кінець останньої частини ланцюжка запису (ISO) */
             chainEndAt: string;
+            /** @description Початок першої частини ланцюжка запису (ISO) */
+            chainStartAt: string;
             /** @description Запис видалено відв'язкою від наряду (лише відповідь PATCH; BR-WO-028) */
             removed?: boolean;
         };
@@ -8923,6 +8925,8 @@ export interface components {
             notes?: string;
             /** @description Перетягування: механік запису, не закріплений за новим підйомником, знімається замість 400 */
             dropMechanicNotOnLift?: boolean;
+            /** @description Частина багатоденного запису без наряду: startAt/endAt — межі всього ланцюжка (BR-CAL-020) */
+            chainSpan?: boolean;
         };
         PurchaseOrderLineResponseDto: {
             id: string;

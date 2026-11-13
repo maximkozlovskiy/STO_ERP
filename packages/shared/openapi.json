@@ -29279,6 +29279,10 @@
             "type": "string",
             "description": "Кінець останньої частини ланцюжка запису (ISO)"
           },
+          "chainStartAt": {
+            "type": "string",
+            "description": "Початок першої частини ланцюжка запису (ISO)"
+          },
           "removed": {
             "type": "boolean",
             "description": "Запис видалено відв'язкою від наряду (лише відповідь PATCH; BR-WO-028)"
@@ -29291,7 +29295,8 @@
           "status",
           "type",
           "chainDays",
-          "chainEndAt"
+          "chainEndAt",
+          "chainStartAt"
         ]
       },
       "CheckConflictsDto": {
@@ -29460,6 +29465,10 @@
           "dropMechanicNotOnLift": {
             "type": "boolean",
             "description": "Перетягування: механік запису, не закріплений за новим підйомником, знімається замість 400"
+          },
+          "chainSpan": {
+            "type": "boolean",
+            "description": "Частина багатоденного запису без наряду: startAt/endAt — межі всього ланцюжка (BR-CAL-020)"
           }
         }
       },

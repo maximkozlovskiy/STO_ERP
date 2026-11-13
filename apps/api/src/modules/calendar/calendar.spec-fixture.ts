@@ -128,8 +128,8 @@ export function fakeSlot(over: Partial<FakeSlot> & { startAt: Date; endAt: Date 
 const NO_RELATIONS = { counterparty: null, vehicle: null, workOrder: null };
 
 /**
- * Prisma-мок поверх масиву слотів: `findFirst` / `findMany` обчислюють `where`, `create` і
- * `update` змінюють масив. `$transaction(cb)` передає той самий `calendarSlot` як `tx`.
+ * Prisma-мок поверх масиву слотів: `findFirst` / `findMany` обчислюють `where`, `create`,
+ * `update` і `updateMany` змінюють масив. `$transaction(cb)` передає той самий `calendarSlot` як `tx`.
  * Підйомник «існує» для будь-якого id, механік — для будь-якого id і підйомника (BR-CAL-012
  * стереже `calendar.mechanic-lift.spec.ts` зі справжньою таблицею працівників). Підйомник — у
  * філії `FAKE_BRANCH_ID` з робочим днем 08:00–20:00 (явні налаштування філії, не типові години):
@@ -153,7 +153,12 @@ export function buildSlotStorePrisma(rows: FakeSlot[]) {
     Object.assign(row, data);
     return Promise.resolve({ ...row, ...NO_RELATIONS });
   });
-  const calendarSlot = { findFirst, findMany, create, update };
+  const updateMany = vi.fn(({ where, data }: { where: Where; data: Partial<FakeSlot> }) => {
+    const hits = rows.filter(r => matchesWhere(r, where));
+    for (const row of hits) Object.assign(row, data);
+    return Promise.resolve({ count: hits.length });
+  });
+  const calendarSlot = { findFirst, findMany, create, update, updateMany };
   const exists = () =>
     // status? — наряд може повернути статус (BR-WO-022: скасований наряд не приймає запис).
     vi.fn(({ where }: { where: { id: string } }): Promise<{ id: string; status?: string }> =>
