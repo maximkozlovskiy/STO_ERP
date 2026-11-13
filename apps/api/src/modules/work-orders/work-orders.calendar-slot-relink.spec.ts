@@ -224,10 +224,14 @@ describe("Перев'язка запису на інший наряд (BR-WO-028
     // Перев'язка прочитала запис вільним, а наряд, створений із цього запису (BR-WO-020), уже
     // забрав його собі до транзакції перев'язки.
     const findFirst = h.calendarSlot.findFirst.getMockImplementation()!;
-    h.calendarSlot.findFirst.mockImplementation(async (args: { where: { id?: unknown } }) => {
+    h.calendarSlot.findFirst.mockImplementation(async args => {
       const row = structuredClone(await findFirst(args as never));
       const plain = slotOf(h, 'plain');
-      if (args.where.id === 'plain' && plain.workOrderId === null) plain.workOrderId = WO_ID;
+      if (
+        (args?.where as { id?: unknown } | undefined)?.id === 'plain' &&
+        plain.workOrderId === null
+      )
+        plain.workOrderId = WO_ID;
       return row;
     });
     const otherBefore = structuredClone(woOf(h, OTHER_WO));

@@ -207,10 +207,13 @@ describe('WorkOrdersService.create з calendarSlotId — наряд забира
     });
     // Перевірка бачить запис вільним, а до транзакції його вже забрав інший наряд.
     const findFirst = h.calendarSlot.findFirst.getMockImplementation()!;
-    h.calendarSlot.findFirst.mockImplementation(async (args: { where: { id?: unknown } }) => {
+    h.calendarSlot.findFirst.mockImplementation(async args => {
       // Копія: перевірка тримає прочитаний рядок, а таблиця в пам'яті віддає сам об'єкт.
       const row = structuredClone(await findFirst(args as never));
-      if (args.where.id === SLOT && h.calendarSlot.rows[0]!.workOrderId === null) {
+      if (
+        (args?.where as { id?: unknown } | undefined)?.id === SLOT &&
+        h.calendarSlot.rows[0]!.workOrderId === null
+      ) {
         h.calendarSlot.rows[0]!.workOrderId = OTHER_WO;
       }
       return row;
