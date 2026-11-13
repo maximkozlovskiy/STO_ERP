@@ -129,6 +129,46 @@ describe('Вид «День» — запис наряду не в редагов
   });
 });
 
+// Рішення власника 2026-10-30 (TECH-DEBT (б) №66): внутрішні межі ланцюжка наряду не тягнуться.
+describe('Вид «День» — ручки ланцюжка наряду (BR-WO-024)', () => {
+  const handles = (el: HTMLElement) =>
+    [...el.querySelectorAll<HTMLElement>('[data-part^="resize-"]')].map(h => h.dataset.part);
+
+  // guards: BR-WO-024
+  it('перший день — лише ручка початку, продовження посередині — жодної, останній — лише кінця', async () => {
+    const later = iso('2026-10-17T12:00');
+    daySlots = [
+      slot('a', '09:00', { chainDays: 3, chainEndAt: later }),
+      slot('m', '12:00', { parentSlotId: 'x', chainDays: 3, chainEndAt: later }),
+      slot('z', '15:00', { parentSlotId: 'x', chainDays: 3, chainEndAt: iso('2026-10-15T16:00') }),
+    ];
+    await renderDay();
+
+    expect(handles(block('WO-a'))).toEqual(['resize-start']);
+    expect(handles(block('WO-m'))).toEqual([]);
+    expect(handles(block('WO-z'))).toEqual(['resize-end']);
+    // Блок перетягується цілком (BR-WO-023) — курсор перетягування лишається.
+    expect(block('WO-m').querySelector('[data-part="content"]')).toHaveClass('cursor-grab');
+  });
+
+  // guards: BR-WO-024
+  it('ручний ланцюжок (без наряду) — обидві ручки, як раніше (TECH-DEBT №92)', async () => {
+    daySlots = [
+      slot('r', '10:00', {
+        workOrderId: null,
+        workOrderNumber: undefined,
+        workOrderStatus: null,
+        counterpartyName: 'Ручний ланцюжок',
+        parentSlotId: 'x',
+        chainDays: 2,
+        chainEndAt: iso('2026-10-16T12:00'),
+      }),
+    ];
+    await renderDay();
+    expect(handles(block('Ручний ланцюжок'))).toEqual(['resize-start', 'resize-end']);
+  });
+});
+
 // Рішення власника 2026-10-19: запис наряду видаляється лише в редагованому статусі.
 describe('Вид «День» — видалення запису наряду з переліку «Без підйомника» (BR-WO-026)', () => {
   // guards: BR-WO-026

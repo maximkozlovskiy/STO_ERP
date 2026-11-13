@@ -49,6 +49,12 @@ function renderMonth(
   );
 }
 
+/** Рядки картки місяця: перший (час, головне) і другий (клієнт · авто чи примітка), №59. */
+const lines = (el: HTMLElement) =>
+  [...el.querySelectorAll('[data-part="first-line"], [data-part="secondary"]')].map(
+    n => n.textContent,
+  );
+
 const cell = (day = DAY) => {
   const el = document.querySelector<HTMLElement>(`[data-date="${day}"]`);
   if (!el) throw new Error(`немає клітинки ${day}`);
@@ -103,42 +109,66 @@ describe('CalendarMonthView — картки записів дня (BR-CAL-009)'
   });
 
   // guards: BR-CAL-009
-  it('картка: номер наряду й клієнт, смуга й іконка — за категорією, тип — у назві', () => {
+  it('картка у два рядки: час і номер наряду; клієнт · авто — другим рядком (№59)', () => {
     renderMonth(
       monthOf([
         slot('a', '09:00', {
           workOrderNumber: 'WO-000123',
           workOrderStatus: 'IN_PROGRESS',
           counterpartyName: 'Петренко Іван',
+          vehicleSummary: 'Toyota Camry',
+          vehiclePlate: 'AA1234BB',
         }),
       ]),
     );
     const card = within(cell()).getByTestId('month-slot-card');
-    expect(card).toHaveTextContent('09:00WO-000123· Петренко Іван');
-    // Номер — природної ширини, клієнт — лише залишок місця (`flex-1`, база 0), тож першим
-    // обрізається клієнт, а не номер наряду.
-    expect(within(card).getByText('WO-000123')).not.toHaveClass('flex-1');
-    expect(within(card).getByText('· Петренко Іван')).toHaveClass('flex-1', 'truncate');
+    const first = card.querySelector('[data-part="first-line"]');
+    const second = card.querySelector('[data-part="secondary"]');
+    // Перший рядок — час і номер; клієнт і авто — лише в другому (раніше в одному рядку клієнт
+    // обрізався до «П…»).
+    expect(first).toHaveTextContent(/^09:00WO-000123$/);
+    expect(second).toHaveTextContent(/^Петренко Іван · Toyota Camry AA1234BB$/);
+    expect(second?.parentElement).toBe(card);
+    expect(second).toHaveClass('truncate');
+    expect(within(card).getByText('WO-000123')).toHaveClass('truncate');
+    expect(card).toHaveClass('flex-col');
     expect(card).toHaveAttribute('data-category', 'inProgress');
     expect(card).toHaveClass('border-l-warning-strong');
-    expect(card).toHaveAccessibleName('09:00 WO-000123 · Петренко Іван. Робота. В роботі');
-    // Повний опис — у підказці: час до кінця, статус наряду.
+    expect(card).toHaveAccessibleName(
+      '09:00 WO-000123 · Петренко Іван · Toyota Camry AA1234BB. Робота. В роботі',
+    );
+    // Повний опис — у підказці: час до кінця, статус наряду, авто.
     expect(card.getAttribute('title')).toContain('09:00–10:00');
     expect(card.getAttribute('title')).toContain('WO-000123 · В роботі');
+    expect(card.getAttribute('title')).toContain('Toyota Camry AA1234BB');
   });
 
   // guards: BR-CAL-009
-  it('механік (API без клієнта) бачить лише номер наряду', () => {
+  it('другий рядок: лише клієнт чи лише авто — без зайвої «·»', () => {
+    renderMonth(
+      monthOf([
+        slot('a', '09:00', { workOrderNumber: 'WO-1', counterpartyName: 'Петренко' }),
+        slot('b', '10:00', { workOrderNumber: 'WO-2', vehiclePlate: 'AA0001AA' }),
+      ]),
+    );
+    const [client, car] = within(cell()).getAllByTestId('month-slot-card');
+    expect(client.querySelector('[data-part="secondary"]')).toHaveTextContent(/^Петренко$/);
+    expect(car.querySelector('[data-part="secondary"]')).toHaveTextContent(/^AA0001AA$/);
+  });
+
+  // guards: BR-CAL-009
+  it('механік (API без клієнта й авто) бачить лише перший рядок — номер наряду', () => {
     renderMonth(
       monthOf([slot('a', '09:00', { workOrderNumber: 'WO-7', workOrderStatus: 'APPROVED' })]),
     );
     const card = within(cell()).getByTestId('month-slot-card');
     expect(card).toHaveTextContent(/^09:00WO-7$/);
+    expect(card.querySelector('[data-part="secondary"]')).toBeNull();
     expect(card).toHaveAttribute('data-category', 'planned');
   });
 
   // guards: BR-CAL-009, BR-CAL-003
-  it('запис без наряду — «Без наряду» (+ клієнт чи примітка); службовий — назва типу й примітка', () => {
+  it('запис без наряду — «Без наряду» (+ клієнт чи примітка другим рядком); службовий — назва типу й примітка', () => {
     renderMonth(
       monthOf([
         slot('a', '09:00', { type: 'BREAK', notes: 'Обід' }),
@@ -147,13 +177,19 @@ describe('CalendarMonthView — картки записів дня (BR-CAL-009)'
       ]),
     );
     const [brk, client, meeting] = within(cell()).getAllByTestId('month-slot-card');
-    expect(brk).toHaveTextContent('09:00Перерва· Обід');
+    expect(lines(brk)).toEqual(['09:00Перерва', 'Обід']);
     expect(brk).toHaveAttribute('data-category', 'other');
     expect(brk).toHaveAccessibleName('09:00 Перерва · Обід. Перерва. Без наряду');
     // Другий рядок підказки (замість «Без наряду») — назва типу.
     expect(brk.title.split(/\n/)[1]).toBe('Перерва');
-    expect(client).toHaveTextContent('10:00Без наряду· ТОВ Ромашка');
-    expect(meeting).toHaveTextContent('11:00Нарада');
+    expect(lines(client)).toEqual(['10:00Без наряду', 'ТОВ Ромашка']);
+    expect(lines(meeting)).toEqual(['11:00Нарада']);
+  });
+
+  // guards: BR-CAL-009
+  it('запис наряду без клієнта — примітка в картку не йде (лише номер)', () => {
+    renderMonth(monthOf([slot('d', '12:00', { workOrderNumber: 'WO-9', notes: 'Примітка' })]));
+    expect(lines(within(cell()).getByTestId('month-slot-card'))).toEqual(['12:00WO-9']);
   });
 
   // guards: BR-CAL-009

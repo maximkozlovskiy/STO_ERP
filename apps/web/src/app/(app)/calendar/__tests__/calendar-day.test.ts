@@ -9,6 +9,7 @@ import {
   nowLinePercent,
   pastPercent,
   slotDeleteConfirmOptions,
+  workOrderChainInnerEdge,
 } from '../calendar-day';
 import { chainEnds } from '../calendar-month';
 import type { CalendarSlot } from '../calendar.types';
@@ -226,5 +227,40 @@ describe('slotDeleteConfirmOptions — ланцюжок ручного запи�
     const wo = slotDeleteConfirmOptions(t, 'НЗ-7', null, { chainDays: 3, chainEndAt: END });
     expect(wo.title).toBe('Видалити слот?');
     expect(wo.message).toMatch(/НЗ-7/);
+  });
+});
+
+describe('workOrderChainInnerEdge — внутрішні межі ланцюжка наряду (BR-WO-024, №66)', () => {
+  const end = iso('2026-10-15T18:00');
+  const nextEnd = iso('2026-10-16T12:00');
+  const wo = { workOrderId: 'wo-1', endAt: end };
+
+  // guards: BR-WO-024
+  it('перший день: початок тягнеться, кінець (ланцюжок далі) — ні', () => {
+    const anchor = { ...wo, parentSlotId: null, chainEndAt: nextEnd };
+    expect(workOrderChainInnerEdge(anchor, 'start')).toBe(false);
+    expect(workOrderChainInnerEdge(anchor, 'end')).toBe(true);
+  });
+
+  // guards: BR-WO-024
+  it('середній день — жодна межа; останній — лише кінець', () => {
+    const middle = { ...wo, parentSlotId: 'a', chainEndAt: nextEnd };
+    expect(workOrderChainInnerEdge(middle, 'start')).toBe(true);
+    expect(workOrderChainInnerEdge(middle, 'end')).toBe(true);
+    const last = { ...wo, parentSlotId: 'a', chainEndAt: end };
+    expect(workOrderChainInnerEdge(last, 'start')).toBe(true);
+    expect(workOrderChainInnerEdge(last, 'end')).toBe(false);
+  });
+
+  // guards: BR-WO-024
+  it('одноденний запис наряду і ручний ланцюжок (без наряду) — обидві межі тягнуться', () => {
+    const single = { ...wo, parentSlotId: null, chainEndAt: end };
+    expect(workOrderChainInnerEdge(single, 'start')).toBe(false);
+    expect(workOrderChainInnerEdge(single, 'end')).toBe(false);
+    // Відповідь без полів ланцюжка (стара збірка API) — як одноденний.
+    expect(workOrderChainInnerEdge({ ...wo }, 'end')).toBe(false);
+    const manual = { workOrderId: null, endAt: end, parentSlotId: 'a', chainEndAt: nextEnd };
+    expect(workOrderChainInnerEdge(manual, 'start')).toBe(false);
+    expect(workOrderChainInnerEdge(manual, 'end')).toBe(false);
   });
 });

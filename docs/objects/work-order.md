@@ -393,7 +393,8 @@ cd apps/api && npx vitest run src/modules/work-orders/<файл>.spec.ts
   робочі дні й наступний робочий день), `settings/settings.contract.spec.ts`
   (`GET /settings/work-hours?branchId=`, `workDays`, кеш v2 і його скидання при зміні днів).
 - web: `components/ui/__tests__/DateTimePickerInput.test.tsx` (минулі дні й години, робочі години,
-  перша година, `closeHour`, очищення, вихідні філії — `workDays`), `planned-dates.test.ts`
+  перша година, `closeHour`, очищення, вихідні філії — `workDays`; попап `fixed` — над
+  полем біля нижнього краю вікна, у межах вікна, прокрутка зі зсувом поля закриває — №74), `planned-dates.test.ts`
   (автокінець і нормогодини, і через вихідні), `hooks/__tests__/useBranchWorkHours.test.tsx`
   (робочі дні з `GET /settings/work-hours`; немає чи зіпсоване поле — кожен день робочий),
   `CreateWorkOrderModal.planned-dates.test.tsx` (години філії, без діалогу й `by-work-order`,

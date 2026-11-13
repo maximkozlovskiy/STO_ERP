@@ -263,19 +263,27 @@ describe('useCalendarState — вид «Місяць»', () => {
     expect(result.current.slots.map(s => s.id)).toEqual(['new']);
   });
 
-  it('запис, відкритий з місяця, а потім із виду «День», — «минулий» за правилом дня', async () => {
+  // guards: BR-CAL-009
+  it('вид «День»: «минулий» — теж за кінцем запису (№57): що почався й триває — редагується', async () => {
     params = new URLSearchParams('view=day&date=2026-10-15');
-    // Почався о 10:00, триває до 14:00; зараз 12:00.
-    const s = slot('now', '2026-10-15T10:00:00+03:00', '2026-10-15T14:00:00+03:00');
-    byDay['2026-10-15'] = [s];
+    // Зараз 12:00: перший почався о 10:00 і триває до 14:00, другий закінчився об 11:00.
+    const running = slot('now', '2026-10-15T10:00:00+03:00', '2026-10-15T14:00:00+03:00');
+    const ended = slot('ended', '2026-10-15T09:00:00+03:00', '2026-10-15T11:00:00+03:00');
+    byDay['2026-10-15'] = [running, ended];
     const { result } = renderHook(() => useCalendarState(), { wrapper: createQueryWrapper() });
-    await waitFor(() => expect(result.current.slots).toHaveLength(1));
+    await waitFor(() => expect(result.current.slots).toHaveLength(2));
     await waitFor(() => expect(result.current.nowMs).toBeGreaterThan(0));
-    act(() => result.current.openMonthSlot(s));
-    expect(result.current.isEditingPast).toBe(false); // за кінцем (BR-CAL-009)
-    act(() => result.current.handleEditSlot(s));
-    // Знімок із місяця не переходить у вид «День»: там — за початком (TECH-DEBT, питання власнику).
+    // Раніше «День» рахував від початку (почався до поточної години — минулий), а «Місяць» — від
+    // кінця: той самий запис в одному виді редагувався, в іншому — ні.
+    act(() => result.current.handleEditSlot(running));
+    expect(result.current.isEditingPast).toBe(false);
+    act(() => result.current.handleEditSlot(ended));
+    expect(result.current.editingSlotId).toBe('ended');
     expect(result.current.isEditingPast).toBe(true);
+    // Той самий запис із картки «Місяця» — те саме правило.
+    act(() => result.current.handleModalClose());
+    act(() => result.current.openMonthSlot(running));
+    expect(result.current.isEditingPast).toBe(false);
   });
 
   // guards: BR-CAL-010

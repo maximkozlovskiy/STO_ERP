@@ -9,7 +9,8 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { Modal } from '../modal';
-import { HelpBlocks, HelpItem, HelpPopover, HelpSection, placeHelpPanel } from '../help-popover';
+import { HelpBlocks, HelpItem, HelpPopover, HelpSection } from '../help-popover';
+import { placePopover } from '@/lib/place-popover';
 
 const LABEL = 'Як рахується звіт';
 const TITLE = 'Завантаженість';
@@ -90,11 +91,11 @@ describe('HelpPopover', () => {
   });
 });
 
-describe('placeHelpPanel — позиція вікна', () => {
+describe('placePopover — позиція вікна', () => {
   const phone = { width: 390, height: 844 };
 
   it('390 px: кнопка біля лівого краю, вікно 320 px — не виходить за лівий край', () => {
-    const p = placeHelpPanel(
+    const p = placePopover(
       { top: 100, bottom: 132, left: 20, right: 52 },
       { width: 320, height: 200 },
       phone,
@@ -105,7 +106,7 @@ describe('placeHelpPanel — позиція вікна', () => {
   });
 
   it('390 px: кнопка біля правого краю, align start — не виходить за правий край', () => {
-    const p = placeHelpPanel(
+    const p = placePopover(
       { top: 100, bottom: 132, left: 350, right: 382 },
       { width: 320, height: 200 },
       phone,
@@ -115,7 +116,7 @@ describe('placeHelpPanel — позиція вікна', () => {
   });
 
   it('знизу не вміщається, зверху місця більше — над кнопкою', () => {
-    const p = placeHelpPanel(
+    const p = placePopover(
       { top: 700, bottom: 732, left: 200, right: 232 },
       { width: 320, height: 400 },
       phone,

@@ -246,3 +246,98 @@ describe('DateTimePickerInput — очищення (clearable)', () => {
     expect(screen.queryByRole('button', { name: /Очистити дату/ })).toBeNull();
   });
 });
+
+// TECH-DEBT (б) №74 (рішення власника 2026-10-30): попап — `position: fixed` біля поля; біля
+// нижнього краю вікна (картка наряду, 720 px) — над полем, обмежений висотою вікна; прокрутка,
+// що зрушила поле, закриває попап (він не їде за карткою й не лишається відірваним від поля).
+describe('DateTimePickerInput — позиція попапу у вікні', () => {
+  const VIEW_H = 720;
+  const PANEL_H = 330;
+  let fieldTop = 640;
+  const restore: Array<() => void> = [];
+
+  const define = (proto: object, key: string, get: (this: HTMLElement) => number) => {
+    const prev = Object.getOwnPropertyDescriptor(proto, key);
+    Object.defineProperty(proto, key, { configurable: true, get });
+    restore.push(() =>
+      prev ? Object.defineProperty(proto, key, prev) : Reflect.deleteProperty(proto, key),
+    );
+  };
+
+  beforeEach(() => {
+    fieldTop = 640;
+    const prevH = window.innerHeight;
+    window.innerHeight = VIEW_H;
+    restore.push(() => {
+      window.innerHeight = prevH;
+    });
+    const rect = vi
+      .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+      .mockImplementation(function (this: HTMLElement) {
+        // Поле (обгортка інпута) — на `fieldTop`, висота 36; решта елементів значення не мають.
+        const top = this.querySelector(':scope > input') ? fieldTop : 0;
+        return {
+          top,
+          bottom: top + 36,
+          left: 100,
+          right: 300,
+          width: 200,
+          height: 36,
+          x: 100,
+          y: top,
+          toJSON: () => ({}),
+        } as DOMRect;
+      });
+    restore.push(() => rect.mockRestore());
+    define(HTMLElement.prototype, 'scrollHeight', function () {
+      return this.dataset.testid === 'datetime-picker-popup' ? PANEL_H : 0;
+    });
+    define(HTMLElement.prototype, 'offsetWidth', function () {
+      return this.dataset.testid === 'datetime-picker-popup' ? 420 : 0;
+    });
+  });
+
+  afterEach(() => {
+    while (restore.length) restore.pop()!();
+  });
+
+  const popup = () => screen.getByTestId('datetime-picker-popup');
+
+  it('біля нижнього краю вікна 720 px — над полем, не виходить за верхній край, fixed', async () => {
+    const user = userEvent.setup();
+    render(<DateTimePickerInput label="Завершення" value="2026-05-22T10:00" onChange={vi.fn()} />);
+    await user.click(screen.getByPlaceholderText('ДД.ММ.РРРР ГГ:ХХ'));
+
+    const style = popup().style;
+    expect(popup()).toHaveClass('fixed');
+    const top = parseFloat(style.top);
+    // Над полем: низ попапу — вище верху поля; верх — не вище відступу від краю.
+    expect(top + PANEL_H).toBeLessThanOrEqual(fieldTop);
+    expect(top).toBeGreaterThanOrEqual(16);
+    expect(parseFloat(style.maxHeight)).toBeLessThanOrEqual(fieldTop);
+    expect(style.visibility).toBe('');
+  });
+
+  it('місце знизу є — під полем, висота обмежена місцем до низу вікна', async () => {
+    fieldTop = 100;
+    const user = userEvent.setup();
+    render(<DateTimePickerInput value="" onChange={vi.fn()} />);
+    await user.click(screen.getByPlaceholderText('ДД.ММ.РРРР ГГ:ХХ'));
+
+    expect(parseFloat(popup().style.top)).toBeGreaterThanOrEqual(136);
+    expect(parseFloat(popup().style.maxHeight)).toBeLessThanOrEqual(VIEW_H - 136);
+  });
+
+  it('прокрутка, що зрушила поле, закриває попап; прокрутка без зсуву (у самому попапі) — ні', async () => {
+    const user = userEvent.setup();
+    render(<DateTimePickerInput value="" onChange={vi.fn()} />);
+    await user.click(screen.getByPlaceholderText('ДД.ММ.РРРР ГГ:ХХ'));
+
+    fireEvent.scroll(popup());
+    expect(screen.queryByTestId('datetime-picker-popup')).not.toBeNull();
+
+    fieldTop = 600; // картку прокрутили — поле поїхало вгору
+    fireEvent.scroll(window);
+    expect(screen.queryByTestId('datetime-picker-popup')).toBeNull();
+  });
+});

@@ -156,15 +156,109 @@ describe('useCalendarState — запис наряду не в редагова�
       lockedStatus: 'IN_PROGRESS',
     });
 
+    // Той самий запис при відкритій формі — форма лишається як є (BR-CAL-018), тож спершу закрити.
+    act(() => hook.result.current.handleModalClose());
     act(() => hook.result.current.handleEditSlot(woSlot('ESTIMATE')));
     expect(hook.result.current.editingWorkOrder).toEqual({ number: 'НРД-1', lockedStatus: null });
 
+    act(() => hook.result.current.handleModalClose());
     act(() =>
       hook.result.current.handleEditSlot(
         woSlot('DRAFT', { workOrderId: null, workOrderNumber: undefined }),
       ),
     );
     expect(hook.result.current.editingWorkOrder).toBeNull();
+  });
+});
+
+describe('useCalendarState — внутрішні межі ланцюжка наряду (BR-WO-024, №66)', () => {
+  const NEXT_DAY_END = new Date('2026-10-21T12:00:00+03:00').toISOString();
+
+  async function resize(
+    hook: Awaited<ReturnType<typeof renderDay>>,
+    edge: 'start' | 'end',
+    dx: number,
+  ) {
+    act(() => {
+      hook.result.current.handleResizeStart(
+        { stopPropagation: () => {}, clientX: 500 } as never,
+        's-1',
+        edge,
+      );
+    });
+    act(() => {
+      window.dispatchEvent(new MouseEvent('pointermove', { clientX: 500 + dx }));
+    });
+    await act(async () => {
+      window.dispatchEvent(new MouseEvent('pointerup', { clientX: 500 + dx }));
+      await Promise.resolve();
+    });
+  }
+
+  // guards: BR-WO-024
+  it('перший день ланцюжка: кінець — внутрішня межа, без запиту; початок — PATCH', async () => {
+    daySlots = [woSlot('APPROVED', { chainDays: 2, chainEndAt: NEXT_DAY_END })];
+    const hook = await renderDay();
+
+    await resize(hook, 'end', -100);
+    expect(writes()).toEqual([]);
+
+    await resize(hook, 'start', -100);
+    expect(writes().map(c => c[0])).toEqual(['/calendar/slots/s-1']);
+  });
+
+  // guards: BR-WO-024
+  it('продовження (останній день): початок — внутрішня межа, без запиту; кінець — PATCH', async () => {
+    const end = new Date('2026-10-20T11:00:00+03:00').toISOString();
+    daySlots = [
+      woSlot('APPROVED', { parentSlotId: 'anchor', chainDays: 2, chainEndAt: end, endAt: end }),
+    ];
+    const hook = await renderDay();
+
+    await resize(hook, 'start', 100);
+    expect(writes()).toEqual([]);
+
+    await resize(hook, 'end', 100);
+    expect(writes().map(c => c[0])).toEqual(['/calendar/slots/s-1']);
+  });
+
+  // guards: BR-WO-024
+  it('ручний ланцюжок (без наряду) — правило не стосується: обидві межі тягнуться (TECH-DEBT №92)', async () => {
+    daySlots = [
+      woSlot('DRAFT', {
+        workOrderId: null,
+        workOrderNumber: undefined,
+        workOrderStatus: null,
+        parentSlotId: 'anchor',
+        chainDays: 3,
+        chainEndAt: NEXT_DAY_END,
+      }),
+    ];
+    const hook = await renderDay();
+
+    await resize(hook, 'start', 100);
+    await resize(hook, 'end', 100);
+    expect(writes()).toHaveLength(2);
+  });
+
+  // guards: BR-WO-024
+  it('відмова сервера (400 «внутрішня межа») — тост із причиною, вид перечитано', async () => {
+    daySlots = [woSlot('APPROVED')];
+    const hook = await renderDay();
+    const reason =
+      'Внутрішню межу багатоденного запису змінити не можна — змініть початок першого дня чи кінець останнього';
+    const base = apiFetch.getMockImplementation()!;
+    apiFetch.mockImplementation((url: string, init?: { method?: string }) =>
+      init?.method === 'PATCH' ? Promise.reject(new Error(reason)) : base(url, init),
+    );
+    const before = apiFetch.mock.calls.filter(c => c[0] === DAY_URL).length;
+
+    await resize(hook, 'end', 100);
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(reason));
+    await waitFor(() =>
+      expect(apiFetch.mock.calls.filter(c => c[0] === DAY_URL).length).toBe(before + 1),
+    );
   });
 });
 
