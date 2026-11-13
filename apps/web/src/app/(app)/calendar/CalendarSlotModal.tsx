@@ -889,11 +889,14 @@ export function CalendarSlotModal({
   /**
    * Наряд, створений із цієї форми, уже має запис календаря (BR-WO-020). Механік форми
    * переноситься на запис наряду (PATCH самого запису); відмова сервера (механік зайнятий,
-   * багатоденний запис) не скасовує наряду — лише попереджає.
+   * багатоденний запис) не скасовує наряду — лише попереджає. Наряд забрав НАЯВНИЙ запис
+   * (`adopted`), а механіка в формі прибрали без збереження — запис наряду теж без механіка:
+   * сервер лишає збереженого механіка запису.
    */
-  const adoptWorkOrderSlot = async (wo: CreatedWorkOrder) => {
+  const adoptWorkOrderSlot = async (wo: CreatedWorkOrder, adopted: boolean) => {
     const employeeId = form.employeeId;
-    if (employeeId) {
+    const clearsSaved = adopted && !employeeId && !!savedMechanic?.employeeId;
+    if (employeeId || clearsSaved) {
       try {
         const linked = await apiFetch<{ calendarSlots: { id: string; startAt: string }[] }>(
           `/work-orders/${wo.id}/linked-documents`,
@@ -905,7 +908,7 @@ export function CalendarSlotModal({
         if (anchor) {
           await apiFetch(`/calendar/slots/${anchor.id}`, {
             method: 'PATCH',
-            body: JSON.stringify({ employeeId }),
+            body: JSON.stringify({ employeeId: employeeId || null }),
           });
         }
       } catch (e: unknown) {
@@ -1789,8 +1792,14 @@ export function CalendarSlotModal({
         prefill={(() => {
           // Нормогодини з комою («1,5») — як у картці наряду, а не NaN від `Number`.
           const nh = Number(normalizeDecimalInput(String(form.normoHours)));
+          // Філія наряду — філія підйомника запису (BR-CAL-017): сервер ділить запис наряду на дні
+          // за годинами й днями філії НАРЯДУ, тож інша філія (перша в переліку, вибір вручну)
+          // розтягнула б запис на вихідні й неробочі години підйомника.
+          const liftBranchId = lifts.find(l => l.id === form.liftId)?.branchId;
+          const branch = liftBranchId ? { branchId: liftBranchId } : {};
           if (adoptRange) {
             return {
+              ...branch,
               counterpartyId: form.counterpartyId || undefined,
               counterpartyDisplay: form.counterpartyDisplay || undefined,
               vehicleId: form.vehicleId || undefined,
@@ -1811,6 +1820,7 @@ export function CalendarSlotModal({
           const endFromHours =
             plannedStartAt && nh > 0 ? calcEndFromHours(plannedStartAt, nh, wh) : '';
           return {
+            ...branch,
             counterpartyId: form.counterpartyId || undefined,
             counterpartyDisplay: form.counterpartyDisplay || undefined,
             vehicleId: form.vehicleId || undefined,
@@ -1838,7 +1848,7 @@ export function CalendarSlotModal({
           // запис наряду; форма закривається, календар перечитує записи.
           // Наявний запис без наряду наряд забрав собі (`calendarSlotId`) — те саме.
           if ((!editingSlotId || adoptRange) && wo.plannedAt && wo.dueDate) {
-            void adoptWorkOrderSlot(wo);
+            void adoptWorkOrderSlot(wo, adoptRange !== null);
             return;
           }
           const display = `${wo.number}${form.counterpartyDisplay ? ` · ${form.counterpartyDisplay}` : ''}`;

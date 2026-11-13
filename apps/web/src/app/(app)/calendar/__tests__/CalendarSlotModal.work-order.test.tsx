@@ -108,8 +108,8 @@ function Harness({
         onDeleted={() => {}}
         date={date}
         lifts={[
-          { id: L1, name: 'П1' },
-          { id: L2, name: 'П2' },
+          { id: L1, name: 'П1', branchId: 'branch-1' },
+          { id: L2, name: 'П2', branchId: 'branch-2' },
         ]}
         form={form}
         setForm={setForm}
@@ -311,6 +311,44 @@ describe('CalendarSlotModal — наряд, створений із форми �
     expect(
       calls().some(([u, i]) => u.startsWith('/calendar/slots') && i?.method !== undefined),
     ).toBe(false);
+  });
+
+  // guards: BR-WO-020, BR-CAL-017
+  it('prefill: філія наряду — філія підйомника запису (і наявного запису, і нового)', () => {
+    const { unmount } = render(
+      <Harness initial={{ liftId: L2 }} editingSlotId="slot-1" onSaved={vi.fn()} />,
+    );
+    expect(prefill()).toMatchObject({ branchId: 'branch-2', calendarSlotId: 'slot-1' });
+    unmount();
+    render(<Harness initial={{}} onSaved={vi.fn()} />);
+    expect(prefill().branchId).toBe('branch-1');
+  });
+
+  // guards: BR-WO-020
+  it('наряд забрав наявний запис, механіка у формі прибрано без збереження → запис наряду без механіка', async () => {
+    const onSaved = vi.fn();
+    created.current = {
+      id: WO,
+      number: 'НЗ-1',
+      counterpartyId: CP,
+      plannedAt: '2026-10-20T07:00:00.000Z',
+      dueDate: '2026-10-20T08:00:00.000Z',
+    };
+    render(
+      <Harness
+        initial={{ employeeId: '' }}
+        editingSlotId="slot-1"
+        savedMechanic={{ liftId: L1, employeeId: KOVAL, employeeName: 'Коваль Петро' }}
+        onSaved={onSaved}
+      />,
+    );
+    fireEvent.click(screen.getByTestId('wo-stub'));
+    await waitFor(() => expect(onSaved).toHaveBeenCalledWith({ workOrderChanged: true }));
+    const patch = calls().find(
+      ([u, i]) => u.startsWith('/calendar/slots/') && i?.method === 'PATCH',
+    );
+    expect(patch?.[0]).toBe('/calendar/slots/anchor');
+    expect(JSON.parse(patch![1]!.body!)).toEqual({ employeeId: null });
   });
 
   // guards: BR-WO-019
