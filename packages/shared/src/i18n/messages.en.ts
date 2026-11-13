@@ -808,7 +808,8 @@ export const en: Record<string, string> = {
   'err.calendar.employeeBusy': 'The employee is already busy at this time',
   'err.calendar.liftBusyNextDay': 'The lift is already busy on the next day',
   'err.calendar.employeeBusyNextDay': 'The employee is already busy on the next day',
-  'err.calendar.slotSplitTwoDays': 'The slot spans 2 days — edit each one separately',
+  'err.calendar.slotSplitTwoDays':
+    'The booking spans several days — its first day cannot be changed: edit the following days separately, or delete the whole booking and create it again',
   'err.calendar.chainInnerEdge':
     'An inner edge of a multi-day booking cannot be changed — change the start of the first day or the end of the last one',
   'err.calendar.slotNotFound': 'Slot not found',

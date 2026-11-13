@@ -5,23 +5,26 @@
 // календаря наряду на дні (BR-WO-020). Вихідні філії (`workDays`) теж не рахуються: при пн–сб
 // субота 17:00 + 3 год — понеділок 11:00 (BR-WO-019, BR-CAL-016).
 
-import { DEFAULT_WORK_HOURS } from '@sto/shared';
+import { DEFAULT_WORK_DAYS, DEFAULT_WORK_HOURS } from '@sto/shared';
 
 export interface WorkHoursWindow {
   startHour: number;
   endHour: number;
   /**
-   * Робочі дні філії, ISO (1 = пн … 7 = нд). Немає чи порожній — кожен день робочий (як на
-   * сервері для філії без налаштувань).
+   * Робочі дні філії, ISO (1 = пн … 7 = нд). Немає чи порожній — пн–пт (`DEFAULT_WORK_DAYS`), як
+   * на сервері (BR-CAL-016).
    */
   workDays?: readonly number[];
 }
 
 /**
- * Типові години — ті самі, що на сервері (`DEFAULT_WORK_HOURS`), доки години філії не
- * завантажено; без переліку днів — кожен день робочий.
+ * Типові години й дні — ті самі, що на сервері (`DEFAULT_WORK_HOURS`, `DEFAULT_WORK_DAYS`: 09–18,
+ * пн–пт), доки години філії не завантажено.
  */
-export const DEFAULT_WORK_HOURS_WINDOW: Readonly<WorkHoursWindow> = DEFAULT_WORK_HOURS;
+export const DEFAULT_WORK_HOURS_WINDOW: Readonly<WorkHoursWindow> = Object.freeze({
+  ...DEFAULT_WORK_HOURS,
+  workDays: DEFAULT_WORK_DAYS,
+});
 
 const pad = (n: number) => String(n).padStart(2, '0');
 const DT_RE = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/;
@@ -35,10 +38,12 @@ function parseLocal(value: string): { day: number; minute: number } | null {
   return Number.isFinite(day) && minute < 24 * 60 ? { day, minute } : null;
 }
 
-/** Чи робочий день `day` (лічильник днів `parseLocal`): ISO-день тижня з UTC-півночі дати. */
+/**
+ * Чи робочий день `day` (лічильник днів `parseLocal`): ISO-день тижня з UTC-півночі дати. Переліку
+ * немає чи він порожній — пн–пт, як на сервері (BR-CAL-016).
+ */
 function isWorkDay(day: number, wh: WorkHoursWindow): boolean {
-  const days = wh.workDays;
-  if (!days || days.length === 0) return true;
+  const days = wh.workDays && wh.workDays.length > 0 ? wh.workDays : DEFAULT_WORK_DAYS;
   return days.includes(new Date(day * 86_400_000).getUTCDay() || 7);
 }
 

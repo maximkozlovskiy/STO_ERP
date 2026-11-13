@@ -18,7 +18,7 @@ import { notifyCalendarChanged, onCalendarChanged } from '@/lib/calendar-events'
 import { toast } from '@/lib/toast';
 import { workOrdersKeys } from '@/hooks/api/useWorkOrders';
 import { useConfirm } from '@/hooks/useConfirm';
-import { useBranchWorkHours } from '@/hooks/useBranchWorkHours';
+import { useBranchWorkHours, useBranchWorkHoursQuery } from '@/hooks/useBranchWorkHours';
 import { useTranslation } from 'react-i18next';
 
 import type {
@@ -106,6 +106,10 @@ type EditingSaved = {
   workOrderId: string | null;
   workOrderNumber: string | null;
   workOrderStatus: string | null;
+  /** Ланцюжок запису (BR-CAL-019): продовження, кількість частин, кінець останньої. */
+  parentSlotId: string | null;
+  chainDays: number;
+  chainEndAt: string;
 } & SavedMechanic;
 
 function savedOf(slot: CalendarSlot): EditingSaved {
@@ -116,6 +120,9 @@ function savedOf(slot: CalendarSlot): EditingSaved {
     workOrderId: slot.workOrderId ?? null,
     workOrderNumber: slot.workOrderNumber ?? null,
     workOrderStatus: slot.workOrderStatus ?? null,
+    parentSlotId: slot.parentSlotId ?? null,
+    chainDays: slot.chainDays ?? 1,
+    chainEndAt: slot.chainEndAt ?? slot.endAt,
     liftId: slot.liftId ?? '',
     employeeId: slot.employeeId ?? '',
     employeeName: slot.employeeName ?? null,
@@ -282,6 +289,12 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
   const [statsError, setStatsError] = useState(false);
 
   const [form, setForm] = useState<SlotForm>(EMPTY_FORM);
+  // BR-CAL-017: форма запису рахує години й дні філії ПІДЙОМНИКА, обраного в ній (як сервер);
+  // сітка дня лишається на основній філії. Підйомник без відомої філії, години його філії ще не
+  // прочитано чи запит упав — `null`: форма рахує за годинами основної, а не за типовими 09–18.
+  const formLiftBranchId = lifts.find(l => l.id === form.liftId)?.branchId ?? null;
+  const formLiftHours = useBranchWorkHoursQuery(formLiftBranchId);
+  const formWorkHours = formLiftBranchId ? formLiftHours : null;
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [cpDisplay, setCpDisplay] = useState('');
@@ -415,8 +428,16 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
       liftsRef.current = cached;
     }
     apiFetch<Lift[]>('/lifts').then(
-      data => {
+      raw => {
         if (!mountedRef.current) return;
+        // Кеш вкладки — лише поля календаря (GOTCHAS: `cache:*` — мінімальні поля); філія — для
+        // годин форми запису (BR-CAL-017).
+        // Не масив (збій проксі, заглушка) — порожній перелік, а не TypeError у `.then`.
+        const data: Lift[] = (Array.isArray(raw) ? raw : []).map(({ id, name, branchId }) => ({
+          id,
+          name,
+          ...(branchId && { branchId }),
+        }));
         setCache('cache:lifts', data);
         setLifts(data);
         liftsRef.current = data;
@@ -1120,7 +1141,13 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
       const timeLock = slot ? workOrderTimeLock(slot) : null;
       if (workOrderDeleteLock(timeLock)) return;
       const woNumber = slot?.workOrderId ? (slot.workOrderNumber ?? '') : null;
-      const ok = await confirm(slotDeleteConfirmOptions(t, woNumber, timeLock));
+      // BR-CAL-019: частина багатоденного запису без наряду видаляє весь ланцюжок — «всі N днів».
+      const ok = await confirm(
+        slotDeleteConfirmOptions(t, woNumber, timeLock, {
+          chainDays: slot?.chainDays,
+          chainEndAt: slot?.chainEndAt,
+        }),
+      );
       if (!ok) return;
       try {
         await apiFetch<void>(`/calendar/slots/${id}`, { method: 'DELETE' });
@@ -1256,6 +1283,25 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
         ? {
             number: editingSavedSlot.workOrderNumber ?? '',
             lockedStatus: workOrderTimeLock(editingSavedSlot),
+          }
+        : null,
+    [editingSavedSlot],
+  );
+
+  /**
+   * Запис форми — частина багатоденного ланцюжка (BR-CAL-019, BR-WO-024): кількість днів, чи це
+   * перший і останній день (внутрішні межі не змінюються), кінець останньої частини.
+   */
+  const editingChain = useMemo(
+    () =>
+      editingSavedSlot && editingSavedSlot.chainDays > 1
+        ? {
+            days: editingSavedSlot.chainDays,
+            endAt: editingSavedSlot.chainEndAt,
+            isFirst: editingSavedSlot.parentSlotId === null,
+            isLast:
+              new Date(editingSavedSlot.endAt).getTime() >=
+              new Date(editingSavedSlot.chainEndAt).getTime(),
           }
         : null,
     [editingSavedSlot],
@@ -1461,6 +1507,8 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
     isEditingPast,
     savedMechanic,
     editingWorkOrder,
+    editingChain,
+    formWorkHours,
     error,
     setError,
     saving,

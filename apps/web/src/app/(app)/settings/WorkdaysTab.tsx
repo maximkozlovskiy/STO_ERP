@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
@@ -34,6 +34,7 @@ export default function WorkdaysTab() {
   const [branchSettings, setBranchSettings] = useState<BranchSettings | null>(null);
   const [savingBranch, setSavingBranch] = useState(false);
   const [error, setError] = useState('');
+  const lastDayHintId = useId();
 
   useEffect(() => {
     const cachedBranches = getCached<BranchInfo[]>('cache:branches');
@@ -71,16 +72,25 @@ export default function WorkdaysTab() {
     };
   }, [selectedBranch]);
 
+  // BR-CAL-017: хоча б один робочий день — останній обраний день не знімається (сервер відповів
+  // би 400, а порожній перелік раніше тлумачився по-різному).
+  const isLastDay = (day: number) =>
+    !!branchSettings && branchSettings.workDays.length === 1 && branchSettings.workDays[0] === day;
+
   const toggleWorkDay = (day: number) => {
-    if (!branchSettings) return;
+    if (!branchSettings || isLastDay(day)) return;
     const days = branchSettings.workDays.includes(day)
       ? branchSettings.workDays.filter(d => d !== day)
-      : [...branchSettings.workDays, day].sort();
+      : [...branchSettings.workDays, day].sort((a, b) => a - b);
     setBranchSettings({ ...branchSettings, workDays: days });
   };
 
   const saveBranchSettings = async () => {
     if (!branchSettings || !selectedBranch) return;
+    if (branchSettings.workDays.length === 0) {
+      setError(t('workdays.minOneDay'));
+      return;
+    }
     setSavingBranch(true);
     setError('');
     try {
@@ -134,21 +144,35 @@ export default function WorkdaysTab() {
           <div>
             <p className="text-[13px] font-medium text-foreground mb-2">{t('workdays.workDays')}</p>
             <div className="flex gap-2">
-              {WORK_DAY_NUMS.map(day => (
-                <button
-                  key={day}
-                  onClick={() => toggleWorkDay(day)}
-                  className={cn(
-                    'w-9 h-9 rounded-full text-sm font-medium transition-colors',
-                    branchSettings.workDays.includes(day)
-                      ? 'bg-primary text-primary-foreground'
-                      : 'bg-secondary text-muted-foreground hover:bg-secondary/80',
-                  )}
-                >
-                  {t(`workdays.days.${day}`)}
-                </button>
-              ))}
+              {WORK_DAY_NUMS.map(day => {
+                const last = isLastDay(day);
+                return (
+                  <button
+                    key={day}
+                    type="button"
+                    aria-pressed={branchSettings.workDays.includes(day)}
+                    aria-disabled={last || undefined}
+                    aria-describedby={last ? lastDayHintId : undefined}
+                    title={last ? t('workdays.minOneDay') : undefined}
+                    onClick={() => toggleWorkDay(day)}
+                    className={cn(
+                      'w-9 h-9 rounded-full text-sm font-medium transition-colors',
+                      branchSettings.workDays.includes(day)
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-secondary text-muted-foreground hover:bg-secondary/80',
+                      last && 'cursor-not-allowed',
+                    )}
+                  >
+                    {t(`workdays.days.${day}`)}
+                  </button>
+                );
+              })}
             </div>
+            {branchSettings.workDays.length === 1 && (
+              <p id={lastDayHintId} className="mt-1.5 text-[12px] text-muted-foreground">
+                {t('workdays.minOneDay')}
+              </p>
+            )}
           </div>
           <div className="flex flex-wrap gap-4">
             <div>

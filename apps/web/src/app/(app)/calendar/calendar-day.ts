@@ -5,7 +5,7 @@ import { woStatusLabel } from '@/i18n/enumLabel';
 import type { CalendarSlot } from './calendar.types';
 import { slotCategory, type SlotCategory } from './calendar-categories';
 import { chainKey, countsAsLoad } from './calendar-month';
-import { decimalHoursToISO, kyivHours, toDateString } from './calendar.utils';
+import { decimalHoursToISO, fmtKyivDate, fmtTime, kyivHours, toDateString } from './calendar.utils';
 
 /**
  * Категорія блоку запису у виді «День» (BR-CAL-011) — та сама, що в «Місяці» (BR-CAL-008):
@@ -65,12 +65,26 @@ export function slotDeleteLockHint(t: TFunction, timeLock: string | null): strin
 /**
  * Підтвердження видалення запису (BR-WO-026): запис наряду стирає планові дати наряду, запис
  * скасованого наряду — ні, запис без наряду (`woNumber` — `null`) — звичайне підтвердження.
+ * Багатоденний запис без наряду (`chainDays` > 1) видаляється весь — «Видалити всі N днів?»
+ * (BR-CAL-019); `chainEndAt` — кінець останньої частини для тексту.
  */
 export function slotDeleteConfirmOptions(
   t: TFunction,
   woNumber: string | null,
   timeLock: string | null,
+  chain: { chainDays?: number | undefined; chainEndAt?: string | undefined } = {},
 ): ConfirmOptions {
+  const days = chain.chainDays ?? 1;
+  if (woNumber === null && days > 1)
+    return {
+      title: t('slot.deleteChainTitle', { count: days }),
+      message: chain.chainEndAt
+        ? t('slot.deleteChainMessage', {
+            end: `${fmtKyivDate(chain.chainEndAt)} ${fmtTime(chain.chainEndAt)}`,
+          })
+        : t('slot.deleteMessage'),
+      variant: 'destructive',
+    };
   return {
     title: t('slot.deleteTitle'),
     message:

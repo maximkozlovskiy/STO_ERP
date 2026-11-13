@@ -114,6 +114,7 @@
     "workDays": "Working days",
     "workStart": "Opening time",
     "workEnd": "Closing time",
+    "minOneDay": "At least one working day must remain",
     "slotDuration": "Slot duration (min)",
     "help": {
       "title": "What working days and hours affect",

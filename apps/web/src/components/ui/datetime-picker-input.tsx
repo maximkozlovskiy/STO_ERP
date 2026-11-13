@@ -10,6 +10,7 @@ import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { isoToKyivLocalDateTime, kyivToday } from '@/lib/format';
 import { useEscapeLayer } from '@/hooks/useEscapeLayer';
+import { DEFAULT_WORK_DAYS } from '@sto/shared';
 
 const DAY_PICKER_CLASS_NAMES = {
   root: 'rdp-root',
@@ -74,7 +75,8 @@ interface DateTimePickerInputProps {
   minDateTime?: Date;
   /**
    * Робочі дні, ISO (1 = пн … 7 = нд; BR-WO-019): інші дні тижня в календарі недоступні, а час у
-   * такий день (збережене значення) — недоступна опція. Немає чи порожній — усі дні доступні.
+   * такий день (збережене значення) — недоступна опція. Немає — усі дні доступні (пікер не про
+   * робочий час); порожній перелік — пн–пт, як на сервері (BR-CAL-016).
    */
   workDays?: readonly number[];
   /** Кнопка «Очистити дату» біля заповненого поля (значення стає ''). */
@@ -122,7 +124,9 @@ export function DateTimePickerInput({
   const minParts = useMemo(() => (minDateTime ? kyivParts(minDateTime) : null), [minDateTime]);
   // Неробочі дні тижня у нумерації react-day-picker (0 = нд … 6 = сб); `null` — обмежень немає.
   // Ключ — рядок: масив `workDays` міг прийти новим об'єктом із тим самим вмістом.
-  const workDaysKey = workDays && workDays.length > 0 ? [...workDays].sort().join(',') : '';
+  const workDaysKey = workDays
+    ? [...(workDays.length > 0 ? workDays : DEFAULT_WORK_DAYS)].sort().join(',')
+    : '';
   const offWeekdays = useMemo(() => {
     if (!workDaysKey) return null;
     const work = new Set(workDaysKey.split(',').map(Number));

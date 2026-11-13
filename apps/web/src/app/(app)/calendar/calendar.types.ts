@@ -25,6 +25,14 @@ export interface CalendarSlot {
   employeeName?: string | null;
   /** Наряд запису видалено — завантаження поста запис не рахує (BR-CAL-011). */
   workOrderDeleted?: boolean;
+  /**
+   * Ланцюжок запису (BR-CAL-019): скільки частин (днів) має багатоденний запис, частиною якого є
+   * цей (1 — одноденний), і кінець останньої частини. Рахує сервер; старий сервер полів не віддає.
+   */
+  chainDays?: number;
+  chainEndAt?: string;
+  /** Лише відповідь відв'язки від наряду: запис видалено, наряд зберіг дати (BR-WO-028). */
+  removed?: boolean;
 }
 
 /**
@@ -41,6 +49,11 @@ export interface SavedMechanic {
 export interface Lift {
   id: string;
   name: string;
+  /**
+   * Філія підйомника (BR-CAL-017): форма запису рахує її робочі години й дні. Немає (старий кеш
+   * вкладки, старий сервер) — години основної філії.
+   */
+  branchId?: string;
 }
 
 export interface WorkOrderOption {
