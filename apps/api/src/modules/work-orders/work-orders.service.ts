@@ -559,9 +559,11 @@ export class WorkOrdersService {
     // Мультивалюта (Фаза 3): валюта наряду — з DTO або базова org. Тотали ще 0 (рядки додаються
     // пізніше → recalcTotals порахує totalAmountBase по курсу). Тут лише фіксуємо currencyId.
     // Обидві перевірки незалежні й ідуть ДО номера: відмова не спалює номер документа.
-    const [hours, currencyId] = await Promise.all([
+    // BR-WO-020: наряд із форми НАЯВНОГО запису забирає сам запис — перевірка до номера.
+    const [hours, currencyId, adoptIds] = await Promise.all([
       this.assertPlannedDates(orgId, dto.branchId, planned, null),
       dto.currencyId ?? this.exchangeRates.requireBaseCurrencyId(orgId),
+      dto.calendarSlotId ? this.adoptableSlotChain(orgId, dto, dto.calendarSlotId) : null,
     ]);
 
     const number = await this.docNumbers.next(orgId, 'WORK_ORDER');
@@ -605,6 +607,21 @@ export class WorkOrdersService {
             toStatus: created.status,
             actorId: userId ?? null,
           });
+          if (adoptIds) {
+            // Ланцюжок запису стає записом наряду (як перев'язка BR-WO-028), далі `upsert` ставить
+            // його на дати й підйомник наряду: зайнятість — без цього ланцюжка, нового запису немає.
+            const linked = await tx.calendarSlot.updateMany({
+              where: { orgId, id: { in: adoptIds }, deletedAt: null, workOrderId: null },
+              data: {
+                workOrderId: created.id,
+                counterpartyId: dto.counterpartyId,
+                vehicleId: dto.vehicleId,
+              },
+            });
+            // Між перевіркою й транзакцією запис прив'язали чи видалили — наряд не створюється.
+            if (linked.count !== adoptIds.length)
+              throw new BadRequestException(err('err.workOrder.calendarSlotHasWorkOrder'));
+          }
           if (plannedAt && dueDate) {
             await this.calendar.upsertWorkOrderSlot(tx, {
               orgId,
@@ -616,7 +633,7 @@ export class WorkOrdersService {
               vehicleId: dto.vehicleId,
               counterpartyId: dto.counterpartyId,
               ...(hours && { hours }),
-              isNew: true,
+              isNew: !adoptIds,
             });
           }
           return created;
@@ -873,6 +890,43 @@ export class WorkOrdersService {
    * Ланцюжок запису (якір і продовження) — один запис календаря на кілька днів; з `workOrderId` —
    * лише записи цього наряду.
    */
+  /**
+   * BR-WO-020 (скарга власника 2026-11-13): запис `slotId`, який новий наряд забирає собі, — живий
+   * запис своєї організації типу «Робота» без наряду, того самого клієнта й автомобіля (якщо вони в
+   * записі задані); наряд — із плановими початком і завершенням. Інакше 400, наряд не створюється.
+   * Повертає id усього ланцюжка запису (якір і продовження).
+   */
+  private async adoptableSlotChain(
+    orgId: string,
+    dto: CreateWorkOrderDto,
+    slotId: string,
+  ): Promise<string[]> {
+    if (!dto.plannedAt || !dto.dueDate)
+      throw new BadRequestException(err('err.workOrder.calendarSlotNeedsDates'));
+    const slot = await this.prisma.calendarSlot.findFirst({
+      where: { id: slotId, orgId, deletedAt: null },
+      select: {
+        id: true,
+        parentSlotId: true,
+        workOrderId: true,
+        counterpartyId: true,
+        vehicleId: true,
+        type: true,
+      },
+    });
+    if (!slot) throw new BadRequestException(err('err.workOrder.calendarSlotNotFound'));
+    assertServiceSlotUnlinked(slot.type, { workOrderId: slotId }); // BR-CAL-003
+    if (slot.workOrderId)
+      throw new BadRequestException(err('err.workOrder.calendarSlotHasWorkOrder'));
+    if (
+      (slot.counterpartyId && slot.counterpartyId !== dto.counterpartyId) ||
+      (slot.vehicleId && slot.vehicleId !== dto.vehicleId)
+    )
+      throw new BadRequestException(err('err.workOrder.calendarSlotOtherClient'));
+    const chain = await this.slotChain(orgId, slot);
+    return chain.map(s => s.id);
+  }
+
   private slotChain(
     orgId: string,
     slot: { id: string; parentSlotId: string | null },

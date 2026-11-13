@@ -754,6 +754,11 @@ export const uk: Record<string, string> = {
   'err.workOrder.vehicleNotFound': 'Автомобіль не знайдено',
   'err.workOrder.counterpartyNotFound': 'Контрагента не знайдено',
   'err.workOrder.contractNotFound': 'Договір не знайдено',
+  'err.workOrder.calendarSlotNotFound': 'Запис календаря не знайдено або його видалено',
+  'err.workOrder.calendarSlotHasWorkOrder': "Запис календаря вже прив'язаний до наряду",
+  'err.workOrder.calendarSlotOtherClient': 'Запис календаря належить іншому клієнту чи автомобілю',
+  'err.workOrder.calendarSlotNeedsDates':
+    'Наряд для запису календаря потребує планових початку й завершення',
   'err.workOrder.cannotEditClosed': 'Не можна редагувати закритий наряд',
   'err.workOrder.outMileageLessThanIn': 'Вихідний пробіг не може бути меншим за вхідний',
   'err.workOrder.onlyDraftOrCancelledDeletable':

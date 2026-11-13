@@ -112,6 +112,19 @@ export class CreateWorkOrderDto {
   @Min(0)
   @Max(QTY_MAX)
   plannedHours?: number;
+
+  /**
+   * BR-WO-020: наряд створюється з форми НАЯВНОГО запису календаря без наряду — сервер прив'язує
+   * сам запис (увесь ланцюжок) до нового наряду й ставить його на планові дати й підйомник наряду,
+   * нового запису не створює. Потрібні `plannedAt` і `dueDate`.
+   */
+  @ApiPropertyOptional({
+    description: 'Запис календаря без наряду, який новий наряд забирає собі (BR-WO-020)',
+  })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsUUID()
+  calendarSlotId?: string;
 }
 
 export class UpdateWorkOrderDto {

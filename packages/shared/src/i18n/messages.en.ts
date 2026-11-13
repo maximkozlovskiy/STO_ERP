@@ -766,6 +766,12 @@ export const en: Record<string, string> = {
   'err.workOrder.vehicleNotFound': 'Vehicle not found',
   'err.workOrder.counterpartyNotFound': 'Counterparty not found',
   'err.workOrder.contractNotFound': 'Contract not found',
+  'err.workOrder.calendarSlotNotFound': 'Calendar record not found or deleted',
+  'err.workOrder.calendarSlotHasWorkOrder': 'The calendar record is already linked to a work order',
+  'err.workOrder.calendarSlotOtherClient':
+    'The calendar record belongs to another client or vehicle',
+  'err.workOrder.calendarSlotNeedsDates':
+    'A work order for a calendar record needs a planned start and end',
   'err.workOrder.cannotEditClosed': 'A closed work order cannot be edited',
   'err.workOrder.outMileageLessThanIn': 'Outgoing mileage cannot be less than the incoming one',
   'err.workOrder.onlyDraftOrCancelledDeletable':

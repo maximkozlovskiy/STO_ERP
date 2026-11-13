@@ -236,6 +236,11 @@ export const workOrderFormSchema = z.object({
 export type WorkOrderFormValues = z.infer<typeof workOrderFormSchema>;
 export type WorkOrderFormInput = z.input<typeof workOrderFormSchema>;
 
-// Бек create = шапка (header). Ре-експорт для контролера.
-export const workOrderCreateSchema = workOrderHeaderSchema;
-export type WorkOrderCreateValues = WorkOrderHeaderValues;
+/**
+ * POST /work-orders — шапка + `calendarSlotId`: наряд із форми НАЯВНОГО запису календаря без наряду
+ * забирає сам запис (BR-WO-020). Лише в створенні; у формі картки наряду поля немає.
+ */
+export const workOrderCreateSchema = workOrderHeaderSchema.extend({
+  calendarSlotId: optionalUuid(),
+});
+export type WorkOrderCreateValues = z.infer<typeof workOrderCreateSchema>;
