@@ -1,6 +1,14 @@
 'use client';
 
-import { useState, useRef, useEffect, useMemo, useCallback, type ReactNode } from 'react';
+import {
+  useState,
+  useRef,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useCallback,
+  type ReactNode,
+} from 'react';
 import { createPortal } from 'react-dom';
 import { DayPicker } from 'react-day-picker';
 import { uk } from 'date-fns/locale';
@@ -10,6 +18,7 @@ import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { isoToKyivLocalDateTime, kyivToday } from '@/lib/format';
 import { useEscapeLayer } from '@/hooks/useEscapeLayer';
+import { placePopover, type PopoverPlacement } from '@/lib/place-popover';
 import { DEFAULT_WORK_DAYS } from '@sto/shared';
 
 const DAY_PICKER_CLASS_NAMES = {
@@ -169,10 +178,14 @@ export function DateTimePickerInput({
     [hoursFor, minutesFor],
   );
   const [open, setOpen] = useState(false);
-  const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0 });
+  const [pos, setPos] = useState<PopoverPlacement | null>(null);
   const [mounted, setMounted] = useState(false);
   const triggerRef = useRef<HTMLDivElement>(null);
+  // Поле (без підпису): попап — під ним або над ним (TECH-DEBT (б) №74).
+  const fieldRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  // Де стояло поле, коли попап розмістили: прокрутка, що його не зрушила, попап не закриває.
+  const placedAtRef = useRef<{ top: number; left: number } | null>(null);
 
   const { date: selectedDate, time: selectedTime } = useMemo(
     () => (timeOnly ? { date: undefined, time: value.slice(0, 5) } : parseDateTime(value)),
@@ -239,20 +252,51 @@ export function DateTimePickerInput({
     [timeOnly, selectedYmd, todayYmd, minutesFor, onChange],
   );
 
-  const updatePos = useCallback(() => {
-    if (!triggerRef.current) return;
-    const rect = triggerRef.current.getBoundingClientRect();
-    setDropdownPos({
-      top: rect.bottom + window.scrollY + 4,
-      left: rect.left + window.scrollX,
-    });
+  /**
+   * Попап `fixed` біля поля (TECH-DEBT (б) №74): під ним, а коли знизу не вміщається і зверху
+   * місця більше — над ним; висота — не більша за місце у вікні (решта — прокрутка в попапі).
+   * Раніше — `absolute` під полем на всю висоту: біля нижнього краю вікна (картка наряду, 720 px)
+   * нижні тижні місяця й «Готово» були за краєм.
+   */
+  const place = useCallback(() => {
+    const field = fieldRef.current;
+    const panel = dropdownRef.current;
+    if (!field || !panel) return;
+    const r = field.getBoundingClientRect();
+    placedAtRef.current = { top: r.top, left: r.left };
+    setPos(
+      placePopover(
+        r,
+        { width: panel.offsetWidth, height: panel.scrollHeight },
+        { width: document.documentElement.clientWidth, height: window.innerHeight },
+        'start',
+      ),
+    );
   }, []);
 
   const handleOpen = () => {
     if (disabled) return;
-    updatePos();
     setOpen(v => !v);
   };
+
+  // До першої відмальовки: попап вимірюється прихованим і одразу стає на своє місце.
+  useLayoutEffect(() => {
+    if (!open) {
+      setPos(null);
+      return;
+    }
+    place();
+  }, [open, place]);
+
+  // Висота попапу змінюється (місяць на 6 тижнів, timeOnly ↔ дата) — позиція рахується знову:
+  // попап над полем інакше наліз би на нього.
+  useEffect(() => {
+    const panel = dropdownRef.current;
+    if (!open || !panel || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => place());
+    ro.observe(panel);
+    return () => ro.disconnect();
+  }, [open, place]);
 
   // Close on outside click
   useEffect(() => {
@@ -272,22 +316,29 @@ export function DateTimePickerInput({
   // <select> попапа (він у порталі на document.body).
   useEscapeLayer(open, () => setOpen(false));
 
-  // Reposition on scroll/resize.
-  // sto-optimize: passive listeners — обробник не викликає preventDefault, тому позначення
-  // passive дозволяє браузеру не блокувати скрол на awaiting handler. capture:true на scroll
-  // потрібен щоб ловити скрол у будь-якому батьківському контейнері (modal body, sidebar).
+  // Прокрутка картки чи сторінки, що зрушила поле, закриває попап: `fixed`-попап інакше лишився б
+  // на місці, відірваний від поля. Подія `scroll` приходить у наступному кадрі — прокрутка, що
+  // поля не зрушила (зокрема всередині самого попапу), його не закриває (патерн `RowActionsMenu`,
+  // T1.3-092). Зміна розміру вікна — нова позиція.
+  // sto-optimize: passive — обробник не викликає preventDefault; capture — прокрутка будь-якого
+  // предка (тіло модалки, бічна панель).
   useEffect(() => {
     if (!open) return;
-    const handler = () => updatePos();
+    const onScroll = () => {
+      const r = fieldRef.current?.getBoundingClientRect();
+      const at = placedAtRef.current;
+      if (r && at && Math.abs(r.top - at.top) < 1 && Math.abs(r.left - at.left) < 1) return;
+      setOpen(false);
+    };
     const scrollOpts = { capture: true, passive: true } as const;
     const resizeOpts = { passive: true } as const;
-    window.addEventListener('scroll', handler, scrollOpts);
-    window.addEventListener('resize', handler, resizeOpts);
+    window.addEventListener('scroll', onScroll, scrollOpts);
+    window.addEventListener('resize', place, resizeOpts);
     return () => {
-      window.removeEventListener('scroll', handler, scrollOpts);
-      window.removeEventListener('resize', handler);
+      window.removeEventListener('scroll', onScroll, scrollOpts);
+      window.removeEventListener('resize', place);
     };
-  }, [open, updatePos]);
+  }, [open, place]);
 
   const handleDaySelect = (day: Date | undefined) => {
     if (!day) return;
@@ -310,7 +361,7 @@ export function DateTimePickerInput({
           {required && <span className="text-destructive ml-0.5">*</span>}
         </label>
       )}
-      <div className="relative">
+      <div ref={fieldRef} className="relative">
         <input
           type="text"
           readOnly
@@ -358,13 +409,13 @@ export function DateTimePickerInput({
         createPortal(
           <div
             ref={dropdownRef}
-            style={{
-              position: 'absolute',
-              top: dropdownPos.top,
-              left: dropdownPos.left,
-              zIndex: 9999,
-            }}
-            className="bg-surface border border-border rounded-xl shadow-lg flex"
+            style={
+              pos
+                ? { top: pos.top, left: pos.left, maxHeight: pos.maxHeight }
+                : { top: 0, left: 0, visibility: 'hidden' }
+            }
+            data-testid="datetime-picker-popup"
+            className="fixed z-[9999] max-w-[calc(100vw-2rem)] overflow-y-auto bg-surface border border-border rounded-xl shadow-lg flex"
           >
             {/* Calendar — hidden in timeOnly mode */}
             {!timeOnly && (

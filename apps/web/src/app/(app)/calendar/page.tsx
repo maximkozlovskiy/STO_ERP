@@ -39,7 +39,7 @@ import { CalendarDayGrid } from './CalendarDayGrid';
 import { CalendarDayList } from './CalendarDayList';
 import { CalendarDayGridHours } from './CalendarDayGridHours';
 import type { DayLayout } from './calendar.types';
-import { useCalendarState, EMPTY_FORM } from './useCalendarState';
+import { useCalendarState } from './useCalendarState';
 import { useCalendarTasks } from './useCalendarTasks';
 
 // Картка задачі — окремим чанком: відкривається лише кліком по задачі чи «+ Задача».
@@ -115,17 +115,7 @@ function CalendarPageClient() {
         </Button>
       )}
       {canManageSlots && (
-        <Button
-          className={canManageTasks ? '' : 'ml-auto'}
-          onClick={() => {
-            cs.setPendingSlot(null);
-            cs.setEditingSlotId(null);
-            cs.setError('');
-            cs.setCpDisplay('');
-            cs.setForm(EMPTY_FORM);
-            cs.setShowAdd(v => !v);
-          }}
-        >
+        <Button className={canManageTasks ? '' : 'ml-auto'} onClick={cs.toggleNewSlot}>
           <Plus className="h-4 w-4" />
           {t('nav.slot')}
         </Button>
@@ -278,6 +268,7 @@ function CalendarPageClient() {
           lifts={cs.lifts}
           form={cs.form}
           setForm={cs.setForm}
+          adjustForm={cs.adjustForm}
           editingSlotId={cs.editingSlotId}
           isEditingPast={cs.isEditingPast}
           readOnly={!canManageSlots}

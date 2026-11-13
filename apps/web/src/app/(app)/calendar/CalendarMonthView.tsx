@@ -94,14 +94,15 @@ const MonthSlotCard = memo(function MonthSlotCard({ entry, nowMs, onOpen }: Mont
   const time = fmtTime(slot.startAt);
   const categoryLabel = t(`month.category.${category}`);
   const typeLabel = t(`month.type.${type}`);
-  // Головне — номер наряду (без наряду — «Без наряду», службовий запис — назва типу, BR-CAL-003):
-  // не обрізається. Другорядне — клієнт (без наряду — клієнт або примітка) — обрізається. Механік
-  // клієнта не отримує (API віддає лише номер наряду) — тоді другорядного немає.
+  // Два рядки (рішення власника, TECH-DEBT (б) №59; BR-CAL-009). Перший — час і головне: номер
+  // наряду (без наряду — «Без наряду», службовий запис — назва типу, BR-CAL-003). Другий — клієнт ·
+  // авто; запис без наряду й без клієнта — примітка. Механік клієнта й авто не отримує (API віддає
+  // лише номер наряду) — другого рядка немає. Раніше все в одному рядку: клієнт обрізався до «П…».
   const noWorkOrder = isServiceSlotType(type) ? typeLabel : t('month.card.noWorkOrder');
   const main = slot.workOrderNumber ?? noWorkOrder;
-  const secondary = slot.workOrderNumber
-    ? slot.counterpartyName
-    : (slot.counterpartyName ?? slot.notes);
+  const vehicle = [slot.vehicleSummary, slot.vehiclePlate].filter(Boolean).join(' ');
+  const party = [slot.counterpartyName, vehicle].filter(Boolean).join(' · ');
+  const secondary = party || (slot.workOrderNumber ? '' : (slot.notes ?? ''));
   const text = secondary ? `${main} · ${secondary}` : main;
   const title = [
     `${time}–${fmtTime(slot.endAt)}${slot.parentSlotId ? ` (${t('month.card.continuation')})` : ''}`,
@@ -110,7 +111,7 @@ const MonthSlotCard = memo(function MonthSlotCard({ entry, nowMs, onOpen }: Mont
       : noWorkOrder,
     slot.counterpartyName,
     slot.cpPhone,
-    [slot.vehicleSummary, slot.vehiclePlate].filter(Boolean).join(' ') || null,
+    vehicle || null,
     slot.notes,
     `${typeLabel} · ${categoryLabel}`,
   ]
@@ -129,21 +130,21 @@ const MonthSlotCard = memo(function MonthSlotCard({ entry, nowMs, onOpen }: Mont
       aria-label={`${time} ${text}. ${typeLabel}. ${categoryLabel}`}
       data-testid="month-slot-card"
       data-category={category}
-      className={`flex w-full min-w-0 items-center gap-1 rounded border border-border border-l-4 ${barClassName} bg-surface px-1 py-0.5 text-left text-[11px] leading-tight text-foreground hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${COARSE_TARGET}`}
+      className={`flex w-full min-w-0 flex-col gap-px rounded border border-border border-l-4 ${barClassName} bg-surface px-1 py-0.5 text-left text-[11px] leading-tight text-foreground hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${COARSE_TARGET}`}
     >
-      <TypeIcon className="h-3 w-3 shrink-0 text-muted-foreground" aria-hidden="true" />
-      <span className="shrink-0 tabular-nums text-muted-foreground">{time}</span>
-      {/* Номер — природної ширини (обрізається лише коли не влазить сам); клієнт — `flex-1`
-          з нульовою базою, тобто лише залишок місця. Іконки `shrink-0` лишаються видимими. */}
-      <span className="min-w-0 truncate font-medium" data-part="main">
-        {main}
+      <span className="flex w-full min-w-0 items-center gap-1" data-part="first-line">
+        <TypeIcon className="h-3 w-3 shrink-0 text-muted-foreground" aria-hidden="true" />
+        <span className="shrink-0 tabular-nums text-muted-foreground">{time}</span>
+        <span className="min-w-0 flex-1 truncate font-medium" data-part="main">
+          {main}
+        </span>
+        <CategoryIcon className={`h-3 w-3 shrink-0 ${className}`} aria-hidden="true" />
       </span>
       {secondary && (
-        <span className="min-w-0 flex-1 truncate" data-part="secondary">
-          · {secondary}
+        <span className="block w-full min-w-0 truncate" data-part="secondary">
+          {secondary}
         </span>
       )}
-      <CategoryIcon className={`h-3 w-3 shrink-0 ${className}`} aria-hidden="true" />
     </button>
   );
 });

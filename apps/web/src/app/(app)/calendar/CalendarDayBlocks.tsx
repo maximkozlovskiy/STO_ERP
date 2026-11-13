@@ -24,7 +24,12 @@ import {
   slotType,
   type SlotCategory,
 } from './calendar-categories';
-import { isCancelledWorkOrderSlot, slotDeleteLockHint, workOrderTimeLock } from './calendar-day';
+import {
+  isCancelledWorkOrderSlot,
+  slotDeleteLockHint,
+  workOrderChainInnerEdge,
+  workOrderTimeLock,
+} from './calendar-day';
 import { PENDING_DRAG_ID } from './useCalendarState';
 
 /** Найменша видима довжина блоку запису, год — крок сітки 15 хв. */
@@ -106,6 +111,10 @@ export const DraggableSlot = memo(function DraggableSlot({
   // перетягується й не розтягується — без ручок і курсору перетягування; підказка — у title.
   const lockedStatus = workOrderTimeLock(slot);
   const movable = canManage && !lockedStatus;
+  // BR-WO-024 (№66): внутрішні межі ланцюжка наряду не тягнуться — ручки лише в початку першого дня
+  // й кінці останнього; блок перетягується цілком (BR-WO-023).
+  const startHandle = movable && !workOrderChainInnerEdge(slot, 'start');
+  const endHandle = movable && !workOrderChainInnerEdge(slot, 'end');
   // Скасований наряд: час і підйомник так само заблоковані, але запис видаляється (BR-WO-026).
   const lockedHint = (status: string) =>
     t(isCancelledWorkOrderSlot(status) ? 'day.woTimeLockedCancelled' : 'day.woTimeLocked', {
@@ -178,7 +187,7 @@ export const DraggableSlot = memo(function DraggableSlot({
       className={`absolute ${crossInset(vertical)} rounded border border-border border-l-4 ${barClassName} ${bgClassName} text-foreground text-xs overflow-hidden group select-none ring-offset-1 ring-offset-surface flex flex-col ${isEditing ? 'ring-2 ring-amber-600 shadow-md' : ''}`}
       title={titleTooltip}
     >
-      {movable && (
+      {startHandle && (
         <div
           className={handleClass(vertical, 'start', 'hover:bg-foreground/10')}
           onPointerDown={e => {
@@ -268,7 +277,7 @@ export const DraggableSlot = memo(function DraggableSlot({
         </div>
       </div>
 
-      {movable && (
+      {endHandle && (
         <div
           className={handleClass(vertical, 'end', 'hover:bg-foreground/10')}
           onPointerDown={e => {

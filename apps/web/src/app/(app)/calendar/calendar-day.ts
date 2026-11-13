@@ -39,6 +39,22 @@ export function workOrderTimeLock(
 }
 
 /**
+ * BR-WO-024 (TECH-DEBT (б) №66): межа запису наряду — внутрішня межа багатоденного ланцюжка, яку
+ * не тягнуть: початок продовження (`parentSlotId`) і кінець не останнього дня (`chainEndAt` — кінець
+ * останньої частини — пізніше за кінець цієї). Тягнуть лише початок першого дня й кінець
+ * останнього; сервер на зміну внутрішньої межі відповідає 400 `err.calendar.chainInnerEdge`.
+ * Ручний ланцюжок (без наряду) — `false`: його межі правило не охоплює (TECH-DEBT №92).
+ */
+export function workOrderChainInnerEdge(
+  slot: Pick<CalendarSlot, 'workOrderId' | 'parentSlotId' | 'endAt' | 'chainEndAt'>,
+  edge: 'start' | 'end',
+): boolean {
+  if (!slot.workOrderId) return false;
+  if (edge === 'start') return !!slot.parentSlotId;
+  return !!slot.chainEndAt && new Date(slot.chainEndAt).getTime() > new Date(slot.endAt).getTime();
+}
+
+/**
  * BR-WO-026: видалення запису наряду заблоковане там само, де час і підйомник (`timeLock` —
  * результат `workOrderTimeLock`), крім скасованого наряду (рішення власника 2026-10-19): його
  * запис — залишок старих даних, видаляється без зміни дат закритого наряду. Повертає статус, що

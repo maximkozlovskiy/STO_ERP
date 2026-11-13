@@ -110,6 +110,12 @@ interface CalendarSlotModalProps {
   lifts: Lift[];
   form: SlotForm;
   setForm: Dispatch<SetStateAction<SlotForm>>;
+  /**
+   * Зміна форми, яку робить сама форма, а не користувач (кінець за годинами філії підйомника, єдине
+   * авто клієнта): та сама зміна — і в знімку форми, тож незбереженою зміною не вважається
+   * (BR-CAL-018). Немає — `setForm`.
+   */
+  adjustForm?: Dispatch<SetStateAction<SlotForm>>;
 
   editingSlotId: string | null;
   isEditingPast: boolean;
@@ -180,6 +186,7 @@ export function CalendarSlotModal({
   lifts,
   form,
   setForm,
+  adjustForm = setForm,
   editingSlotId,
   isEditingPast: isPastLocked,
   readOnly = false,
@@ -442,7 +449,7 @@ export function CalendarSlotModal({
   }, [open, form.counterpartyId, cpPhone]);
 
   // Якщо 1 авто — одразу ставимо vehicleId; якщо >1 — показуємо Select; якщо 0 — ховаємо.
-  // form.vehicleId та setForm НЕ в deps щоб уникнути циклу: ефект сам пише в form.vehicleId.
+  // form.vehicleId НЕ в deps щоб уникнути циклу: ефект сам пише в form.vehicleId.
   // Замість stale closure — читаємо актуальне значення через formRef.
   const formRef = useRef(form);
   formRef.current = form;
@@ -473,10 +480,10 @@ export function CalendarSlotModal({
         const currentVid = formRef.current.vehicleId;
         const stillValid = currentVid && all.some(v => v.id === currentVid);
         if (currentVid && !stillValid) {
-          setForm(f => ({ ...f, vehicleId: '' }));
+          adjustForm(f => ({ ...f, vehicleId: '' }));
         }
         if (all.length === 1 && !stillValid) {
-          setForm(f => ({ ...f, vehicleId: all[0].id }));
+          adjustForm(f => ({ ...f, vehicleId: all[0].id }));
         }
       } catch {
         if (!ac.signal.aborted && mountedRef.current) setCpVehicles([]);
@@ -485,7 +492,7 @@ export function CalendarSlotModal({
     return () => {
       ac.abort();
     };
-  }, [open, form.counterpartyId, setForm, vehiclesRefetchKey]);
+  }, [open, form.counterpartyId, adjustForm, vehiclesRefetchKey]);
 
   // ── Робочі години філії підйомника (BR-CAL-017) ──────────────────────────
   // Сервер ділить запис і перевіряє планові дати за годинами й днями філії ПІДЙОМНИКА запису;
@@ -584,9 +591,18 @@ export function CalendarSlotModal({
     const { startAt, normoHours, endAt } = formRef.current;
     const end = endFor(startAt, normoHours);
     if (!end || end.slice(11, 16) === endAt) return;
-    setForm(f => ({ ...f, endAt: end.slice(11, 16) }));
+    adjustForm(f => ({ ...f, endAt: end.slice(11, 16) }));
     setPendingSlot(p => (p ? { ...p, endH: pendingEndH(end) } : p));
-  }, [recalcKey, open, editingSlotId, fieldsLocked, endFor, pendingEndH, setForm, setPendingSlot]);
+  }, [
+    recalcKey,
+    open,
+    editingSlotId,
+    fieldsLocked,
+    endFor,
+    pendingEndH,
+    adjustForm,
+    setPendingSlot,
+  ]);
 
   // Conflict check when liftId / employeeId / times change
   useEffect(() => {

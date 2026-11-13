@@ -13,39 +13,7 @@ import { useTranslation } from 'react-i18next';
 import { CircleHelp } from 'lucide-react';
 import { useEscapeLayer } from '@/hooks/useEscapeLayer';
 import { cn } from '@/lib/utils';
-
-/** Відступ вікна від краю екрана, px (на 390 px вікно не виходить за край). */
-const EDGE = 16;
-/** Зазор між кнопкою і вікном, px. */
-const GAP = 6;
-
-interface Position {
-  top: number;
-  left: number;
-  maxHeight: number;
-}
-
-/**
- * Позиція вікна біля кнопки: під нею, а коли знизу не вміщається і зверху місця більше — над нею;
- * по горизонталі — від краю кнопки (`align`), але не ближче ніж EDGE до краю екрана.
- */
-export function placeHelpPanel(
-  button: { top: number; bottom: number; left: number; right: number },
-  panel: { width: number; height: number },
-  viewport: { width: number; height: number },
-  align: 'start' | 'end',
-): Position {
-  const preferred = align === 'end' ? button.right - panel.width : button.left;
-  const maxLeft = Math.max(EDGE, viewport.width - panel.width - EDGE);
-  const left = Math.min(Math.max(preferred, EDGE), maxLeft);
-  const below = viewport.height - button.bottom - GAP - EDGE;
-  const above = button.top - GAP - EDGE;
-  if (panel.height > below && above > below) {
-    const height = Math.min(panel.height, above);
-    return { top: button.top - GAP - height, left, maxHeight: above };
-  }
-  return { top: button.bottom + GAP, left, maxHeight: Math.max(below, 120) };
-}
+import { placePopover, type PopoverPlacement } from '@/lib/place-popover';
 
 export interface HelpPopoverProps {
   /** Підпис кнопки для читача екрана й підказка під курсором. */
@@ -81,7 +49,7 @@ export function HelpPopover({
   testId,
 }: HelpPopoverProps) {
   const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState<Position | null>(null);
+  const [pos, setPos] = useState<PopoverPlacement | null>(null);
   const rootRef = useRef<HTMLSpanElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -94,7 +62,7 @@ export function HelpPopover({
     if (!button || !panel) return;
     const r = button.getBoundingClientRect();
     setPos(
-      placeHelpPanel(
+      placePopover(
         r,
         { width: panel.offsetWidth, height: panel.scrollHeight },
         { width: document.documentElement.clientWidth, height: window.innerHeight },

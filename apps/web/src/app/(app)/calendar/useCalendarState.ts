@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
+  type SetStateAction,
 } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
@@ -53,6 +54,7 @@ import {
   nowLinePercent,
   pastPercent,
   slotDeleteConfirmOptions,
+  workOrderChainInnerEdge,
   workOrderDeleteLock,
   workOrderTimeLock,
 } from './calendar-day';
@@ -152,6 +154,29 @@ function slotToForm(slot: CalendarSlot): SlotForm {
   };
 }
 
+/** Поля форми, зміна яких — незбережена зміна запису (підписи клієнта й наряду — похідні). */
+const FORM_FIELDS = [
+  'type',
+  'liftId',
+  'employeeId',
+  'counterpartyId',
+  'vehicleId',
+  'workOrderId',
+  'startAt',
+  'endAt',
+  'normoHours',
+  'notes',
+] as const satisfies readonly (keyof SlotForm)[];
+
+/**
+ * Чи є у формі незбережені зміни проти знімка на відкритті (BR-CAL-018). Знімка немає (форму
+ * відкрито повз хук) — порівнюється з порожньою формою.
+ */
+export function slotFormChanged(base: SlotForm | null, form: SlotForm): boolean {
+  const b = base ?? EMPTY_FORM;
+  return FORM_FIELDS.some(k => b[k] !== form[k]);
+}
+
 /**
  * useCalendarState — encapsulates all state, refs, side-effects and handlers
  * for the calendar day-view (drag/drop, resize, draw, pending slot, fetch slots/lifts,
@@ -214,7 +239,8 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
   // URL-persistent date — ?date=2026-06-01; defaults to today on first visit
   const urlDate = searchParams.get('date') ?? '';
   const [date, setDateState] = useState(urlDate);
-  const setDate = useCallback(
+  // Дата без перевірки форми; ззовні — `setDate`, що спершу питає про незбережену форму (BR-CAL-018).
+  const applyDate = useCallback(
     (d: string) => {
       setDateState(d);
       const params = new URLSearchParams(searchParams.toString());
@@ -229,7 +255,7 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
    * два replace від того самого `searchParams`, і другий повертав у URL стару дату: сторінка
    * показувала обраний день, а оновлення сторінки — інший.
    */
-  const openDay = useCallback(
+  const applyOpenDay = useCallback(
     (d: string) => {
       setDateState(d);
       const params = new URLSearchParams(searchParams.toString());
@@ -270,9 +296,6 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
   const [monthSlots, setMonthSlots] = useState<MonthSlots>({});
   const [monthLoading, setMonthLoading] = useState(false);
   const [monthError, setMonthError] = useState(false);
-  // Запис, відкритий карткою виду «Місяць» (BR-CAL-009): денного списку `slots` у цьому виді
-  // немає, тож «минулий» рахується від самого слота.
-  const [monthEditSlot, setMonthEditSlot] = useState<CalendarSlot | null>(null);
   // Запис у формі на момент відкриття (`savedOf`): збережений механік, якого вже не можна обрати,
   // форма показує недоступною опцією, доки його не змінять (BR-CAL-012). Прапорець — «наряд
   // змінено поверх форми» (Bug #884): збереження картки наряду переносить його запис на сервері
@@ -416,7 +439,7 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
   }, [formMounted, formVisible]);
 
   useEffect(() => {
-    if (!date) setDate(toDateString(new Date()));
+    if (!date) applyDate(toDateString(new Date()));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -680,18 +703,6 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
     if (calView === 'day') load();
   }, [load, calView, lifts.length]);
 
-  const prevDay = useCallback(() => {
-    const d = new Date(date);
-    d.setDate(d.getDate() - 1);
-    setDate(toDateString(d));
-  }, [date, setDate]);
-
-  const nextDay = useCallback(() => {
-    const d = new Date(date);
-    d.setDate(d.getDate() + 1);
-    setDate(toDateString(d));
-  }, [date, setDate]);
-
   const workStartHourRef = useRef(workStartHour);
   workStartHourRef.current = workStartHour;
   const dynTotalHoursRef = useRef(dynTotalHours);
@@ -738,6 +749,102 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
   const minHourRef = useRef(minHour);
   minHourRef.current = minHour;
 
+  // ── Знімок форми й перехід на іншу дату при відкритій формі (BR-CAL-018) ────
+
+  /**
+   * Форма на момент відкриття — з нею порівнюється поточна: чи є незбережені зміни (BR-CAL-018).
+   * Поправки, які форма робить сама (кінець за годинами філії підйомника, єдине авто клієнта,
+   * запис, перенесений нарядом поверх форми, — Bug #884), застосовуються й до знімка
+   * (`adjustForm`), тож змінами не вважаються. `null` — форма закрита.
+   */
+  const formBaseRef = useRef<SlotForm | null>(null);
+  const formRef = useRef(form);
+  formRef.current = form;
+  const editingSlotIdRef = useRef(editingSlotId);
+  editingSlotIdRef.current = editingSlotId;
+
+  /** Зміна форми, яку робить не користувач: та сама зміна — і в знімку (BR-CAL-018). */
+  const adjustForm = useCallback((action: SetStateAction<SlotForm>) => {
+    setForm(action);
+    const base = formBaseRef.current;
+    if (base) formBaseRef.current = typeof action === 'function' ? action(base) : action;
+  }, []);
+
+  const handleModalClose = useCallback(() => {
+    formBaseRef.current = null;
+    setShowAdd(false);
+    setEditingSlotId(null);
+    setError('');
+    setPendingSlot(null);
+  }, []);
+
+  /**
+   * Сторож переходу, що прибирає відкриту форму (BR-CAL-018): інша дата чи місяць, «Відкрити
+   * день», «ще N», «Новий запис на цю дату», картка іншого запису. Форма без змін закривається й
+   * `proceed` виконується одразу; з незбереженими змінами — підтвердження «Закрити форму без
+   * збереження?», відмова лишає і форму, і дату. Раніше форма лишалась відкритою на новій даті, і
+   * «Оновити» переносило запис туди (форма рахує час від дати сторінки).
+   */
+  const leaveForm = useCallback(
+    (proceed: () => void) => {
+      if (!showAddRef.current) {
+        proceed();
+        return;
+      }
+      const go = () => {
+        handleModalClose();
+        proceed();
+      };
+      if (!slotFormChanged(formBaseRef.current, formRef.current)) {
+        go();
+        return;
+      }
+      void confirm({
+        title: t('slot.leaveFormTitle'),
+        message: t('slot.leaveFormMessage'),
+        confirmLabel: t('slot.leaveFormConfirm'),
+        cancelLabel: t('slot.leaveFormStay'),
+        variant: 'destructive',
+      }).then(ok => {
+        if (ok && mountedRef.current) go();
+      });
+    },
+    [confirm, t, handleModalClose],
+  );
+
+  /** Дата сторінки — через сторож форми (BR-CAL-018); та сама дата нічого не змінює. */
+  const setDate = useCallback(
+    (d: string) => {
+      if (d === date) return;
+      leaveForm(() => applyDate(d));
+    },
+    [date, leaveForm, applyDate],
+  );
+
+  /**
+   * Вид «День» на дату одним `router.replace` (`applyOpenDay`) — через сторож форми, якщо дата
+   * інша; та сама дата — лише вид, форма лишається.
+   */
+  const openDay = useCallback(
+    (d: string) => {
+      if (d === date) applyOpenDay(d);
+      else leaveForm(() => applyOpenDay(d));
+    },
+    [date, leaveForm, applyOpenDay],
+  );
+
+  const prevDay = useCallback(() => {
+    const d = new Date(date);
+    d.setDate(d.getDate() - 1);
+    setDate(toDateString(d));
+  }, [date, setDate]);
+
+  const nextDay = useCallback(() => {
+    const d = new Date(date);
+    d.setDate(d.getDate() + 1);
+    setDate(toDateString(d));
+  }, [date, setDate]);
+
   // ── Open form from pending slot ───────────────────────────────────────────
 
   const openFormFromPending = useCallback(() => {
@@ -746,13 +853,15 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
     setEditingSlotId(null);
     setError('');
     setCpDisplay('');
-    setForm({
+    const next = {
       ...EMPTY_FORM,
       liftId: p.liftId,
       startAt: decimalHoursToHHMM(p.startH),
       endAt: decimalHoursToHHMM(p.endH),
       normoHours: String(+(p.endH - p.startH).toFixed(2)),
-    });
+    };
+    formBaseRef.current = next;
+    setForm(next);
     setShowAdd(true);
   }, []);
 
@@ -763,18 +872,29 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
     setError('');
   }, []);
 
-  const handleEditSlot = useCallback((slot: CalendarSlot) => {
-    // Відкрито з виду «День»: «минулий» — за правилом дня, не за знімком запису з місяця.
-    // `openMonthSlot` ставить свій знімок ПІСЛЯ цього виклику.
-    setMonthEditSlot(null);
+  /** Форма на запис `slot` без перевірки відкритої форми (її робить `leaveForm`). */
+  const editSlotNow = useCallback((slot: CalendarSlot) => {
     setEditingSlotId(slot.id);
     setPendingSlot(null);
     const next = slotToForm(slot);
     setCpDisplay(next.counterpartyDisplay);
     setEditingSaved(savedOf(slot));
+    formBaseRef.current = next;
     setForm(next);
     setShowAdd(true);
   }, []);
+
+  /**
+   * Запис із виду «День» (блок, «Список») у формі. Інший запис при відкритій формі — через сторож
+   * (BR-CAL-018); той самий — форма лишається як є, незбережені зміни не скидаються.
+   */
+  const handleEditSlot = useCallback(
+    (slot: CalendarSlot) => {
+      if (showAddRef.current && editingSlotIdRef.current === slot.id) return;
+      leaveForm(() => editSlotNow(slot));
+    },
+    [leaveForm, editSlotNow],
+  );
 
   // ── Resize existing saved slot ────────────────────────────────────────────
 
@@ -783,8 +903,9 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
       e.stopPropagation();
       if (!canManageSlots) return;
       const slot = slots.find(s => s.id === slotId);
-      // BR-WO-027: ручок у такого запису немає; сторож — на випадок застарілого рендера.
-      if (!slot || workOrderTimeLock(slot)) return;
+      // BR-WO-027: ручок у такого запису немає; BR-WO-024 (№66): внутрішня межа ланцюжка наряду
+      // не тягнеться. Сторож — на випадок застарілого рендера.
+      if (!slot || workOrderTimeLock(slot) || workOrderChainInnerEdge(slot, edge)) return;
       setResizing({
         slotId,
         edge,
@@ -922,13 +1043,15 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
         setEditingSlotId(null);
         setError('');
         setCpDisplay('');
-        setForm({
+        const next = {
           ...EMPTY_FORM,
           liftId,
           startAt: decimalHoursToHHMM(startH),
           endAt: decimalHoursToHHMM(clampedEnd),
           normoHours: String(+(clampedEnd - startH).toFixed(2)),
-        });
+        };
+        formBaseRef.current = next;
+        setForm(next);
         setShowAdd(true);
         return;
       }
@@ -1171,10 +1294,15 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
       if (s.id !== resizePreview.id) return s;
       // DST-aware: decimalHoursToISO uses kyivDateTimeToISO internally
       // (Kyiv → UTC), not local-time-parsing.
+      const endAt = decimalHoursToISO(date, resizePreview.endH);
+      // Кінець останнього дня ланцюжка — і кінець ланцюжка: інакше ручка кінця зникла б посеред
+      // тягнення (`workOrderChainInnerEdge`, BR-WO-024).
+      const last = !s.chainEndAt || new Date(s.chainEndAt).getTime() <= new Date(s.endAt).getTime();
       return {
         ...s,
         startAt: decimalHoursToISO(date, resizePreview.startH),
-        endAt: decimalHoursToISO(date, resizePreview.endH),
+        endAt,
+        ...(last && s.chainEndAt && { chainEndAt: endAt }),
       };
     });
   }, [slots, resizePreview, date]);
@@ -1252,25 +1380,20 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
     [date, slots, nextDaySlots],
   );
 
-  const isEditingPast = useMemo(() => {
-    if (!editingSlotId || !nowMs) return false;
-    // Запис, відкритий з виду «Місяць», — минулий за власним `endAt` (BR-CAL-009).
-    if (monthEditSlot?.id === editingSlotId) {
-      return new Date(monthEditSlot.endAt).getTime() < nowMs;
-    }
-    const slot = slots.find(s => s.id === editingSlotId);
-    if (!slot) return false;
-    const todayKyiv = toDateString(new Date(nowMs));
-    const slotDate = toDateString(new Date(slot.startAt));
-    if (slotDate < todayKyiv) return true;
-    if (slotDate === todayKyiv) return kyivHours(slot.startAt) < minHour;
-    return false;
-  }, [editingSlotId, monthEditSlot, slots, nowMs, minHour]);
-
   /** Запис, відкритий у формі, як збережено; `null` — новий запис чи збережений ще не прочитано. */
   const editingSavedSlot = useMemo(
     () => (editingSlotId && editingSaved?.id === editingSlotId ? editingSaved : null),
     [editingSlotId, editingSaved],
+  );
+
+  /**
+   * Запис у формі — минулий (лише перегляд): за його `endAt`, однаково у виді «Місяць» і «День»
+   * (BR-CAL-009, TECH-DEBT (б) №57). Раніше «День» вважав минулим запис, що почався до поточної
+   * години, — запис, що ще триває, у «Дні» не редагувався, а в «Місяці» — так.
+   */
+  const isEditingPast = useMemo(
+    () => !!editingSavedSlot && !!nowMs && new Date(editingSavedSlot.endAt).getTime() < nowMs,
+    [editingSavedSlot, nowMs],
   );
 
   /**
@@ -1321,14 +1444,6 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
 
   // ── Modal close / save callbacks ──────────────────────────────────────────
 
-  const handleModalClose = useCallback(() => {
-    setShowAdd(false);
-    setEditingSlotId(null);
-    setMonthEditSlot(null);
-    setError('');
-    setPendingSlot(null);
-  }, []);
-
   /**
    * Перечитати поточний вид, не закриваючи форму (наряд змінено з його картки). Виклики одного
    * такту зливаються в одне читання: картка наряду після збереження шле подію
@@ -1354,9 +1469,9 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
       // календаря (лічильник у списку нарядів), хоча поля наряду у формі вже немає (Bug #904).
       const hadWorkOrder = !!editingSavedSlot && editingSavedSlot.workOrderId !== null;
       if (opts?.workOrderChanged || hadWorkOrder) invalidateWorkOrders();
+      formBaseRef.current = null;
       setShowAdd(false);
       setEditingSlotId(null);
-      setMonthEditSlot(null);
       setPendingSlot(null);
       setForm(EMPTY_FORM);
       setCpDisplay('');
@@ -1397,41 +1512,67 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
     )
       return;
     setEditingSaved(saved);
-    if (calView === 'month') setMonthEditSlot(fresh);
     const { liftId, employeeId, startAt, endAt, normoHours } = slotToForm(fresh);
-    setForm(f => ({ ...f, liftId, employeeId, startAt, endAt, normoHours }));
-  }, [slots, monthSlots, showAdd, editingSlotId, editingSaved, calView, handleModalClose]);
+    // Знімок форми йде разом із перечитаним записом (BR-CAL-018): збережене — не «зміна» форми.
+    adjustForm(f => ({ ...f, liftId, employeeId, startAt, endAt, normoHours }));
+  }, [
+    slots,
+    monthSlots,
+    showAdd,
+    editingSlotId,
+    editingSaved,
+    calView,
+    handleModalClose,
+    adjustForm,
+  ]);
 
   // ── Month view: картка запису й «новий запис на дату» (BR-CAL-009) ─────────
 
   /**
    * Відкриває запис із картки місяця в тій самій формі, що й вид «День». Дата сторінки стає
    * датою запису: форма рахує час від `date`, інакше збереження перенесло б запис на інший день.
+   * Відкрита форма іншого запису — через сторож (BR-CAL-018); той самий запис — без змін.
    */
   const openMonthSlot = useCallback(
     (slot: CalendarSlot) => {
-      setDate(toDateString(new Date(slot.startAt)));
-      setError('');
-      handleEditSlot(slot);
-      setMonthEditSlot(slot);
+      if (showAddRef.current && editingSlotIdRef.current === slot.id) return;
+      leaveForm(() => {
+        applyDate(toDateString(new Date(slot.startAt)));
+        setError('');
+        editSlotNow(slot);
+      });
     },
-    [setDate, handleEditSlot],
+    [leaveForm, applyDate, editSlotNow],
   );
 
   const openNewOnDate = useCallback(
     (dayStr: string) => {
       if (!canManageSlots) return;
-      setDate(dayStr);
-      setMonthEditSlot(null);
-      setPendingSlot(null);
-      setEditingSlotId(null);
-      setError('');
-      setCpDisplay('');
-      setForm(EMPTY_FORM);
-      setShowAdd(true);
+      leaveForm(() => {
+        applyDate(dayStr);
+        setPendingSlot(null);
+        setEditingSlotId(null);
+        setError('');
+        setCpDisplay('');
+        formBaseRef.current = EMPTY_FORM;
+        setForm(EMPTY_FORM);
+        setShowAdd(true);
+      });
     },
-    [setDate, canManageSlots],
+    [applyDate, canManageSlots, leaveForm],
   );
+
+  /** «+ Слот» у шапці: відкриває порожню форму нового запису або закриває відкриту. */
+  const toggleNewSlot = useCallback(() => {
+    const opening = !showAddRef.current;
+    setPendingSlot(null);
+    setEditingSlotId(null);
+    setError('');
+    setCpDisplay('');
+    formBaseRef.current = opening ? EMPTY_FORM : null;
+    setForm(EMPTY_FORM);
+    setShowAdd(opening);
+  }, []);
 
   return {
     /** Право створювати й змінювати записи (BR-CAL-010): механіку — лише перегляд. */
@@ -1496,6 +1637,7 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
     // Form / modal
     form,
     setForm,
+    adjustForm,
     showAdd,
     setShowAdd,
     formMounted,
@@ -1534,6 +1676,7 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
     removeSlot,
     openMonthSlot,
     openNewOnDate,
+    toggleNewSlot,
 
     // Modal callbacks
     handleModalClose,
