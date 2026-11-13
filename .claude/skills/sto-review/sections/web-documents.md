@@ -241,7 +241,7 @@ grep -rnE "\? String\([a-zA-Z.?]+\) : ''" apps/web/src --include=*.tsx | grep -v
       відкривають і з рядка списку без цих полів: `null` для них стер би збережене). Взірець —
       `counterpartyUpdateSchema` + `counterpartyPatchBody` (`journal/web.md`, 2026-11-01)
 - [ ] Числове поле з `*_CLEARABLE_FIELDS` заповнює форму через `!= null`, не truthy: `engineVolume ?
-  String(…) : ''` робив обʼєм 0 порожнім, а `patchBodyWithClears` (0 — значення) слав `null` при
+String(…) : ''` робив обʼєм 0 порожнім, а `patchBodyWithClears` (0 — значення) слав `null` при
       КОЖНОМУ збереженні картки авто (`journal/web.md`, 2026-11-05)
 
 ## Форма з двома режимами розрахунку: усі похідні — в одному режимі (2026-11-13)
@@ -252,3 +252,7 @@ grep -rnE "\? String\([a-zA-Z.?]+\) : ''" apps/web/src --include=*.tsx | grep -v
       зміни ручного запису шукала конфлікт «завтра до 11:00», а зберігалось 17:00–20:00 того ж дня.
       `grep -n "slotRealEnd\|slotHoursBetween\|slotParts" CalendarSlotModal.tsx` — кожен виклик
       звірити з `splits` (`journal/web.md`, 2026-11-13)
+- [ ] **Поле з prefill, яке сервер приймає лише разом з іншими полями тіла** (`calendarSlotId` вимагає
+      `plannedAt` і `dueDate`, BR-WO-020) шлеться за тією ж умовою, що й сервер: користувач стер
+      дати в картці — інакше 400 без виходу з картки. `grep -n "Ref.current," <Modal>.tsx` у тілі
+      POST — кожне таке поле звірити з умовою сервісу (`journal/web.md`, 2026-11-13)

@@ -704,3 +704,13 @@ shared). Кожен винесений хелпер зсував межі СТА
 **Фікс:** спільна `focusEntry(container)` (data-autofocus → поле з фокусом → перше видиме поле → перший
 фокусований → панель) для початкового фокуса і для запасного шляху; тест «відкривача вже немає» у
 `modal-initial-focus.test.tsx` перевіряє «Назва правила», мутація `[0]` — червоний. **Severity:** IMPORTANT
+
+### 2026-11-13 — Поле прив'язки з prefill шлеться без полів, яких вимагає сервер — §8
+
+**Сигнал:** `CreateWorkOrderModal` шле `calendarSlotId: calendarSlotIdRef.current` завжди, а
+`WorkOrdersService.adoptableSlotChain` без `plannedAt`/`dueDate` відповідає 400 «потребує планових
+початку й завершення». Користувач, що стер дати в картці наряду з «Редагування слоту», не міг створити
+наряд зовсім (раніше — наряд без дат і прив'язка «Оновити»). **Grep:** `grep -n "Ref.current," apps/web/src/components/ui/CreateWorkOrderModal.tsx`
+у тілі POST. **Фікс:** `calendarSlotId: plannedAt && dueDate ? calendarSlotIdRef.current : undefined`;
+форма запису для наряду без дат іде старим шляхом (`onCreated` → `workOrderId` у формі). Тест —
+`CreateWorkOrderModal.calendar-slot.test.tsx` «дати в картці стерто». **Severity:** IMPORTANT
