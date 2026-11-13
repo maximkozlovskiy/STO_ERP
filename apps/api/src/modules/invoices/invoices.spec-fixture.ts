@@ -31,6 +31,7 @@ import { SettlementsService } from '../settlements/settlements.service';
 import { SettingsService } from '../settings/settings.service';
 import { AuditService } from '../audit/audit.service';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
+import { baseCurrencyRatesMock } from '../exchange-rates/exchange-rates.testing';
 import { domainEventMock } from '../../common/testing/prisma-mock';
 
 export const ORG = 'org-1';
@@ -64,25 +65,7 @@ export interface InvoicesHarness {
  * `Promise.resolve`, а не `async`: у звичайному `.ts` eslint `require-await` — error.
  */
 export const exchangeRatesMock = () => {
-  const useValue = {
-    resolveBaseConversion: vi
-      .fn()
-      .mockImplementation((_o: string, _c: string, _d: Date, amount: number) =>
-        Promise.resolve({ rateUsed: 1, amountBase: amount }),
-      ),
-    getBaseCurrency: vi.fn().mockResolvedValue({ id: null, code: 'UAH' }),
-    requireBaseCurrencyId: vi.fn().mockResolvedValue('base-cur-id'),
-    // Реальна логіка sameCurrency (Фаза 5 консолідація) поверх мока: читає base У МОМЕНТ
-    // виклику через useValue.getBaseCurrency, тож перевизначення getBaseCurrency у
-    // FX-тестах (Bug #745) впливає і на неї. Self-referencing closure — обов'язковий:
-    // без нього transition() падає з "this.exchangeRates.sameCurrency is not a function".
-    sameCurrency: vi.fn(async (org: string, a: string | null, b: string | null) => {
-      if (a === b) return true;
-      const baseId = ((await useValue.getBaseCurrency(org)) as { id: string | null }).id;
-      const norm = (v: string | null) => v ?? baseId;
-      return norm(a) === norm(b);
-    }),
-  };
+  const useValue = baseCurrencyRatesMock();
   return { provide: ExchangeRatesService, useValue };
 };
 

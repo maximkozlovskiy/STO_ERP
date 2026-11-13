@@ -18,6 +18,7 @@ import { newIdempotencyKey } from '@/lib/idempotency-key';
 import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { Modal } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
+import { ReversalReasonField } from './reversal-reason-field';
 
 /** Що сторнується — уже відформатоване тим, хто відкриває картку (у нього є валюта й дата). */
 export interface PaymentReversalTarget {
@@ -307,39 +308,19 @@ export function ReversalReasonModal({
             </div>
           )}
 
-          <div className="flex flex-col gap-1">
-            <label
-              htmlFor={reasonId}
-              className="text-[13px] font-medium text-foreground leading-none"
-            >
-              {t('paymentReversal.reasonLabel')}
-              <span className="ml-0.5 text-destructive">*</span>
-            </label>
-            <textarea
-              id={reasonId}
-              {...register('reason', { onChange: () => setConfirming(false) })}
-              maxLength={REASON_MAX}
-              rows={3}
-              required
-              autoFocus
-              aria-invalid={!!errors.reason}
-              placeholder={texts.reasonPlaceholder}
-              className="w-full rounded border border-border bg-surface px-3 py-2 text-[13px] text-foreground outline-none transition-all duration-150 hover:border-border-hover focus:border-primary focus:ring-3 focus:ring-brand-100 resize-y"
-            />
-            <div className="flex items-start justify-between gap-3">
-              <p
-                role={errors.reason ? 'alert' : undefined}
-                className="text-[12px] text-destructive"
-              >
-                {errors.reason?.message}
-              </p>
-              {REASON_MAX !== undefined && (
-                <p className="shrink-0 text-[12px] text-muted-foreground text-right tabular-nums">
-                  {t('paymentReversal.counter', { count: reason.length, max: REASON_MAX })}
-                </p>
-              )}
-            </div>
-          </div>
+          <ReversalReasonField
+            id={reasonId}
+            label={t('paymentReversal.reasonLabel')}
+            placeholder={texts.reasonPlaceholder}
+            registration={register('reason', { onChange: () => setConfirming(false) })}
+            maxLength={REASON_MAX}
+            errorMessage={errors.reason?.message}
+            counter={
+              REASON_MAX === undefined
+                ? undefined
+                : t('paymentReversal.counter', { count: reason.length, max: REASON_MAX })
+            }
+          />
         </div>
       </Modal>
 

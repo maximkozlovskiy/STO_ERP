@@ -20,6 +20,7 @@
  */
 import { vi } from 'vitest';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
+import { baseCurrencyRatesMock } from '../exchange-rates/exchange-rates.testing';
 import { PurchaseListLinkService } from '../purchase-lists/purchase-list-link.service';
 import { PurchaseListReceiptService } from '../purchase-lists/purchase-list-receipt.service';
 import { SupplierOrderOutboxService } from '../supplier-api/outbox/supplier-order-outbox.service';
@@ -29,27 +30,7 @@ import { SupplierOrderOutboxService } from '../supplier-api/outbox/supplier-orde
  * Дефолт — базова валюта: rate=1, amountBase=amount.
  */
 export const exchangeRatesProvider = () => {
-  const useValue = {
-    // Promise.resolve, а не `async () => ({...})`: у вихідному спеку це була async-стрілка
-    // без await, і там eslint її не бачив (для *.spec.ts правило послаблене). У звичайному
-    // .ts файлі `require-await` — error, і pre-commit хук це зловив. Поведінка та сама.
-    resolveBaseConversion: vi
-      .fn()
-      .mockImplementation((_o: string, _c: string, _d: Date, amount: number) =>
-        Promise.resolve({ rateUsed: 1, amountBase: amount }),
-      ),
-    getBaseCurrency: vi.fn().mockResolvedValue({ id: null, code: 'UAH' }),
-    requireBaseCurrencyId: vi.fn().mockResolvedValue('base-cur-id'),
-    // BR-SUPPAY-018: прийом питає, чи валюта замовлення базова. Реальна логіка поверх мокнутого
-    // getBaseCurrency (як у фікстурі оплат постачальнику): спек FX перевизначає лише базу.
-    sameCurrency: vi.fn(async (org: string, a: string | null, b: string | null) => {
-      if (a === b) return true;
-      const base = (await useValue.getBaseCurrency(org)) as { id: string | null };
-      const baseId = base.id;
-      const norm = (v: string | null) => v ?? baseId;
-      return norm(a) === norm(b);
-    }),
-  };
+  const useValue = baseCurrencyRatesMock();
   return { provide: ExchangeRatesService, useValue };
 };
 

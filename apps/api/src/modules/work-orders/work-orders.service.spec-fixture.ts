@@ -10,6 +10,7 @@ import { WorkOrdersService } from './work-orders.service';
 import { WorkOrderTotalsService } from './work-order-totals.service';
 import { WorkOrderStockEffectsService } from './work-order-stock-effects.service';
 import type { PrismaService } from '../../prisma/prisma.service';
+import { baseCurrencyRatesMock } from '../exchange-rates/exchange-rates.testing';
 
 export function makeService(prisma: PrismaService): WorkOrdersService {
   // findAll only touches `this.prisma`; інші deps null. events — мок з emit (transition-тести
@@ -29,15 +30,7 @@ export function makeService(prisma: PrismaService): WorkOrdersService {
       onWorkOrderPartsChanged: () => Promise.resolve(),
     } as never /* purchaseLists (BR-PL-013) */,
   );
-  const exchangeRates = {
-    resolveBaseConversion: vi
-      .fn()
-      .mockImplementation((_o: string, _c: string, _d: Date, amount: number) =>
-        Promise.resolve({ rateUsed: 1, amountBase: amount }),
-      ),
-    getBaseCurrency: vi.fn().mockResolvedValue({ id: null, code: 'UAH' }),
-    requireBaseCurrencyId: vi.fn().mockResolvedValue('base-cur-id'),
-  } as never;
+  const exchangeRates = baseCurrencyRatesMock() as never;
   return new WorkOrdersService(
     prisma,
     stockEffects,

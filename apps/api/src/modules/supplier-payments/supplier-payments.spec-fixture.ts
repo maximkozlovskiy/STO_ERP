@@ -26,6 +26,7 @@ import { SettlementsService } from '../settlements/settlements.service';
 import { DocumentNumberService } from '../document-number/document-number.service';
 import { CashService } from '../cash/cash.service';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
+import { baseCurrencyRatesMock } from '../exchange-rates/exchange-rates.testing';
 import { domainEventMock } from '../../common/testing/prisma-mock';
 
 export const ORG = '00000000-0000-4000-8000-000000000001';
@@ -60,24 +61,7 @@ export const confirmedRow = {
 // Мультивалюта (Фаза 3): SupplierPaymentsService набув ExchangeRatesService (confirm base-конвертація).
 // Default мок — базова валюта (rate=1, amountBase=amount). DI-drift guard (Bug #724 клас).
 export const exchangeRatesProvider = () => {
-  const useValue = {
-    resolveBaseConversion: vi
-      .fn()
-      // Promise.resolve, а не `async`: у *.spec.ts eslint це пропускає, а у звичайному
-      // .ts `require-await` — error. Третя фікстура з тією ж пасткою.
-      .mockImplementation((_o: string, _c: string, _d: Date, amount: number) =>
-        Promise.resolve({ rateUsed: 1, amountBase: amount }),
-      ),
-    getBaseCurrency: vi.fn().mockResolvedValue({ id: null, code: 'UAH' }),
-    requireBaseCurrencyId: vi.fn().mockResolvedValue('base-cur-id'),
-    // Реальна логіка поверх мокнутого getBaseCurrency (тести FX перевизначають getBaseCurrency).
-    sameCurrency: vi.fn(async (org: string, a: string | null, b: string | null) => {
-      if (a === b) return true;
-      const baseId = (await useValue.getBaseCurrency(org)).id;
-      const norm = (v: string | null) => v ?? baseId;
-      return norm(a) === norm(b);
-    }),
-  };
+  const useValue = baseCurrencyRatesMock();
   return { provide: ExchangeRatesService, useValue };
 };
 

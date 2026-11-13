@@ -135,8 +135,8 @@ describe('BankReconciliationService.reconcile — SUPPLIER_PAYMENT, прив’�
     const sp = w.db.seed('supplierPayment', supplierPaymentRow());
     const read = w.prisma.supplierPayment!.findFirst;
     const original = read.getMockImplementation()!;
-    read.mockImplementationOnce(async (args: unknown) => {
-      const res: unknown = await original(args);
+    read.mockImplementationOnce(async args => {
+      const res = await original(args);
       sp.status = 'REVERSED';
       return res;
     });
