@@ -82,3 +82,59 @@ describe('WorkdaysTab — збереження робочих днів', () => {
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['settings', 'work-hours'] });
   });
 });
+
+describe('WorkdaysTab — хоча б один робочий день (BR-CAL-017)', () => {
+  function serve(workDays: number[], patch?: () => Promise<unknown>) {
+    apiFetchMock.mockReset();
+    apiFetchMock.mockImplementation((url: string, init?: { method?: string }) => {
+      if (url === '/branches') return Promise.resolve([{ id: BRANCH, name: 'Головна філія' }]);
+      if (init?.method === 'PATCH') return patch ? patch() : Promise.resolve(SETTINGS);
+      return Promise.resolve({ ...SETTINGS, workDays });
+    });
+  }
+  const patches = () => apiFetchMock.mock.calls.filter(c => c[1]?.method === 'PATCH');
+
+  // guards: BR-CAL-017
+  it('останній обраний день не знімається: кнопка лишається натиснутою, поруч — пояснення', async () => {
+    serve([3]);
+    renderTab();
+    await waitFor(() => expect(screen.getByText('Ср')).toBeInTheDocument());
+    const wed = screen.getByRole('button', { name: 'Ср' });
+    expect(wed).toHaveAttribute('aria-pressed', 'true');
+    expect(wed).toHaveAttribute('aria-disabled', 'true');
+    await act(async () => {
+      fireEvent.click(wed);
+    });
+    expect(wed).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText('Має лишитися хоча б один робочий день')).toBeInTheDocument();
+    // Додали другий день — обидва знімаються, пояснення зникає.
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Пт' }));
+    });
+    expect(wed).not.toHaveAttribute('aria-disabled');
+    expect(screen.queryByText('Має лишитися хоча б один робочий день')).toBeNull();
+  });
+
+  // guards: BR-CAL-017
+  it('порожній перелік (старі дані) — «Зберегти» показує причину і не шле PATCH', async () => {
+    serve([]);
+    renderTab();
+    await waitFor(() => expect(screen.getByText('Зберегти')).toBeInTheDocument());
+    await act(async () => {
+      fireEvent.click(screen.getByText('Зберегти'));
+    });
+    expect(screen.getByText('Має лишитися хоча б один робочий день')).toBeInTheDocument();
+    expect(patches()).toHaveLength(0);
+  });
+
+  // guards: BR-CAL-017
+  it('відмова сервера (400) — його причина у смузі помилки', async () => {
+    serve([1, 2], () => Promise.reject(new Error('Оберіть хоча б один робочий день')));
+    renderTab();
+    await waitFor(() => expect(screen.getByText('Зберегти')).toBeInTheDocument());
+    await act(async () => {
+      fireEvent.click(screen.getByText('Зберегти'));
+    });
+    expect(await screen.findByText('Оберіть хоча б один робочий день')).toBeInTheDocument();
+  });
+});

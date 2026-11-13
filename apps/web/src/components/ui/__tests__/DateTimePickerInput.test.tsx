@@ -196,9 +196,17 @@ describe('DateTimePickerInput — мінімальний момент і роб�
     expect((screen.getByLabelText('Година') as HTMLSelectElement).value).toBe('10');
   });
 
-  // guards: BR-WO-019
-  it('без workDays чи з порожнім переліком — неділя доступна', async () => {
+  // guards: BR-CAL-016
+  it('порожній перелік — пн–пт, як сервер: субота й неділя недоступні', async () => {
     await openPicker({ workDays: [] });
+    expect(day('2026-05-23')).toHaveAttribute('data-disabled', 'true');
+    expect(day('2026-05-24')).toHaveAttribute('data-disabled', 'true');
+    expect(day('2026-05-25')).not.toHaveAttribute('data-disabled');
+  });
+
+  // guards: BR-WO-019
+  it('без workDays — пікер не про робочий час: неділя доступна', async () => {
+    await openPicker({});
     expect(day('2026-05-24')).not.toHaveAttribute('data-disabled');
   });
 });

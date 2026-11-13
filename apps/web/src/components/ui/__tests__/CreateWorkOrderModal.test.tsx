@@ -738,8 +738,9 @@ describe('CreateWorkOrderModal — regression guards', () => {
           branchId: 'b1',
           counterpartyId: 'cp1',
           vehicleId: 'v1',
-          plannedStartAt: '2026-06-14T09:00',
-          plannedEndAt: '2026-06-14T11:00',
+          // 15.06.2026 — понеділок: до завантаження годин філії — типові 09–18, пн–пт.
+          plannedStartAt: '2026-06-15T09:00',
+          plannedEndAt: '2026-06-15T11:00',
           // plannedHours відсутній
         }}
       />,
@@ -747,7 +748,7 @@ describe('CreateWorkOrderModal — regression guards', () => {
 
     await waitFor(() => expect(apiFetchMock).toHaveBeenCalledWith('/branches'));
 
-    // calcPlannedHours("2026-06-14T09:00", "2026-06-14T11:00") = "2" — у межах робочих годин
+    // calcPlannedHours("2026-06-15T09:00", "2026-06-15T11:00") = "2" — у межах робочих годин
     // (типові 09–18 до завантаження годин філії; рахується лише робочий час, BR-WO-019)"
     const plannedHoursInput = screen.getAllByDisplayValue('2').find(el => {
       return el instanceof HTMLInputElement && el.type === 'number' && el.step === '0.5';

@@ -7,9 +7,10 @@ import {
 
 // BR-WO-019: автокінець і планові нормогодини наряду — у робочих годинах філії, а не в жорстких
 // 08–20. Ніч і години поза вікном не рахуються — так само сервер ділить запис календаря наряду
-// на дні (BR-WO-020).
+// на дні (BR-WO-020). Тут перевіряються години, тож усі сім днів робочі (`ALL_DAYS`); вихідні — нижче.
 
-const W818 = { startHour: 8, endHour: 18 };
+const ALL_DAYS = [1, 2, 3, 4, 5, 6, 7];
+const W818 = { startHour: 8, endHour: 18, workDays: ALL_DAYS };
 
 describe('calcEndFromHours — автокінець за нормогодинами', () => {
   // guards: BR-WO-019
@@ -25,12 +26,12 @@ describe('calcEndFromHours — автокінець за нормогодина�
   // guards: BR-WO-019
   it('переповнення → наступного дня від відкриття філії (08:00), а не від 08:00 «за замовчуванням»', () => {
     expect(calcEndFromHours('2026-05-22T16:00', 3, W818)).toBe('2026-05-23T09:00');
-    expect(calcEndFromHours('2026-05-22T16:00', 3, { startHour: 10, endHour: 19 })).toBe(
-      '2026-05-22T19:00',
-    );
-    expect(calcEndFromHours('2026-05-22T16:00', 4, { startHour: 10, endHour: 19 })).toBe(
-      '2026-05-23T11:00',
-    );
+    expect(
+      calcEndFromHours('2026-05-22T16:00', 3, { startHour: 10, endHour: 19, workDays: ALL_DAYS }),
+    ).toBe('2026-05-22T19:00');
+    expect(
+      calcEndFromHours('2026-05-22T16:00', 4, { startHour: 10, endHour: 19, workDays: ALL_DAYS }),
+    ).toBe('2026-05-23T11:00');
   });
 
   // guards: BR-WO-019
@@ -53,8 +54,13 @@ describe('calcEndFromHours — автокінець за нормогодина�
     expect(calcEndFromHours('2026-05-22T10:00', Number.NaN, W818)).toBe('');
   });
 
-  it('типові години — як на сервері, 09–18', () => {
-    expect(DEFAULT_WORK_HOURS_WINDOW).toEqual({ startHour: 9, endHour: 18 });
+  // guards: BR-CAL-016
+  it('типові години й дні — як на сервері, 09–18, пн–пт', () => {
+    expect(DEFAULT_WORK_HOURS_WINDOW).toEqual({
+      startHour: 9,
+      endHour: 18,
+      workDays: [1, 2, 3, 4, 5],
+    });
   });
 });
 
@@ -88,9 +94,9 @@ describe('вихідні філії — автокінець і нормогод
   // guards: BR-WO-019
   it('сб 17:00 + 3 год (вікно 9–18, пн–сб) → пн 11:00, неділя пропущена', () => {
     expect(calcEndFromHours('2026-11-21T17:00', 3, MON_SAT)).toBe('2026-11-23T11:00');
-    // Без переліку днів — неділя робоча, як раніше.
+    // Без переліку днів — пн–пт, як сервер (BR-CAL-016): субота не робоча, початок — пн 09:00.
     expect(calcEndFromHours('2026-11-21T17:00', 3, { startHour: 9, endHour: 18 })).toBe(
-      '2026-11-22T11:00',
+      '2026-11-23T12:00',
     );
   });
 
@@ -106,10 +112,10 @@ describe('вихідні філії — автокінець і нормогод
     ).toBe('2026-11-23T10:00');
   });
 
-  // guards: BR-WO-019
-  it('порожній перелік — кожен день робочий', () => {
+  // guards: BR-CAL-016
+  it('порожній перелік — пн–пт, як сервер (до 2026-11-06 — кожен день робочий)', () => {
     expect(calcEndFromHours('2026-11-21T17:00', 3, { ...MON_SAT, workDays: [] })).toBe(
-      '2026-11-22T11:00',
+      '2026-11-23T12:00',
     );
   });
 
@@ -118,7 +124,7 @@ describe('вихідні філії — автокінець і нормогод
     expect(calcPlannedHours('2026-11-21T17:00', '2026-11-23T11:00', MON_SAT)).toBe('3');
     expect(
       calcPlannedHours('2026-11-21T17:00', '2026-11-23T11:00', { startHour: 9, endHour: 18 }),
-    ).toBe('12');
+    ).toBe('2');
     const end = calcEndFromHours('2026-11-20T14:15', 21.5, MON_SAT);
     expect(calcPlannedHours('2026-11-20T14:15', end, MON_SAT)).toBe('21.5');
   });

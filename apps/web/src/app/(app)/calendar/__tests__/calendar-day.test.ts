@@ -2,7 +2,14 @@
 // приглушене минуле за Києвом, завантаження підйомника з обрізанням по робочих годинах.
 
 import { describe, expect, it } from 'vitest';
-import { daySlotCategory, liftLoadHours, nowLinePercent, pastPercent } from '../calendar-day';
+import i18n from '@/i18n/config';
+import {
+  daySlotCategory,
+  liftLoadHours,
+  nowLinePercent,
+  pastPercent,
+  slotDeleteConfirmOptions,
+} from '../calendar-day';
 import { chainEnds } from '../calendar-month';
 import type { CalendarSlot } from '../calendar.types';
 
@@ -194,5 +201,30 @@ describe('liftLoadHours — завантаження підйомника (BR-CA
   ])('округлення до 0,5 год: %s–%s → %s', (from, to, hours) => {
     const s = slot('a', `2026-10-15T${from}`, `2026-10-15T${to}`);
     expect(liftLoadHours([s], 'L1', DAY, 8, 18)).toBe(hours);
+  });
+});
+
+describe('slotDeleteConfirmOptions — ланцюжок ручного запису (BR-CAL-019)', () => {
+  const t = i18n.getFixedT('uk', 'calendar');
+  const END = '2026-10-22T09:00:00.000Z'; // 22.10 12:00 за Києвом
+
+  // guards: BR-CAL-019
+  it('частина багатоденного запису без наряду — «Видалити всі N днів?» з кінцем останньої частини', () => {
+    const o = slotDeleteConfirmOptions(t, null, null, { chainDays: 3, chainEndAt: END });
+    expect(o.title).toBe('Видалити всі 3 дні?');
+    expect(o.message).toMatch(/до 22\.10\.2026 12:00/);
+    expect(o.variant).toBe('destructive');
+    expect(slotDeleteConfirmOptions(t, null, null, { chainDays: 5 }).title).toBe(
+      'Видалити всі 5 днів?',
+    );
+  });
+
+  // guards: BR-CAL-019
+  it('одноденний запис і запис наряду — як раніше (ланцюжок наряду — BR-WO-026)', () => {
+    expect(slotDeleteConfirmOptions(t, null, null, { chainDays: 1 }).title).toBe('Видалити слот?');
+    expect(slotDeleteConfirmOptions(t, null, null).title).toBe('Видалити слот?');
+    const wo = slotDeleteConfirmOptions(t, 'НЗ-7', null, { chainDays: 3, chainEndAt: END });
+    expect(wo.title).toBe('Видалити слот?');
+    expect(wo.message).toMatch(/НЗ-7/);
   });
 });

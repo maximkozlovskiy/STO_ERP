@@ -293,11 +293,13 @@ describe('CalendarSlotModal — наряд, створений із форми �
     expect(prefill().plannedEndAt).toBe('2026-10-26T11:00');
     // Сервер переносить залишок ручного запису на наступний РОБОЧИЙ день — форма показує його ж.
     expect(screen.getByDisplayValue('26.10.2026 11:00')).toBeInTheDocument();
-    expect(screen.getByText(/26\.10\.2026/)).toBeInTheDocument();
+    expect(screen.getByTestId('slot-split-warning').textContent).toMatch(
+      /2 дні: 24\.10 17:00–18:00, 26\.10 09:00–11:00/,
+    );
   });
 
-  // guards: BR-CAL-016
-  it('без переліку робочих днів — як раніше: залишок у неділю', () => {
+  // guards: BR-CAL-016, BR-CAL-007
+  it('без переліку робочих днів — пн–пт: субота не робоча, запис — один, наряд — з понеділка', () => {
     render(
       <Harness
         initial={{ startAt: '17:00', endAt: '11:00', normoHours: '3' }}
@@ -307,8 +309,11 @@ describe('CalendarSlotModal — наряд, створений із форми �
         windowEnd={18}
       />,
     );
-    expect(prefill().plannedEndAt).toBe('2026-10-25T11:00');
-    expect(screen.getByDisplayValue('25.10.2026 11:00')).toBeInTheDocument();
+    // Ручний запис із вихідного не ділиться (№86) — «Кінець» того ж дня; наряд — автокінцем
+    // картки (BR-WO-019): початок у вихідний зсувається на пн 09:00.
+    expect(prefill().plannedEndAt).toBe('2026-10-26T12:00');
+    expect(screen.getByDisplayValue('24.10.2026 20:00')).toBeInTheDocument();
+    expect(screen.queryByTestId('slot-split-warning')).toBeNull();
   });
 
   // guards: BR-WO-019

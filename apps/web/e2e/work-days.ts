@@ -9,7 +9,8 @@
  * (work-order-lookups-roles, 2026-11-01):
  *   2–6 work-order-lookups-roles (копії `--repeat-each`) · 7 calendar-owner-decisions ·
  *   8 work-order-calendar-record · 9 calendar-slot-types · 10 work-order-calendar-drag ·
- *   11 work-order-calendar-edit · 12 work-order-calendar-lifecycle · 13 work-order-days-off.
+ *   11 work-order-calendar-edit · 12 work-order-calendar-lifecycle · 13 work-order-days-off ·
+ *   14 calendar-chains.
  */
 
 const DAY_MS = 86_400_000;

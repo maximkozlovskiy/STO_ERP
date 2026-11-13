@@ -1,0 +1,110 @@
+// Частини запису календаря у формі — дзеркало серверних `manualSlotSegments` і `overflowEnd`
+// (BR-CAL-007, BR-CAL-016; рішення власника №72, №86). 2026-10-20 — вівторок, 23.10 — п'ятниця,
+// 24.10 — субота, 26.10 — понеділок.
+
+import { describe, expect, it } from 'vitest';
+import {
+  slotEndFromHours,
+  slotHoursBetween,
+  slotParts,
+  slotRealEnd,
+  startsInWorkTime,
+} from '../calendar-slot-span';
+
+const WH = { startHour: 9, endHour: 18, workDays: [1, 2, 3, 4, 5] } as const;
+
+describe('slotEndFromHours — кінець за нормогодинами (BR-CAL-007)', () => {
+  // guards: BR-CAL-007
+  it('у межах дня — «початок + тривалість»', () => {
+    expect(slotEndFromHours('2026-10-20T10:00', 3, WH)).toBe('2026-10-20T13:00');
+  });
+
+  // guards: BR-CAL-007
+  it('на N робочих днів без обрізання до 23:59 (№72): 10:00 + 20 год → четвер 12:00', () => {
+    // вт 8 год, ср 9 год, чт 3 год.
+    expect(slotEndFromHours('2026-10-20T10:00', 20, WH)).toBe('2026-10-22T12:00');
+  });
+
+  // guards: BR-CAL-016
+  it('вихідні філії пропускаються: пт 17:00 + 3 год → пн 11:00', () => {
+    expect(slotEndFromHours('2026-10-23T17:00', 3, WH)).toBe('2026-10-26T11:00');
+  });
+
+  // guards: BR-CAL-007
+  it('початок до відкриття — як сервер: тривалість від початку, переноситься лише залишок за закриттям', () => {
+    expect(slotEndFromHours('2026-10-20T07:00', 3, WH)).toBe('2026-10-20T10:00');
+    // 07:00 + 12 год = 19:00 → 1 год за закриттям → ср 10:00 (сервер: `overflowEnd`).
+    expect(slotEndFromHours('2026-10-20T07:00', 12, WH)).toBe('2026-10-21T10:00');
+  });
+
+  // guards: BR-CAL-007
+  it('початок у вихідний чи після закриття — один запис «початок + тривалість» (№86)', () => {
+    expect(slotEndFromHours('2026-10-24T17:00', 2, WH)).toBe('2026-10-24T19:00');
+    expect(slotEndFromHours('2026-10-20T18:30', 2, WH)).toBe('2026-10-20T20:30');
+    expect(startsInWorkTime('2026-10-24T10:00', WH)).toBe(false);
+    expect(startsInWorkTime('2026-10-20T18:00', WH)).toBe(false);
+  });
+
+  it('невалідний ввід — порожній рядок', () => {
+    expect(slotEndFromHours('2026-10-20T10:00', 0, WH)).toBe('');
+    expect(slotEndFromHours('', 2, WH)).toBe('');
+  });
+});
+
+describe('slotHoursBetween — зворотне до кінця за нормогодинами', () => {
+  // guards: BR-CAL-007
+  it('кінець того ж дня (навіть за закриттям) — тривалість, як читає сервер', () => {
+    expect(slotHoursBetween('2026-10-20T10:00', '2026-10-20T12:30', WH)).toBe('2.5');
+    expect(slotHoursBetween('2026-10-20T17:00', '2026-10-20T20:00', WH)).toBe('3');
+  });
+
+  // guards: BR-CAL-007, BR-CAL-016
+  it('кінець іншого дня — години першого дня до закриття + робочі години далі', () => {
+    expect(slotHoursBetween('2026-10-20T10:00', '2026-10-22T12:00', WH)).toBe('20');
+    expect(slotHoursBetween('2026-10-23T17:00', '2026-10-26T11:00', WH)).toBe('3');
+    // Початок до відкриття: 07–18 = 11 год, ср 09–10 = 1 год.
+    expect(slotHoursBetween('2026-10-20T07:00', '2026-10-21T10:00', WH)).toBe('12');
+  });
+
+  it('кінець не пізніше початку — порожньо', () => {
+    expect(slotHoursBetween('2026-10-20T10:00', '2026-10-20T10:00', WH)).toBe('');
+  });
+});
+
+describe('slotRealEnd / slotParts — частини, на які сервер поділить запис', () => {
+  // guards: BR-CAL-007
+  it('кінець того ж дня за закриттям — залишок на наступні робочі дні (`overflowEnd`)', () => {
+    expect(slotRealEnd('2026-10-20T17:00', '2026-10-20T20:00', WH)).toBe('2026-10-21T11:00');
+    expect(slotRealEnd('2026-10-20T10:00', '2026-10-20T12:00', WH)).toBe('2026-10-20T12:00');
+  });
+
+  // guards: BR-CAL-007, BR-CAL-016
+  it('усі частини — перша від запитаного початку, далі робочі дні у робочих годинах', () => {
+    expect(slotParts('2026-10-20T10:00', '2026-10-22T12:00', WH)).toEqual([
+      { start: '2026-10-20T10:00', end: '2026-10-20T18:00' },
+      { start: '2026-10-21T09:00', end: '2026-10-21T18:00' },
+      { start: '2026-10-22T09:00', end: '2026-10-22T12:00' },
+    ]);
+    expect(slotParts('2026-10-23T17:00', '2026-10-26T11:00', WH)).toEqual([
+      { start: '2026-10-23T17:00', end: '2026-10-23T18:00' },
+      { start: '2026-10-26T09:00', end: '2026-10-26T11:00' },
+    ]);
+    // Перша частина — з 07:00, а не з відкриття (сервер не обрізає запитаний початок).
+    expect(slotParts('2026-10-20T07:00', '2026-10-21T10:00', WH)[0]).toEqual({
+      start: '2026-10-20T07:00',
+      end: '2026-10-20T18:00',
+    });
+  });
+
+  // guards: BR-CAL-007
+  it('запис у вихідний чи в межах дня — одна частина', () => {
+    expect(slotParts('2026-10-24T17:00', '2026-10-24T19:00', WH)).toHaveLength(1);
+    expect(slotParts('2026-10-20T10:00', '2026-10-20T12:00', WH)).toHaveLength(1);
+  });
+
+  // guards: BR-CAL-016
+  it('без переліку робочих днів — пн–пт, як сервер (субота не робоча)', () => {
+    const noDays = { startHour: 9, endHour: 18 };
+    expect(slotEndFromHours('2026-10-23T17:00', 3, noDays)).toBe('2026-10-26T11:00');
+  });
+});

@@ -58,7 +58,7 @@ const NOW = new Date('2026-05-20T09:00:00Z');
 type Call = [string, { method?: string; body?: string } | undefined];
 
 function mockApi(
-  hours: { workStartHour: number; workEndHour: number },
+  hours: { workStartHour: number; workEndHour: number; workDays?: number[] },
   { liftId = LIFT }: { liftId?: string | null } = {},
 ) {
   apiFetchMock.mockImplementation((path: string, init?: { method?: string }) => {
@@ -139,8 +139,10 @@ describe('CreateWorkOrderModal — планові дати (BR-WO-019, BR-WO-020
   });
 
   // guards: BR-WO-019
+  // 22.05.2026 — п'ятниця: субота робоча у філії пн–сб (рядок налаштувань має перелік днів;
+  // без нього — пн–пт, BR-CAL-016).
   it('автокінець — за годинами філії: 16:00 + 3 год при 08–18 → завтра 09:00', async () => {
-    mockApi({ workStartHour: 8, workEndHour: 18 });
+    mockApi({ workStartHour: 8, workEndHour: 18, workDays: [1, 2, 3, 4, 5, 6] });
     await openCard();
     fireEvent.change(plannedHoursInput(), { target: { value: '3' } });
     await waitFor(() => expect(dateInputs()[1]!.value).toBe('23.05.2026 09:00'));
