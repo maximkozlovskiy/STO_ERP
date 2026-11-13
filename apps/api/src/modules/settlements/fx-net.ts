@@ -84,7 +84,8 @@ export async function reverseNetFxInTx(
  * Чиста FX замовлення вже ≠ 0 — визнано, нічого не пише (повтор безпечний). Інакше
  * `fx = Σ SUPPLIER_CHARGE.amountBase замовлення − Σ SUPPLIER_PAYMENT.amountBase його проведених
  * оплат`: нараховано за курсами прийомів, сплачено за курсами оплат — результат не залежить від
- * того, що було раніше. Викликати в транзакції запису — після проводки, яку сума має включати.
+ * того, що було раніше. Сплачено у валюті більше, ніж нараховано, — у суму йдуть лише оплати в межах
+ * нарахованого (Bug #1061). Викликати в транзакції запису — після проводки, яку сума має включати.
  */
 export async function recognizeSupplierOrderFxInTx(
   tx: Prisma.TransactionClient,
@@ -96,7 +97,7 @@ export async function recognizeSupplierOrderFxInTx(
   const [chargeAgg, spIds, fxNet] = await Promise.all([
     tx.settlementTransaction.aggregate({
       where: { orgId, type: 'SUPPLIER_CHARGE', documentType: 'PurchaseOrder', documentId: poId },
-      _sum: { amountBase: true },
+      _sum: { amount: true, amountBase: true },
     }),
     tx.supplierPayment.findMany({
       where: {
@@ -113,17 +114,25 @@ export async function recognizeSupplierOrderFxInTx(
     netFxBalanceEffect(tx, orgId, [{ documentType: 'PurchaseOrder', documentId: poId }]),
   ]);
   if (hasNetFx(fxNet)) return;
+  const paidWhere: Prisma.SettlementTransactionWhereInput = {
+    orgId,
+    type: 'SUPPLIER_PAYMENT',
+    documentType: 'SupplierPayment',
+    documentId: { in: spIds.map(s => s.id) },
+  };
   const paidAgg = await tx.settlementTransaction.aggregate({
-    where: {
-      orgId,
-      type: 'SUPPLIER_PAYMENT',
-      documentType: 'SupplierPayment',
-      documentId: { in: spIds.map(s => s.id) },
-    },
-    _sum: { amountBase: true },
+    where: paidWhere,
+    _sum: { amount: true, amountBase: true },
   });
   const chargeBase = moneyFromDecimal(chargeAgg._sum.amountBase);
-  const paidBase = moneyFromDecimal(paidAgg._sum.amountBase);
+  const chargeAmount = moneyFromDecimal(chargeAgg._sum.amount);
+  // Bug #1061: переплата (сплачено у валюті замовлення більше, ніж нараховано — переплата чи
+  // «Отримано» без приймання) — не курсова різниця: FX лише на сплачене в межах нарахованого
+  // (оплати по черзі проведення), надлишок лишається авансом за курсом своєї оплати.
+  const paidBase =
+    money(moneyFromDecimal(paidAgg._sum.amount) - chargeAmount) >= FX_NET_EPS
+      ? await paidBaseWithinCharge(tx, paidWhere, chargeAmount)
+      : moneyFromDecimal(paidAgg._sum.amountBase);
   const fx = money(chargeBase - paidBase);
   if (Math.abs(fx) < FX_NET_EPS) return;
   await settlements.createTransaction(
@@ -143,4 +152,32 @@ export async function recognizeSupplierOrderFxInTx(
     },
     tx,
   );
+}
+
+/**
+ * Базова сума оплат замовлення в межах нарахованого (`chargeAmount` у валюті замовлення): оплати по
+ * черзі проведення, остання — пропорційно своїй частці. Нічого не нараховано — 0 (FX немає).
+ */
+async function paidBaseWithinCharge(
+  tx: Prisma.TransactionClient,
+  where: Prisma.SettlementTransactionWhereInput,
+  chargeAmount: number,
+): Promise<number> {
+  const rows = await tx.settlementTransaction.findMany({
+    where,
+    select: { amount: true, amountBase: true },
+    orderBy: { createdAt: 'asc' },
+    take: 500,
+  });
+  let left = chargeAmount;
+  let base = 0;
+  for (const row of rows) {
+    if (left < FX_NET_EPS) break;
+    const amount = moneyFromDecimal(row.amount);
+    if (amount <= 0) continue;
+    const part = Math.min(amount, left);
+    base += (moneyFromDecimal(row.amountBase) * part) / amount;
+    left = money(left - part);
+  }
+  return money(base);
 }

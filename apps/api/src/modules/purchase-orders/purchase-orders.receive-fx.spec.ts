@@ -372,6 +372,52 @@ describe('PurchaseOrdersService.receive — курсова різниця пер
     expect(receivedFirst.fxRows()).toEqual([]);
   });
 
+  // Bug #1061: переплата ВАЛЮТНОГО замовлення — не курсова різниця. «Нараховано − сплачено» в базовій
+  // валюті забирало в FX і надлишок: 120 USD за курсом 41 (4920) проти 100 USD за курсом 42 (4200) —
+  // FX_LOSS 720, баланс постачальника 0, хоча він винен нам 20 USD (820 грн). Курсова різниця — лише
+  // на сплачене в межах нарахованого (FIFO оплат): 4200 − 100 × 41 = FX_GAIN 100, аванс 820 лишається.
+  // Mutation-verify: прибрати обмеження сплаченого нарахованим у `recognizeSupplierOrderFxInTx` →
+  // обидва кейси нижче червоні (FX_LOSS 720).
+  // guards: BR-SUPPAY-018, BR-SUPPAY-012
+  it('валютна переплата: FX лише на сплачене в межах нарахованого, надлишок лишається авансом', async () => {
+    const balance = (rows: MemRow[]) => {
+      const sign: Record<string, number> = {
+        SUPPLIER_CHARGE: -1,
+        SUPPLIER_PAYMENT: 1,
+        FX_GAIN: 1,
+        FX_LOSS: -1,
+      };
+      return rows.reduce((s, r) => s + (sign[r.type as string] ?? 0) * Number(r.amountBase), 0);
+    };
+
+    const prepaidFirst = makeHarness({ prepaid: 120 });
+    await prepaidFirst.receiveAll();
+    expect(prepaidFirst.fxRows()).toEqual([
+      expect.objectContaining({ type: 'FX_GAIN', amount: 100 }),
+    ]);
+    expect(balance(prepaidFirst.tables.settlementTransaction.rows)).toBeCloseTo(820, 2);
+
+    const receivedFirst = makeHarness({ prepaid: null });
+    await receivedFirst.receiveAll();
+    await receivedFirst.confirmDraft(120);
+    expect(receivedFirst.fxRows()).toEqual([
+      expect.objectContaining({ type: 'FX_GAIN', amount: 100 }),
+    ]);
+    expect(balance(receivedFirst.tables.settlementTransaction.rows)).toBeCloseTo(820, 2);
+  });
+
+  // Bug #1061: «Отримано» без приймання (BR-PL-012) — нарахування немає, і повна оплата писала
+  // FX_LOSS на ВСЮ суму (той самий збиток, що Bug #1054 до прийому). Нічого не нараховано — FX немає.
+  // guards: BR-SUPPAY-012
+  it('«Отримано» без приймання (нарахування немає) → повна оплата FX не пише', async () => {
+    const h = makeHarness({ prepaid: null, po: { status: 'RECEIVED' } });
+
+    await h.confirmDraft(100);
+
+    expect(h.po.paidAt).not.toBeNull();
+    expect(h.fxRows()).toEqual([]);
+  });
+
   // guards: BR-SUPPAY-018
   it('чиста FX замовлення вже ≠ 0 → другої курсової різниці не пише', async () => {
     const h = makeHarness({
