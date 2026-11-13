@@ -1448,6 +1448,8 @@ export function CreateWorkOrderModal({
       // Reuse a previously-created WO on retry to avoid duplicate WO documents.
       let wo = createdWoRef.current;
       if (!wo) {
+        const plannedAt = localDateTimeToISO(form.plannedStartAt);
+        const dueDate = localDateTimeToISO(form.plannedEndAt);
         wo = await apiFetch<CreatedWorkOrder>('/work-orders', {
           method: 'POST',
           body: JSON.stringify({
@@ -1461,10 +1463,13 @@ export function CreateWorkOrderModal({
             priority: form.priority || 'NORMAL',
             repairCategory: form.repairCategory || undefined,
             documentDate: form.documentDate || undefined,
-            plannedAt: localDateTimeToISO(form.plannedStartAt),
-            dueDate: localDateTimeToISO(form.plannedEndAt),
+            plannedAt,
+            dueDate,
             plannedHours: toNumberOrUndefined(form.plannedHours),
-            calendarSlotId: calendarSlotIdRef.current,
+            // Запис забирає лише наряд із плановими датами (BR-WO-020). Дати в картці стерто —
+            // наряд без дат, а запис лишається формі запису (прив'язка «Оновити», як раніше),
+            // а не 400 «потребує планових початку й завершення» без виходу.
+            calendarSlotId: plannedAt && dueDate ? calendarSlotIdRef.current : undefined,
           }),
         });
         createdWoRef.current = wo;

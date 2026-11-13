@@ -2,7 +2,7 @@
  * BR-WO-020 (скарга власника 2026-11-13): наряд, відкритий кнопкою «створити наряд» із форми
  * НАЯВНОГО запису календаря без наряду, шле в `POST /work-orders` `calendarSlotId` цього запису —
  * сервер прив'язує сам запис до наряду й ставить на його дати, а не створює другого. Без запису в
- * prefill поля в тілі немає.
+ * prefill поля в тілі немає; без планових дат — теж (наряд без дат, запис лишається формі).
  */
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -32,6 +32,9 @@ const BASE: CreateWOPrefill = {
   counterpartyDisplay: 'Тест Клієнт',
   vehicleId: '33333333-3333-4333-8333-333333333333',
 };
+
+/** Планові дати запису — без них сервер запису наряду не віддає (BR-WO-020). */
+const DATES = { plannedStartAt: '2030-06-03T10:00', plannedEndAt: '2030-06-03T12:00' };
 
 type Call = [string, { method?: string; body?: string } | undefined];
 
@@ -64,9 +67,16 @@ async function createBody(prefill: CreateWOPrefill): Promise<Record<string, unkn
 describe('CreateWorkOrderModal — наряд із наявного запису календаря (BR-WO-020)', () => {
   // guards: BR-WO-020
   it('prefill із записом календаря → `calendarSlotId` у тілі POST /work-orders', async () => {
-    expect(await createBody({ ...BASE, calendarSlotId: SLOT })).toMatchObject({
+    expect(await createBody({ ...BASE, ...DATES, calendarSlotId: SLOT })).toMatchObject({
       calendarSlotId: SLOT,
     });
+  });
+
+  // guards: BR-WO-020
+  it('дати в картці стерто — `calendarSlotId` не шлеться: наряд без дат, а не 400', async () => {
+    const body = await createBody({ ...BASE, calendarSlotId: SLOT });
+    expect(body).not.toHaveProperty('calendarSlotId');
+    expect(body).not.toHaveProperty('plannedAt');
   });
 
   // guards: BR-WO-020
