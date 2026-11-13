@@ -1190,27 +1190,13 @@ export class CalendarService {
     if (Object.keys(data).length === 0 || chain.length === 0) return;
     const ids = chain.map(s => s.id);
     const segments = [...chain].sort((a, b) => a.startAt.getTime() - b.startAt.getTime());
-    const first = segments[0];
     const { employeeId } = change;
     // Проба механіка на READ COMMITTED не бачить паралельного запису — його ловить EXCLUDE
     // `calendar_slots_mechanic_no_overlap`, і гонка дає 409 «механік зайнятий», а не 500.
     await this.prisma
       .$transaction(
         async tx => {
-          if (employeeId) {
-            const hit = await tx.calendarSlot.findFirst({
-              where: busyWhere(orgId, { employeeId }, segments, { ids }),
-              select: { startAt: true, endAt: true },
-            });
-            if (hit)
-              throw new BadRequestException(
-                err(
-                  hit.startAt < first.endAt && hit.endAt > first.startAt
-                    ? 'err.calendar.employeeBusy'
-                    : 'err.calendar.employeeBusyNextDay',
-                ),
-              );
-          }
+          if (employeeId) await assertResourcesFree(tx, orgId, segments, { employeeId }, ids);
           await tx.calendarSlot.updateMany({
             where: { orgId, id: { in: ids }, deletedAt: null },
             data,
