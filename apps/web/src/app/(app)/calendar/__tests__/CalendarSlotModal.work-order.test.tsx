@@ -74,6 +74,8 @@ function Harness({
   windowWorkDays,
   date = FUTURE,
   savedMechanic = null,
+  editingWorkOrder = null,
+  editingChain = null,
 }: {
   initial: Partial<SlotForm>;
   editingSlotId?: string | null;
@@ -83,6 +85,8 @@ function Harness({
   windowWorkDays?: number[];
   date?: string;
   savedMechanic?: SavedMechanic | null;
+  editingWorkOrder?: { number: string; lockedStatus: string | null } | null;
+  editingChain?: { days: number; endAt: string; isFirst: boolean; isLast: boolean } | null;
 }) {
   const [form, setForm] = useState<SlotForm>({
     ...EMPTY_FORM,
@@ -112,6 +116,8 @@ function Harness({
         editingSlotId={editingSlotId}
         isEditingPast={false}
         savedMechanic={savedMechanic}
+        editingWorkOrder={editingWorkOrder}
+        editingChain={editingChain}
         pendingSlot={null}
         setPendingSlot={() => {}}
         formMounted
@@ -226,10 +232,85 @@ describe('CalendarSlotModal — наряд, створений із форми �
   });
 
   // guards: BR-WO-020
-  it('наряд для ІСНУЮЧОГО запису — без планових дат у prefill (сервер не створить другий запис)', () => {
+  it('наявний запис без наряду: prefill — дати, години й підйомник запису та `calendarSlotId`', () => {
     render(<Harness initial={{}} editingSlotId="slot-1" onSaved={vi.fn()} />);
+    expect(prefill()).toMatchObject({
+      plannedStartAt: `${FUTURE}T10:00`,
+      plannedEndAt: `${FUTURE}T11:00`,
+      plannedHours: '1',
+      liftId: L1,
+      calendarSlotId: 'slot-1',
+    });
+  });
+
+  // guards: BR-WO-020
+  it('наявний запис: незбережені в формі час і підйомник — у prefill наряду', () => {
+    render(
+      <Harness
+        initial={{ startAt: '13:00', endAt: '15:30', normoHours: '2,5', liftId: L2 }}
+        editingSlotId="slot-1"
+        onSaved={vi.fn()}
+      />,
+    );
+    expect(prefill()).toMatchObject({
+      plannedStartAt: `${FUTURE}T13:00`,
+      plannedEndAt: `${FUTURE}T15:30`,
+      plannedHours: '2.5',
+      liftId: L2,
+    });
+  });
+
+  // guards: BR-WO-020
+  it('ручний ланцюжок з першого дня: кінець — кінець останнього дня, години рахує картка', () => {
+    render(
+      <Harness
+        initial={{ startAt: '14:00', endAt: '18:00', normoHours: '4' }}
+        editingSlotId="slot-1"
+        editingChain={{ days: 2, endAt: '2026-10-21T08:00:00.000Z', isFirst: true, isLast: false }}
+        onSaved={vi.fn()}
+      />,
+    );
+    expect(prefill()).toMatchObject({
+      plannedStartAt: `${FUTURE}T14:00`,
+      plannedEndAt: '2026-10-21T11:00',
+      calendarSlotId: 'slot-1',
+    });
+    expect(prefill().plannedHours).toBeUndefined();
+  });
+
+  // guards: BR-WO-020
+  it.each([
+    ['запис наряду', { editingWorkOrder: { number: 'НРД-5', lockedStatus: null } }],
+    [
+      'продовження ручного ланцюжка',
+      {
+        editingChain: { days: 2, endAt: '2026-10-21T08:00:00.000Z', isFirst: false, isLast: true },
+      },
+    ],
+  ])("%s — як раніше: без дат і без `calendarSlotId` (прив'язка — «Оновити»)", (_l, extra) => {
+    render(<Harness initial={{}} editingSlotId="slot-1" onSaved={vi.fn()} {...extra} />);
     expect(prefill().plannedStartAt).toBeUndefined();
     expect(prefill().plannedEndAt).toBeUndefined();
+    expect(prefill().calendarSlotId).toBeUndefined();
+  });
+
+  // guards: BR-WO-020
+  it('наряд забрав наявний запис → без запису форми, форма закрита, кеш нарядів скинуто', async () => {
+    const onSaved = vi.fn();
+    created.current = {
+      id: WO,
+      number: 'НЗ-1',
+      counterpartyId: CP,
+      plannedAt: '2026-10-20T07:00:00.000Z',
+      dueDate: '2026-10-20T08:00:00.000Z',
+    };
+    render(<Harness initial={{}} editingSlotId="slot-1" onSaved={onSaved} />);
+    fireEvent.click(screen.getByTestId('wo-stub'));
+    await waitFor(() => expect(onSaved).toHaveBeenCalledWith({ workOrderChanged: true }));
+    expect(screen.getByTestId('wo-id').textContent).toBe('');
+    expect(
+      calls().some(([u, i]) => u.startsWith('/calendar/slots') && i?.method !== undefined),
+    ).toBe(false);
   });
 
   // guards: BR-WO-019

@@ -230,6 +230,45 @@ describe('WorkOrders — HTTP Contract', () => {
       expect(res.statusCode).toBe(400);
     });
 
+    // guards: BR-WO-020
+    it('calendarSlotId не UUID → 400, сервіс не викликано', async () => {
+      jwtAllow = true;
+      serviceMock.create.mockClear();
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: '/work-orders',
+        payload: {
+          branchId: '11111111-1111-4111-8111-111111111111',
+          vehicleId: '22222222-2222-4222-8222-222222222222',
+          counterpartyId: '33333333-3333-4333-8333-333333333333',
+          calendarSlotId: 'not-a-uuid',
+        },
+      });
+      expect(res.statusCode).toBe(400);
+      expect(serviceMock.create).not.toHaveBeenCalled();
+    });
+
+    // guards: BR-WO-020
+    it('calendarSlotId (UUID) доходить до сервісу — схема його не відкидає', async () => {
+      jwtAllow = true;
+      serviceMock.create.mockClear();
+      serviceMock.create.mockResolvedValueOnce({ id: 'wo-uuid', number: 'WO-1', status: 'DRAFT' });
+      const slotId = '44444444-4444-4444-8444-444444444444';
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: '/work-orders',
+        payload: {
+          branchId: '11111111-1111-4111-8111-111111111111',
+          vehicleId: '22222222-2222-4222-8222-222222222222',
+          counterpartyId: '33333333-3333-4333-8333-333333333333',
+          calendarSlotId: slotId,
+        },
+      });
+      expect(res.statusCode).toBe(201);
+      const dtoArg = serviceMock.create.mock.calls[0]![1] as Record<string, unknown>;
+      expect(dtoArg.calendarSlotId).toBe(slotId);
+    });
+
     // Bug #265 (regression-guard): POST з порожніми рядками у optional enum/ISO полях
     // → 201 (не 400). @Transform(emptyToUndefined) перетворює '' на undefined ДО валідатора.
     // Без цього тесту регресія `@Transform` decorator removal пройде CI зеленою.

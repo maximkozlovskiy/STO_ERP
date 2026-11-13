@@ -15,7 +15,10 @@ test.describe.configure({ mode: 'serial' });
  *     у пікері минулі дні недоступні, сьогодні — лише години від поточної;
  *  2. зміна дат і підйомника в картці наряду переносить запис;
  *  3. стерті дати прибирають запис;
- *  4. наряд, створений із форми запису календаря, має рівно один запис.
+ *  4. наряд, створений із форми запису календаря, має рівно один запис;
+ *  5. наряд, створений із форми НАЯВНОГО запису без наряду («Редагування слоту»), забирає сам запис:
+ *     картка наряду — з датами запису, у календарі — той самий запис із номером наряду (скарга
+ *     власника 2026-11-13: дати переносились лише після «Оновити»).
  *
  * За правилом власника документи — через інтерфейс (наряди — у списку й картці, запис — формою
  * «+ Слот»). Клієнт і авто — передумови через API. Дата — 8-й день пн–чт наступного місяця (`weekdayOfNextMonth`, вихідні філії недоступні).
@@ -76,6 +79,7 @@ const state: {
   woNumber?: string;
   wo2Id?: string;
   wo2Number?: string;
+  wo3Id?: string;
   anchorId?: string;
 } = {};
 
@@ -137,7 +141,7 @@ test.describe('Наряд у календарі — BR-WO-019 / BR-WO-020', () =
     const token = state.token;
     if (!token) return;
     // Наряди (DRAFT) — разом із записами календаря (BR-WO-017); далі авто → гараж → клієнт.
-    for (const id of [state.woId, state.wo2Id]) {
+    for (const id of [state.woId, state.wo2Id, state.wo3Id]) {
       if (!id) continue;
       const res = await apiRequest(request, token, 'DELETE', `/work-orders/${id}`);
       expect.soft([200, 204, 404], `DELETE наряду ${id}`).toContain(res.status);
@@ -383,5 +387,110 @@ test.describe('Наряд у календарі — BR-WO-019 / BR-WO-020', () =
       { timeout: 15_000 },
     );
     await page.screenshot({ path: test.info().outputPath('c15_e2e_from_slot_form.png') });
+  });
+
+  test('наряд із форми НАЯВНОГО запису без наряду забирає сам запис — дати в картці одразу', async ({
+    page,
+  }) => {
+    test.setTimeout(180_000);
+    test.skip(!state.cpId, 'клієнта не створено');
+    await dayView(page);
+
+    // ── Ручний запис 14:00–15:00 — формою «+ Слот», без наряду ─────────────
+    await page.getByRole('button', { name: 'Слот', exact: true }).click();
+    const form = page
+      .locator('div.rounded-xl')
+      .filter({ has: page.locator('h3', { hasText: /Новий слот|Редагування слоту/ }) })
+      .last();
+    await expect(form).toBeVisible({ timeout: 10_000 });
+    await form.getByLabel(/Підйомник/).selectOption({ label: state.liftA!.name });
+    const popup = await openPicker(page, form, 'Початок');
+    await popup.getByLabel('Година').selectOption('14');
+    await popup.getByLabel('Хвилини').selectOption('00');
+    await popup.getByRole('button', { name: 'Готово' }).click();
+    await form.locator('label', { hasText: 'Норм-год' }).locator('..').locator('input').fill('1');
+    await form.getByPlaceholder('Пошук клієнта…').fill(CLIENT);
+    await page.getByRole('option', { name: new RegExp(CLIENT) }).click();
+    await expect(
+      form.locator('select', { has: page.locator(`option:has-text("${PLATE}")`) }),
+    ).toHaveCount(1, { timeout: 10_000 });
+    await form.getByRole('button', { name: 'Зберегти' }).click();
+    await expect(form).toBeHidden({ timeout: 15_000 });
+
+    const day = await api<SlotDto[]>(page, 'GET', `/calendar/slots?date=${targetDate()}`);
+    const manual = day.body.find(
+      s =>
+        s.workOrderId === null && s.liftId === state.liftA!.id && kyivHHMM(s.startAt) === '14:00',
+    );
+    expect(manual, 'ручний запис 14:00 створено').toBeTruthy();
+
+    // ── «Редагування слоту» → «Новий наряд»: картка з датами й підйомником запису ──
+    await page
+      .locator(`[data-lift-id="${state.liftA!.id}"] [data-calendar-slot]`, { hasText: CLIENT })
+      .filter({ hasNotText: state.wo2Number ?? '—' })
+      .click();
+    const edit = page
+      .locator('div.rounded-xl')
+      .filter({ has: page.locator('h3', { hasText: /Редагування слоту/ }) })
+      .last();
+    await expect(edit).toBeVisible({ timeout: 10_000 });
+    await edit.getByTitle('Новий наряд').click();
+    const woModal = page.getByRole('dialog').filter({ hasText: 'Новий наряд' });
+    await expect(woModal).toBeVisible({ timeout: 20_000 });
+    const dmy = targetDate().split('-').reverse().join('.');
+    const dateField = (label: string) =>
+      woModal.locator('label', { hasText: label }).first().locator('..').locator('input');
+    await expect(dateField('Дата та час початку')).toHaveValue(`${dmy} 14:00`);
+    await expect(dateField('Дата та час завершення')).toHaveValue(`${dmy} 15:00`);
+    await expect(woModal.getByLabel('Підйомник')).toHaveValue(state.liftA!.id);
+    await page.screenshot({ path: test.info().outputPath('wo_adopt_card_prefill.png') });
+    await woModal.getByRole('button', { name: 'Створити наряд' }).click();
+    await expect(woModal).toBeHidden({ timeout: 20_000 });
+    // Форма запису закривається сама: запис забрав наряд.
+    await expect(edit).toBeHidden({ timeout: 15_000 });
+
+    const list = await api<{ items: { id: string; number: string }[] }>(
+      page,
+      'GET',
+      `/work-orders?counterpartyId=${state.cpId}&limit=10`,
+    );
+    const wo3 = list.body.items.find(w => w.id !== state.woId && w.id !== state.wo2Id);
+    expect(wo3, 'наряд із наявного запису створено').toBeTruthy();
+    state.wo3Id = wo3!.id;
+    const card = page.getByRole('dialog').filter({ hasText: wo3!.number });
+    if (await card.isVisible()) {
+      await card.getByRole('button', { name: 'Закрити' }).last().click();
+      await expect(card).toBeHidden({ timeout: 10_000 });
+    }
+
+    // Той самий запис — тепер запис наряду; другого немає.
+    const slots = await woSlots(page, state.wo3Id);
+    expect(
+      slots.map(s => s.id),
+      'наряд забрав сам запис, без дубля',
+    ).toEqual([manual!.id]);
+    expect([kyivHHMM(slots[0].startAt), kyivHHMM(slots[0].endAt)]).toEqual(['14:00', '15:00']);
+    const after = await api<SlotDto[]>(page, 'GET', `/calendar/slots?date=${targetDate()}`);
+    expect(
+      after.body.filter(s => s.liftId === state.liftA!.id && kyivHHMM(s.startAt) === '14:00'),
+    ).toHaveLength(1);
+
+    await dayView(page);
+    await expect(
+      page.locator(`[data-lift-id="${state.liftA!.id}"] [data-calendar-slot]`, {
+        hasText: wo3!.number,
+      }),
+    ).toHaveCount(1, { timeout: 15_000 });
+    // Картка наряду — з плановими датами без жодного «Оновити».
+    const woCard = await openWoCard(page, wo3!.number);
+    await expect(
+      woCard
+        .locator('label', { hasText: 'Дата та час початку' })
+        .first()
+        .locator('..')
+        .locator('input'),
+    ).toHaveValue(`${dmy} 14:00`);
+    await page.screenshot({ path: test.info().outputPath('wo_adopt_card_saved.png') });
+    await woCard.getByRole('button', { name: 'Закрити' }).last().click();
   });
 });
