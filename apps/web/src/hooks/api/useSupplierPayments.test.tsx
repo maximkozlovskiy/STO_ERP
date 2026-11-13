@@ -28,9 +28,12 @@ import {
   useConfirmSupplierPayment,
   useCancelSupplierPayment,
   useSupplierPaymentDocuments,
+  useReverseSupplierPayment,
 } from './useSupplierPayments';
 import { counterpartiesKeys } from './useCounterparties';
 import { purchaseOrdersKeys } from './usePurchaseOrders';
+import { reportsKeys } from './useReports';
+import { dashboardKeys } from './useDashboardData';
 
 function createWrapper() {
   const client = new QueryClient({
@@ -142,6 +145,61 @@ describe('useSupplierPayments', () => {
       // cancel() з DRAFT НЕ пише settlement — counterparties навмисно НЕ інвалідується
       // щоб уникнути зайвих refetch на CRM (LOW noise, high volume у workflow).
       expect(calls).not.toContain(JSON.stringify(counterpartiesKeys.all));
+    });
+  });
+
+  // BR-SUPPAY-017: сторно банківської оплати з причиною й ключем; після нього застаріли перелік і
+  // графік оплат, «сплачено» замовлення, баланс постачальника, звіти взаєморозрахунків і дашборд —
+  // і після відмови теж (обрив після коміту: сторно могло пройти).
+  describe('useReverseSupplierPayment', () => {
+    const keysOf = (spy: { mock: { calls: Array<Array<unknown>> } }) =>
+      spy.mock.calls.map(c =>
+        JSON.stringify((c[0] as { queryKey?: unknown } | undefined)?.queryKey),
+      );
+
+    // guards: BR-SUPPAY-017
+    it('POST /supplier-payments/:id/reverse з { reason } і Idempotency-Key; скидає кеші', async () => {
+      const { client, wrapper } = createWrapper();
+      const spy = vi.spyOn(client, 'invalidateQueries');
+      apiFetchMock.mockResolvedValueOnce({ id: 'sp1', status: 'REVERSED' });
+
+      const { result } = renderHook(() => useReverseSupplierPayment(), { wrapper });
+      await act(async () => {
+        await result.current.mutateAsync({ id: 'sp1', idempotencyKey: 'key-9', reason: 'помилка' });
+      });
+
+      expect(apiFetchMock).toHaveBeenCalledWith('/supplier-payments/sp1/reverse', {
+        method: 'POST',
+        body: JSON.stringify({ reason: 'помилка' }),
+        headers: { 'Idempotency-Key': 'key-9' },
+      });
+      const calls = keysOf(spy);
+      for (const key of [
+        supplierPaymentsKeys.all,
+        supplierPaymentsKeys.detail('sp1'),
+        counterpartiesKeys.all,
+        purchaseOrdersKeys.all,
+        reportsKeys.all,
+        dashboardKeys.all,
+      ]) {
+        expect(calls).toContain(JSON.stringify(key));
+      }
+    });
+
+    // guards: BR-SUPPAY-017
+    it('відмова — помилка до викликача, кеші однаково скинуто', async () => {
+      const { client, wrapper } = createWrapper();
+      const spy = vi.spyOn(client, 'invalidateQueries');
+      apiFetchMock.mockRejectedValueOnce(new Error('Оплату з каси сторнують у касі'));
+
+      const { result } = renderHook(() => useReverseSupplierPayment(), { wrapper });
+      await act(async () => {
+        await expect(
+          result.current.mutateAsync({ id: 'sp1', idempotencyKey: 'k', reason: 'x' }),
+        ).rejects.toThrow('Оплату з каси сторнують у касі');
+      });
+
+      expect(keysOf(spy)).toContain(JSON.stringify(supplierPaymentsKeys.all));
     });
   });
 

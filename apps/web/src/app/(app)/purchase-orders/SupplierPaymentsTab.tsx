@@ -21,10 +21,12 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import type { PaymentReversalTarget } from '@/components/ui/PaymentReversalModal';
 import { supplierPaymentStatusLabel } from '@/i18n/enumLabel';
 import { fmtBankCurrencySuffix, fmtDate, fmtMoney } from '@/lib/format';
 import { newIdempotencyKey } from '@/lib/idempotency-key';
 import { toast } from '@/lib/toast';
+import { SupplierPaymentReversalModal } from './SupplierPaymentReversalModal';
 
 const PAGE_SIZE = 20;
 
@@ -38,6 +40,21 @@ const TD = 'px-3 py-2 border-b border-border';
 const amountText = (p: SupplierPayment) =>
   `${fmtMoney(p.amount)} ${fmtBankCurrencySuffix(p.currencyCode)}`;
 
+/**
+ * BR-SUPPAY-017: «Сторнувати» — лише проведена БАНКІВСЬКА оплата. Касову сторнують у касі; рознесену
+ * з рядка виписки — скасуванням рознесення (кнопку видно, сервер відповідає 400 з поясненням).
+ */
+const canReverse = (p: SupplierPayment) =>
+  p.status === 'CONFIRMED' && p.sourceType === 'BANK_ACCOUNT';
+
+const reversalTarget = (p: SupplierPayment): PaymentReversalTarget => ({
+  id: p.id,
+  amountText: amountText(p),
+  dateText: p.documentDate ? fmtDate(p.documentDate) : '—',
+  partyName: p.supplierName ?? null,
+  methodCode: p.method,
+});
+
 interface Props {
   /** Відкрити картку замовлення-підстави (роль має доступ до картки, BR-PO-015). */
   onOpenOrder?: (id: string) => void;
@@ -47,7 +64,8 @@ interface Props {
  * Оплати постачальникам у «Купівлі» (рішення власника 2026-10-30, TECH-DEBT (б) №36): перелік із
  * фільтром статусу — передусім «Чернетки», старі оплати, які з видаленням сторінки оплат більше
  * ніде не було видно. Чернетку можна «Провести» (з ключем ідемпотентності; сервер перевіряє статус
- * замовлення, зміну й залишок каси — BR-SUPPAY-015) або «Скасувати».
+ * замовлення, зміну й залишок каси — BR-SUPPAY-015) або «Скасувати». Проведену банківську оплату —
+ * «Сторнувати» з причиною (BR-SUPPAY-017).
  */
 export function SupplierPaymentsTab({ onOpenOrder }: Props) {
   const { t } = useTranslation('supplierPayments');
@@ -57,6 +75,9 @@ export function SupplierPaymentsTab({ onOpenOrder }: Props) {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [formError, setFormError] = useState('');
   const { confirm, dialogProps } = useConfirm();
+  // Оплата у вікні сторно лишається й після закриття — вміст не зникає під час анімації виходу.
+  const [reversing, setReversing] = useState<PaymentReversalTarget | null>(null);
+  const [reversalOpen, setReversalOpen] = useState(false);
 
   const { data, isLoading, error } = useSupplierPaymentsList({ status, page, limit: PAGE_SIZE });
   const confirmMut = useConfirmSupplierPayment();
@@ -212,6 +233,21 @@ export function SupplierPaymentsTab({ onOpenOrder }: Props) {
                     </Badge>
                   </td>
                   <td className={`${TD} text-right`}>
+                    {canReverse(p) && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        aria-label={t('list.reverseAria', { number: p.number })}
+                        disabled={busyId !== null}
+                        onClick={() => {
+                          setFormError('');
+                          setReversing(reversalTarget(p));
+                          setReversalOpen(true);
+                        }}
+                      >
+                        {t('list.reverse')}
+                      </Button>
+                    )}
                     {p.status === 'DRAFT' && (
                       <div className="flex justify-end gap-2 whitespace-nowrap">
                         <Button
@@ -243,6 +279,11 @@ export function SupplierPaymentsTab({ onOpenOrder }: Props) {
       </TableContainer>
       <Pagination page={page} totalPages={totalPages} onChange={setPage} />
       <ConfirmDialog {...dialogProps} />
+      <SupplierPaymentReversalModal
+        open={reversalOpen}
+        onClose={() => setReversalOpen(false)}
+        payment={reversing}
+      />
     </div>
   );
 }

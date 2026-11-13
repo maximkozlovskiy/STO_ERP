@@ -110,10 +110,24 @@
     "confirmAria": "Post payment {{number}}",
     "cancel": "Cancel",
     "cancelAria": "Cancel draft {{number}}",
+    "reverse": "Reverse",
+    "reverseAria": "Reverse payment {{number}}",
+    "reversal": {
+      "title": "Reverse supplier payment",
+      "party": "Supplier",
+      "consequence": {
+        "common": "The {{amount}} payment stays in the list marked “Reversed” and no longer counts: the debt to the supplier grows by this amount, the order’s paid amount decreases, and the exchange difference of its full payment is rolled back.",
+        "bankLine": "A payment matched from a bank statement line can only be reversed by unmatching that line — the reversal will not go through here.",
+        "money": "No money moves on the account: if the supplier has to return the funds, record that separately."
+      },
+      "reasonPlaceholder": "For example: paid to the wrong supplier",
+      "success": "Payment reversed",
+      "error": "Could not reverse the payment"
+    },
     "openOrder": "Open order {{number}}",
     "confirmDialog": {
       "title": "Post payment {{number}}?",
-      "message": "{{amount}} to supplier \"{{supplier}}\" will be paid from \"{{source}}\". A posted payment can only be reversed in the cash desk."
+      "message": "{{amount}} to supplier \"{{supplier}}\" will be paid from \"{{source}}\". A posted payment is not cancelled but reversed: a cash payment in the cash desk, a bank payment with “Reverse” here."
     },
     "cancelDialog": {
       "title": "Cancel draft {{number}}?",

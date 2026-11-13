@@ -5,6 +5,8 @@ import { usePaginatedList } from './usePaginatedList';
 import { useAuth } from '@/lib/auth';
 import { counterpartiesKeys } from './useCounterparties';
 import { purchaseOrdersKeys } from './usePurchaseOrders';
+import { reportsKeys } from './useReports';
+import { dashboardKeys } from './useDashboardData';
 
 /**
  * Оплата постачальнику — ЗГЕНЕРОВАНИЙ тип із OpenAPI (`pnpm run gen:api-types`).
@@ -143,6 +145,38 @@ export function useConfirmSupplierPayment() {
         'Idempotency-Key': idempotencyKey,
       }),
     onSuccess: (_, { id }) => invalidateAfterPayment(qc, id),
+  });
+}
+
+/**
+ * Сторно проведеної банківської оплати постачальнику з причиною (BR-SUPPAY-017,
+ * `POST /supplier-payments/:id/reverse`). `idempotencyKey` — один на відкриття вікна причини: повтор
+ * після обриву віддає збережену відповідь, а не друге сторно. Після запиту (і після обриву — сторно
+ * могло пройти) перечитуються перелік і графік оплат, «сплачено» замовлення, баланс постачальника і
+ * звіти взаєморозрахунків.
+ */
+export function useReverseSupplierPayment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      idempotencyKey,
+      reason,
+    }: {
+      id: string;
+      idempotencyKey: string;
+      reason: string;
+    }) =>
+      apiPost<SupplierPayment>(
+        `/supplier-payments/${id}/reverse`,
+        { reason },
+        { 'Idempotency-Key': idempotencyKey },
+      ),
+    onSettled: (_res, _err, { id }) => {
+      invalidateAfterPayment(qc, id);
+      void qc.invalidateQueries({ queryKey: reportsKeys.all });
+      void qc.invalidateQueries({ queryKey: dashboardKeys.all });
+    },
   });
 }
 

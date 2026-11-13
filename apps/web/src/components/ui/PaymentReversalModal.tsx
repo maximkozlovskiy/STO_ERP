@@ -49,23 +49,81 @@ interface Props {
   onReversed?: () => void;
 }
 
+/** Що саме сторнує картка: запит і тексти, що відрізняють оплату клієнта від оплати постачальнику. */
+export interface ReversalReasonModalProps extends Props {
+  /** Запит сторно: тіло `{ reason }`, ключ ідемпотентності — один на відкриття картки. */
+  reverse: (args: { id: string; idempotencyKey: string; reason: string }) => Promise<unknown>;
+  /** Запит у дорозі (`mutation.isPending`) — кнопки вимкнено, закриття заблоковано. */
+  pending: boolean;
+  texts: {
+    title: string;
+    /** Підпис контрагента в «Що сторнується» (платник / постачальник). */
+    partyLabel: string;
+    /** Абзаци «Що станеться» — уже з сумою. */
+    consequences: string[];
+    reasonPlaceholder: string;
+    success: string;
+    error: string;
+  };
+}
+
 /** Межа довжини причини — зі спільної схеми, щоб лічильник не розійшовся з валідацією. */
 const REASON_MAX = paymentReversalSchema.shape.reason.maxLength ?? undefined;
 
 /**
- * Картка сторно безготівкової оплати клієнта (BR-PAY-024, `POST /payments/:id/reverse`). Зразок —
- * сторно касової операції (`CashReversalModal`): що сторнується й що станеться, — ДО відправки;
- * причина обов'язкова (спільна `paymentReversalSchema`); «Сторнувати» спершу просить підтвердження
- * в самій картці. Ключ ідемпотентності — один на відкриття.
+ * Картка сторно безготівкової оплати клієнта (BR-PAY-024, `POST /payments/:id/reverse`) — тонка
+ * обгортка над спільною `ReversalReasonModal` з її запитом і текстами.
+ */
+export function PaymentReversalModal(props: Props) {
+  const { t } = useTranslation('cash');
+  const reversePayment = useReversePayment();
+  const amount = props.payment?.amountText ?? '';
+  return (
+    <ReversalReasonModal
+      {...props}
+      reverse={({ id, idempotencyKey, reason }) =>
+        reversePayment.mutateAsync({ paymentId: id, idempotencyKey, reason })
+      }
+      pending={reversePayment.isPending}
+      texts={{
+        title: t('paymentReversal.title'),
+        partyLabel: t('paymentReversal.fieldParty'),
+        consequences: [
+          t('paymentReversal.consequence.common', { amount }),
+          props.payment?.fromBankStatement
+            ? t('paymentReversal.consequence.bankLine')
+            : t('paymentReversal.consequence.bankLineMaybe'),
+          t('paymentReversal.consequence.money'),
+        ],
+        reasonPlaceholder: t('paymentReversal.reasonPlaceholder'),
+        success: t('paymentReversal.success'),
+        error: t('paymentReversal.error'),
+      }}
+    />
+  );
+}
+
+/**
+ * Спільна картка сторно оплати з причиною: оплата клієнта (`PaymentReversalModal`) і оплата
+ * постачальнику (BR-SUPPAY-017). Зразок — сторно касової операції (`CashReversalModal`): що
+ * сторнується й що станеться, — ДО відправки; причина обов'язкова (спільна `paymentReversalSchema`);
+ * «Сторнувати» спершу просить підтвердження в самій картці. Ключ ідемпотентності — один на відкриття.
  *
  * `void` перед `submit()`/`close()` у JSX: відмову сервера `reverse` пише в банер картки, а
  * `confirmClose()` не реджектиться — проміс нікому не потрібен.
  */
-export function PaymentReversalModal({ open, onClose, payment, onReversed }: Props) {
+export function ReversalReasonModal({
+  open,
+  onClose,
+  payment,
+  onReversed,
+  reverse: reverseRequest,
+  pending,
+  texts,
+}: ReversalReasonModalProps) {
   const { t } = useTranslation('cash');
   const features = useUiFeatures();
   const dirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
-  const reversePayment = useReversePayment();
   const reasonId = useId();
   const methodName = usePaymentMethodName(
     open && !payment?.methodLabel ? payment?.methodCode : null,
@@ -110,19 +168,19 @@ export function PaymentReversalModal({ open, onClose, payment, onReversed }: Pro
     savingRef.current = true;
     setError('');
     try {
-      await reversePayment.mutateAsync({
-        paymentId: payment.id,
+      await reverseRequest({
+        id: payment.id,
         idempotencyKey: idempotencyKeyRef.current,
         reason: values.reason,
       });
-      if (features.toastEnabled) toast.success(t('paymentReversal.success'));
+      if (features.toastEnabled) toast.success(texts.success);
       dirty.resetDirty();
       onReversed?.();
       onClose();
     } catch (e) {
       // Причину могли б виправити — повертаємо картку на перший крок, текст відмови лишається.
       setConfirming(false);
-      setError(e instanceof Error && e.message ? e.message : t('paymentReversal.error'));
+      setError(e instanceof Error && e.message ? e.message : texts.error);
     } finally {
       savingRef.current = false;
     }
@@ -139,7 +197,7 @@ export function PaymentReversalModal({ open, onClose, payment, onReversed }: Pro
   });
 
   const close = async () => {
-    if (reversePayment.isPending || savingRef.current || dirty.dialogProps.open) return;
+    if (pending || savingRef.current || dirty.dialogProps.open) return;
     if (getValues('reason')?.trim()) dirty.markDirty();
     else dirty.resetDirty();
     if (!(await dirty.confirmClose())) return;
@@ -154,7 +212,7 @@ export function PaymentReversalModal({ open, onClose, payment, onReversed }: Pro
         open={open}
         onClose={() => void close()}
         onSubmit={() => void submit()}
-        title={t('paymentReversal.title')}
+        title={texts.title}
         size="md"
         footer={
           confirming ? (
@@ -169,8 +227,8 @@ export function PaymentReversalModal({ open, onClose, payment, onReversed }: Pro
                   variant="destructive"
                   size="sm"
                   onClick={() => void submit()}
-                  loading={reversePayment.isPending}
-                  disabled={reversePayment.isPending}
+                  loading={pending}
+                  disabled={pending}
                 >
                   {t('paymentReversal.confirmSubmit')}
                 </Button>
@@ -178,7 +236,7 @@ export function PaymentReversalModal({ open, onClose, payment, onReversed }: Pro
                   variant="outline"
                   size="sm"
                   onClick={() => setConfirming(false)}
-                  disabled={reversePayment.isPending}
+                  disabled={pending}
                 >
                   {t('paymentReversal.back')}
                 </Button>
@@ -186,19 +244,14 @@ export function PaymentReversalModal({ open, onClose, payment, onReversed }: Pro
             </div>
           ) : (
             <div className="flex w-full items-center justify-end gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => void close()}
-                disabled={reversePayment.isPending}
-              >
+              <Button variant="outline" size="sm" onClick={() => void close()} disabled={pending}>
                 {t('paymentReversal.cancel')}
               </Button>
               <Button
                 variant="destructive"
                 size="sm"
                 onClick={() => void submit()}
-                disabled={reversePayment.isPending}
+                disabled={pending}
               >
                 {t('paymentReversal.submit')}
               </Button>
@@ -225,7 +278,7 @@ export function PaymentReversalModal({ open, onClose, payment, onReversed }: Pro
                 )}
                 {p.partyName && (
                   <>
-                    <dt className="text-muted-foreground">{t('paymentReversal.fieldParty')}</dt>
+                    <dt className="text-muted-foreground">{texts.partyLabel}</dt>
                     <dd>{p.partyName}</dd>
                   </>
                 )}
@@ -239,13 +292,9 @@ export function PaymentReversalModal({ open, onClose, payment, onReversed }: Pro
               className="space-y-1 text-[13px] text-warning-text bg-warning-subtle border border-warning-border rounded-lg px-3 py-2"
             >
               <div className="font-medium">{t('paymentReversal.consequenceTitle')}</div>
-              <p>{t('paymentReversal.consequence.common', { amount: p.amountText })}</p>
-              <p>
-                {p.fromBankStatement
-                  ? t('paymentReversal.consequence.bankLine')
-                  : t('paymentReversal.consequence.bankLineMaybe')}
-              </p>
-              <p>{t('paymentReversal.consequence.money')}</p>
+              {texts.consequences.map(line => (
+                <p key={line}>{line}</p>
+              ))}
             </div>
           )}
 
@@ -274,7 +323,7 @@ export function PaymentReversalModal({ open, onClose, payment, onReversed }: Pro
               required
               autoFocus
               aria-invalid={!!errors.reason}
-              placeholder={t('paymentReversal.reasonPlaceholder')}
+              placeholder={texts.reasonPlaceholder}
               className="w-full rounded border border-border bg-surface px-3 py-2 text-[13px] text-foreground outline-none transition-all duration-150 hover:border-border-hover focus:border-primary focus:ring-3 focus:ring-brand-100 resize-y"
             />
             <div className="flex items-start justify-between gap-3">
