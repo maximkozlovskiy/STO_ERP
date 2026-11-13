@@ -33,6 +33,9 @@ model CalendarSlot {
   // WHERE: workOrderId/orgId/deletedAt + ORDER BY startAt DESC. Без нього Postgres
   // ішов через (orgId, deletedAt) і фільтрував workOrderId по-рядково.
   @@index([orgId, workOrderId, deletedAt, startAt])
+  // Ланцюжок запису (BR-CAL-019): `chainsOf` на кожне читання слотів і видалення ланцюжка
+  // (`updateMany` по `parentSlotId`) — без нього фільтр ішов по всіх живих слотах організації.
+  @@index([orgId, parentSlotId])
   @@map("calendar_slots")
 }
 
