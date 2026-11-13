@@ -473,7 +473,26 @@ export type FakeClient = Record<string, FakeModel> & {
 /** Клієнт над сховищем: модель створюється при першому зверненні (будь-яке ім'я). */
 function makeClient(db: FakeDb, journaled: boolean, tx: () => FakeClient): FakeClient {
   const target: Record<string, unknown> = {
-    $queryRaw: vi.fn().mockResolvedValue([]),
+    // Сире блокування оплати постачальнику (`SELECT id FROM supplier_payments … FOR UPDATE`,
+    // параметри orgId, id) виконується над даними: умови `deletedAt IS NULL` і статусу з тексту
+    // запиту — як у Postgres. Решта сирих запитів — порожній результат.
+    $queryRaw: vi.fn((strings: TemplateStringsArray, ...values: unknown[]) => {
+      const sql = strings.join('?');
+      if (!/FROM supplier_payments/.test(sql)) return Promise.resolve([]);
+      const [orgId, id] = values;
+      const status = /status = '(\w+)'/.exec(sql)?.[1];
+      const hits = db
+        .rows('supplierPayment')
+        .filter(
+          r =>
+            r.orgId === orgId &&
+            r.id === id &&
+            (!/"deletedAt" IS NULL/.test(sql) || r.deletedAt == null) &&
+            (status === undefined || r.status === status),
+        )
+        .map(r => ({ id: r.id }));
+      return Promise.resolve(hits);
+    }),
     $executeRaw: vi.fn().mockResolvedValue(0),
     $transaction: vi.fn((arg: unknown) => {
       if (typeof arg !== 'function') {

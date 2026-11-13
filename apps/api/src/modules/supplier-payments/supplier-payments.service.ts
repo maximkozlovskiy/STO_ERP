@@ -1170,6 +1170,15 @@ export class SupplierPaymentsService {
     }
     const sp = await this.prisma.$transaction(
       async tx => {
+        // Оплата — ПЕРШЕ блокування (як CAS у проведенні й `reverse`): прив'язка рядка виписки до
+        // цієї оплати (BR-BANK-027) теж блокує її рядок, тож перевірка «рядка виписки немає» нижче
+        // бачить закомічену паралельну прив'язку, а не пропускає її (рядок лишився б прив'язаним до
+        // сторнованої оплати).
+        await tx.$queryRaw`
+          SELECT id FROM supplier_payments
+          WHERE "orgId" = ${orgId}::uuid AND id = ${id}::uuid
+          FOR UPDATE
+        `;
         const current = await tx.supplierPayment.findFirst({
           where: { id, orgId, deletedAt: null },
           select: { status: true, sourceType: true },

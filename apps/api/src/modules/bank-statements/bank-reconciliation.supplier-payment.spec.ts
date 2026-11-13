@@ -125,6 +125,28 @@ describe('BankReconciliationService.reconcile — SUPPLIER_PAYMENT, прив’�
     expect(effectCalls(w)).toEqual(NO_EFFECTS);
   });
 
+  // Сторно (BR-SUPPAY-017) закомітилось між перевіркою до транзакції і захопленням рядка: рядок
+  // оплати блокується в транзакції з умовою «Проведено» — прив'язка відкочується, а не лягає на
+  // сторновану оплату.
+  // guards: BR-BANK-027, BR-SUPPAY-017
+  it('оплату сторновано між перевіркою і транзакцією → 400, рядок UNMATCHED', async () => {
+    const w = await makeWorld();
+    w.addRow();
+    const sp = w.db.seed('supplierPayment', supplierPaymentRow());
+    const read = w.prisma.supplierPayment!.findFirst;
+    const original = read.getMockImplementation()!;
+    read.mockImplementationOnce(async (args: unknown) => {
+      const res: unknown = await original(args);
+      sp.status = 'REVERSED';
+      return res;
+    });
+
+    await expect(reconcile(w, LINK)).rejects.toMatchObject({ status: 400, message: MISMATCH });
+
+    expect(w.row()).toMatchObject(FREE_ROW);
+    expect(effectCalls(w)).toEqual(NO_EFFECTS);
+  });
+
   // Дві одночасні прив'язки: попередня перевірка в обох пройшла, другу зупиняє унікальний індекс.
   // guards: BR-BANK-027
   it('унікальний індекс спрацював на записі (P2002) → 409, а не 500', async () => {

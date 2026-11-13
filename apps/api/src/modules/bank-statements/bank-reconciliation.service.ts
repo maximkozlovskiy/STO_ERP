@@ -1390,6 +1390,26 @@ export class BankReconciliationService {
       throw await this.captureFailure(tx, orgId, txId);
     }
 
+    // BR-BANK-027 / BR-SUPPAY-017: статус оплати перевірено до транзакції, а паралельне сторно
+    // (`POST /supplier-payments/:id/reverse`) бачить лише закомічені прив'язки — обидва пройшли б,
+    // лишивши рядок прив'язаним до сторнованої оплати. Блокування рядка оплати з умовою «Проведено»:
+    // сторно, що вже йде, дочекається нашого коміту й побачить прив'язку (воно блокує оплату першим
+    // записом і читає рядки виписки після); сторно, що встигло раніше, дає тут 0 рядків → 400 і
+    // відкат захоплення. Порядок «рядок виписки → оплата» — той самий, що в скасуванні рознесення.
+    if (plan.kind === 'LINK' && plan.links.supplierPaymentId) {
+      const locked = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM supplier_payments
+        WHERE "orgId" = ${orgId}::uuid AND id = ${plan.links.supplierPaymentId}::uuid
+          AND "deletedAt" IS NULL AND status = 'CONFIRMED'
+        FOR UPDATE
+      `;
+      if (locked.length === 0) {
+        throw new BadRequestException(
+          translateError('err.bankStatement.supplierPaymentMismatch', getLocale()),
+        );
+      }
+    }
+
     if (plan.kind === 'CLIENT_REFUND') {
       // BR-BANK-044: не більше переплати клієнта в базовій валюті (рахунок розрахунків блокується
       // до кінця транзакції); відмова відкочує й захоплення рядка.

@@ -303,11 +303,18 @@ function makeHarness(seed: Seed = {}) {
       ...tables.purchaseOrder.updateMany.mock.invocationCallOrder.map(
         n => [n, 'замовлення'] as const,
       ),
-      ...rawLocks.mock.invocationCallOrder.map(n => [n, 'замовлення'] as const),
+      // Сире блокування — за таблицею запиту: `supplier_payments` (сторно блокує оплату першим
+      // кроком) чи `purchase_orders`.
+      ...rawLocks.mock.invocationCallOrder.map((n, i) => {
+        const sql = (rawLocks.mock.calls[i]?.[0] ?? []).join('?');
+        return [n, sql.includes('supplier_payments') ? 'оплата' : 'замовлення'] as const;
+      }),
     ]
       .filter(([n]) => n > from)
       .sort((a, b) => a[0] - b[0])
-      .map(([, what]) => what);
+      .map(([, what]) => what)
+      // Повторне блокування того самого рядка (FOR UPDATE, потім CAS) нового порядку не дає.
+      .filter((what, i, all) => what !== all[i - 1]);
 
   return { service, tables, tx, root, settlementRows, settlements, sp, po, reverse, lockOrder };
 }
@@ -465,6 +472,28 @@ describe('SupplierPaymentsService.reverseBankPayment — відмови до з�
       ],
     });
     await expectRefused(h, 'err.supplierPayment.reverseUnreconcileFirst');
+  });
+
+  // Паралельна прив'язка рядка виписки (BR-BANK-027) блокує рядок оплати: перевірка «рядка немає»
+  // мусить іти ПІСЛЯ блокування оплати, інакше вона не бачить прив'язки, що комітиться поруч, і
+  // рядок лишається прив'язаним до сторнованої оплати.
+  // guards: BR-SUPPAY-017, BR-BANK-027
+  it('оплата блокується (FOR UPDATE) до перевірки рядка виписки', async () => {
+    const h = makeHarness();
+
+    await h.reverse();
+
+    const raw = h.tx.$queryRaw as unknown as {
+      mock: { calls: [TemplateStringsArray, ...unknown[]][]; invocationCallOrder: number[] };
+    };
+    const lockIdx = raw.mock.calls.findIndex(([s]) => s.join('?').includes('supplier_payments'));
+    expect(lockIdx).toBeGreaterThanOrEqual(0);
+    expect(raw.mock.calls[lockIdx]![0].join('?')).toMatch(/FOR UPDATE/);
+    expect(raw.mock.calls[lockIdx]!.slice(1)).toEqual([ORG, SP]);
+    const lockAt = raw.mock.invocationCallOrder[lockIdx]!;
+    const bankReads = h.tables.bankTransaction.findFirst.mock.invocationCallOrder;
+    expect(bankReads.length).toBeGreaterThan(0);
+    expect(Math.min(...bankReads)).toBeGreaterThan(lockAt);
   });
 
   // guards: BR-SUPPAY-017, BR-BANK-039
