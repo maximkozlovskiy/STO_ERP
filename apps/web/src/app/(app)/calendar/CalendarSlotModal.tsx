@@ -868,8 +868,9 @@ export function CalendarSlotModal({
       endAt: endIso,
       // Стерта примітка у зміні запису — `null` (Bug #901): без нього сервер лишав стару.
       notes: form.notes || (editingSlotId ? null : undefined),
-      // BR-CAL-020: межі форми — межі всього ручного ланцюжка, а не дня, з якого її відкрито.
-      ...(manualChain && !form.workOrderId && { chainSpan: true }),
+      // BR-CAL-020: межі форми — межі всього ручного ланцюжка, а не дня, з якого її відкрито;
+      // і з обраним нарядом — перев'язка бере ці межі датами наряду (Bug #1063).
+      ...(manualChain && { chainSpan: true }),
     };
     try {
       if (editingSlotId) {

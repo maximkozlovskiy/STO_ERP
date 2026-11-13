@@ -175,6 +175,35 @@ describe("Перев'язка запису на інший наряд (BR-WO-028
     expect(h.liveSlots()).toEqual([]);
   });
 
+  // guards: BR-WO-028, BR-CAL-020
+  it('форма ручного ланцюжка з другого дня (межі ланцюжка, `chainSpan`) → наряд без дат бере межі всього ланцюжка (Bug #1063)', async () => {
+    const h = twoDays();
+    // Ручний дводенний запис: D 16–18 і D2 08–10, без наряду.
+    for (const id of ['anchor', 'cont']) slotOf(h, id).workOrderId = null;
+
+    // Форма ручного ланцюжка показує й шле межі ВСЬОГО ланцюжка (BR-CAL-020), а не дня.
+    await h.service.updateCalendarSlot(
+      ORG,
+      'cont',
+      {
+        workOrderId: OTHER_WO,
+        liftId: LIFT_1,
+        startAt: iso(D, '16:00'),
+        endAt: iso(D2, '10:00'),
+        chainSpan: true,
+      },
+      USER,
+    );
+
+    expect(t(woOf(h, OTHER_WO).plannedAt)).toBe(t(kyiv(D, '16:00')));
+    expect(t(woOf(h, OTHER_WO).dueDate)).toBe(t(kyiv(D2, '10:00')));
+    // Продовження наряд перебудовує з новими id (BR-WO-020) — тут важать лише межі частин.
+    expect(h.liveSlots(OTHER_WO).map(s => [t(s.startAt), t(s.endAt)])).toEqual([
+      [t(kyiv(D, '16:00')), t(kyiv(D, '18:00'))],
+      [t(kyiv(D2, '08:00')), t(kyiv(D2, '10:00'))],
+    ]);
+  });
+
   // guards: BR-WO-028, BR-WO-027
   it.each([
     ['попередній наряд «В роботі»', { wo: { status: 'IN_PROGRESS' } }],

@@ -375,6 +375,40 @@ describe('CalendarSlotModal — ручний ланцюжок цілим (BR-CAL
     });
   });
 
+  // guards: BR-CAL-020, BR-WO-028
+  it('обрано наряд для ручного ланцюжка з середнього дня — PATCH теж із chainSpan (Bug #1063)', async () => {
+    // Без `chainSpan` перев'язка читала межі ланцюжка як межі дня, з якого відкрито форму, —
+    // і відповідала 400 «Внутрішню межу багатоденного запису змінити не можна».
+    render(
+      <Harness
+        date="2026-10-21"
+        initial={{
+          startAt: '10:00',
+          endAt: '12:00',
+          normoHours: '',
+          workOrderId: WO,
+          workOrderDisplay: 'НЗ-1',
+        }}
+        editingSlotId="mid"
+        editingChain={MIDDLE_DAY}
+      />,
+    );
+    await waitFor(() => expect(screen.getByPlaceholderText('напр. 1,5')).toHaveValue(20));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Оновити' }));
+    await waitFor(() => expect(callsTo('/calendar/slots/mid', 'PATCH')).toHaveLength(1));
+    const body = JSON.parse(callsTo('/calendar/slots/mid', 'PATCH')[0]![1]!.body!) as Record<
+      string,
+      unknown
+    >;
+    expect(body).toMatchObject({
+      workOrderId: WO,
+      startAt: '2026-10-20T07:00:00.000Z',
+      endAt: '2026-10-22T09:00:00.000Z',
+      chainSpan: true,
+    });
+  });
+
   // guards: BR-CAL-020
   it('контроль: одноденний ручний запис — без chainSpan, час дня сторінки', async () => {
     render(

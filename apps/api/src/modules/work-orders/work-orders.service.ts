@@ -1155,7 +1155,13 @@ export class WorkOrdersService {
     let datesDto: UpdateWorkOrderDto = {};
     let liftId = target.liftId;
     if (!hasDates) {
-      const edges = chainBounds(chain, slot.id, slotWindow(change, slot, hours));
+      // BR-CAL-020: форма ручного ланцюжка шле межі ВСЬОГО ланцюжка (`chainSpan`), а не частини,
+      // з якої її відкрито — інакше межі ланцюжка з другого дня читались як внутрішні (Bug #1063).
+      const window = slotWindow(change, slot, hours);
+      const edges =
+        change.chainSpan && slot.workOrderId === null
+          ? { start: window.startAt, end: window.endAt }
+          : chainBounds(chain, slot.id, window);
       liftId = nextLift(change, slot);
       datesDto = {
         plannedAt: edges.start.toISOString(),
