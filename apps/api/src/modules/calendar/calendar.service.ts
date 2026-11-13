@@ -193,6 +193,32 @@ async function assertResourcesFree(
 }
 
 /**
+ * CAS ланцюжка ручного запису (BR-CAL-020, Bug #1064): між читанням частин і транзакцією зміни
+ * ланцюжок могли перебудувати паралельно (частину додано чи прибрано) або його забрав наряд
+ * (BR-WO-020, наряд із цього запису). Викликається ПІСЛЯ `updateMany` за прочитаними id без наряду:
+ * той чекає на блокування рядків паралельної транзакції, тож перевірка бачить її результат.
+ * `touched` — скільки прочитаних частин змінено; менше за прочитані чи нова частина ланцюжка —
+ * 400 `slotConcurrentChange` (транзакція відкочується), а не тиха перебудова поверх чужої зміни.
+ */
+async function assertChainUnchanged(
+  tx: Prisma.TransactionClient,
+  orgId: string,
+  anchorId: string,
+  ids: readonly string[],
+  touched: number,
+): Promise<void> {
+  const added =
+    touched === ids.length
+      ? await tx.calendarSlot.findFirst({
+          where: { orgId, deletedAt: null, parentSlotId: anchorId, NOT: { id: { in: [...ids] } } },
+          select: { id: true },
+        })
+      : null;
+  if (touched !== ids.length || added)
+    throw new BadRequestException(err('err.calendar.slotConcurrentChange'));
+}
+
+/**
  * Ім'я механіка запису з уже прочитаних (BR-CAL-011): `null` — механіка не призначено, його
  * немає в організації або він звільнений.
  */
@@ -863,10 +889,11 @@ export class CalendarService {
             // Спершу прибрати всі частини: перенесена частина інакше перетнулась би зі старою
             // частиною того ж ланцюжка на тому ж підйомнику (EXCLUDE). Перевикористані частини
             // повертаються нижче з новим часом, зайві лишаються видаленими.
-            await tx.calendarSlot.updateMany({
-              where: { orgId, id: { in: ids }, deletedAt: null },
+            const cleared = await tx.calendarSlot.updateMany({
+              where: { orgId, id: { in: ids }, deletedAt: null, workOrderId: null },
               data: { deletedAt: new Date() },
             });
+            await assertChainUnchanged(tx, orgId, anchorId, ids, cleared.count);
             for (const [i, seg] of segments.entries()) {
               const reuse = chain[i];
               if (reuse) {
@@ -906,11 +933,13 @@ export class CalendarService {
             // Механік, якого ще немає на якійсь частині, — вільний на всіх днях ланцюжка.
             if (employeeId && chain.some(p => p.employeeId !== employeeId))
               await assertResourcesFree(tx, orgId, byTime, { employeeId }, ids);
-            if (Object.keys(data).length > 0)
-              await tx.calendarSlot.updateMany({
-                where: { orgId, id: { in: ids }, deletedAt: null },
+            if (Object.keys(data).length > 0) {
+              const changed = await tx.calendarSlot.updateMany({
+                where: { orgId, id: { in: ids }, deletedAt: null, workOrderId: null },
                 data,
               });
+              await assertChainUnchanged(tx, orgId, anchorId, ids, changed.count);
+            }
           },
           { timeout: TRANSACTION_TIMEOUT_MS },
         );

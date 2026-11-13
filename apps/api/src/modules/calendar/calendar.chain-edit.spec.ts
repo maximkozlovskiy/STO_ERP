@@ -423,4 +423,60 @@ describe('CalendarService.updateSlot — ручний ланцюжок як ці
 
     expect(res.conflictSlots.map(s => s.id)).toEqual(['other']);
   });
+
+  // guards: BR-CAL-020, BR-WO-020
+  it.each([
+    [
+      'перебудова: ланцюжок забрав наряд між читанням і транзакцією',
+      { startAt: iso(FRI, '16:00'), endAt: iso(MON, '12:00'), chainSpan: true },
+    ],
+    ['примітка: ланцюжок забрав наряд між читанням і транзакцією', { notes: 'Нова' }],
+  ])('%s → 400 «змінено паралельно», записи наряду не чіпаються (Bug #1064)', async (_l, dto) => {
+    const rows = chain();
+    const { prisma, svc } = service(rows);
+    const run = prisma.$transaction.getMockImplementation()!;
+    // Наряд, створений із цього запису (BR-WO-020), забрав ланцюжок у мить перед транзакцією.
+    prisma.$transaction.mockImplementationOnce((cb: (tx: unknown) => unknown) => {
+      for (const r of rows) r.workOrderId = 'wo-1';
+      return run(cb);
+    });
+    const before = structuredClone(rows);
+
+    const e = await rejection(svc.updateSlot(ORG, 'a2', dto));
+
+    expect(e).toBeInstanceOf(BadRequestException);
+    expect((e as Error).message).toBe(msg('err.calendar.slotConcurrentChange'));
+    expect(rows).toEqual(before.map(r => ({ ...r, workOrderId: 'wo-1' })));
+  });
+
+  // guards: BR-CAL-020
+  it('паралельна перебудова додала частину між читанням і транзакцією → 400 «змінено паралельно» (Bug #1064)', async () => {
+    const rows = chain();
+    const { prisma, svc } = service(rows);
+    const run = prisma.$transaction.getMockImplementation()!;
+    prisma.$transaction.mockImplementationOnce((cb: (tx: unknown) => unknown) => {
+      rows.push(
+        fakeSlot({
+          id: 'a4',
+          liftId: 'lift-1',
+          parentSlotId: 'a',
+          startAt: kyiv(MON, '08:00'),
+          endAt: kyiv(MON, '10:00'),
+        }),
+      );
+      return run(cb);
+    });
+
+    const e = await rejection(
+      svc.updateSlot(ORG, 'a', {
+        startAt: iso(FRI, '16:00'),
+        endAt: iso(SAT, '12:00'),
+        chainSpan: true,
+      }),
+    );
+
+    // Без перевірки перебудова на два дні лишила б чужу частину пн — «третій день» ланцюжка.
+    expect(e).toBeInstanceOf(BadRequestException);
+    expect((e as Error).message).toBe(msg('err.calendar.slotConcurrentChange'));
+  });
 });
