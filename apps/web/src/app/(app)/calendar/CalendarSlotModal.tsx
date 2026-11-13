@@ -645,6 +645,19 @@ export function CalendarSlotModal({
 
   // ── New work-order modal ──────────────────────────────────────────────────
   const [createWoOpen, setCreateWoOpen] = useState(false);
+  /**
+   * BR-WO-020 (скарга власника 2026-11-13): наряд із форми НАЯВНОГО запису без наряду забирає сам
+   * запис — картка наряду з датами й підйомником запису (разом із незбереженими змінами форми),
+   * сервер ставить запис на дати наряду (`calendarSlotId`) і другого не створює. Ланцюжок — від
+   * початку першого дня до кінця останнього; з продовження початку першого дня форма не знає —
+   * тоді як раніше: наряд без дат, прив'язка кнопкою «Оновити».
+   */
+  const adoptRange = (() => {
+    if (!editingSlotId || editingWorkOrder !== null || serviceType || isEditingPast) return null;
+    if (editingChain && !editingChain.isFirst) return null;
+    const end = editingChain ? isoToKyivLocalDateTime(new Date(editingChain.endAt)) : endLocal;
+    return startLocal && end ? { slotId: editingSlotId, start: startLocal, end } : null;
+  })();
   const [createWoEditId, setCreateWoEditId] = useState<string | undefined>(undefined);
 
   // ── Picker modals ─────────────────────────────────────────────────────────
@@ -901,7 +914,8 @@ export function CalendarSlotModal({
       }
     }
     toast.success(t('slot.toastWoCreatedWithSlot', { number: wo.number }));
-    onSaved();
+    // Новий наряд із записом — списки й лічильники нарядів перечитуються.
+    onSaved({ workOrderChanged: true });
   };
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -1775,6 +1789,21 @@ export function CalendarSlotModal({
         prefill={(() => {
           // Нормогодини з комою («1,5») — як у картці наряду, а не NaN від `Number`.
           const nh = Number(normalizeDecimalInput(String(form.normoHours)));
+          if (adoptRange) {
+            return {
+              counterpartyId: form.counterpartyId || undefined,
+              counterpartyDisplay: form.counterpartyDisplay || undefined,
+              vehicleId: form.vehicleId || undefined,
+              liftId: form.liftId || undefined,
+              description: form.notes || undefined,
+              plannedStartAt: adoptRange.start,
+              plannedEndAt: adoptRange.end,
+              // Ланцюжок — години між датами рахує картка наряду (`calcPlannedHours`).
+              plannedHours: !editingChain && nh > 0 ? String(nh) : undefined,
+              employeeId: form.employeeId || undefined,
+              calendarSlotId: adoptRange.slotId,
+            };
+          }
           const plannedStartAt =
             !editingSlotId && form.startAt && date ? `${date}T${form.startAt}` : undefined;
           // Рішення власника №64 (BR-WO-019): кінець наряду — автокінець картки наряду в робочих
@@ -1789,9 +1818,9 @@ export function CalendarSlotModal({
             description: form.notes || undefined,
             // guard against `date = ''` on first render before effect default:
             // without guard we'd build "T17:00" — invalid ISO string.
-            // Наряд для ІСНУЮЧОГО запису — без планових дат: інакше сервер створив би наряду
-            // власний запис (BR-WO-020) поверх цього ж («Підйомник зайнятий»); наряд
-            // прив'язується до запису кнопкою «Оновити», як і раніше.
+            // Наряд для запису НАРЯДУ чи продовження ручного ланцюжка — без планових дат: інакше
+            // сервер створив би наряду власний запис (BR-WO-020) поверх цього ж («Підйомник
+            // зайнятий»); наряд прив'язується до запису кнопкою «Оновити», як і раніше.
             plannedStartAt,
             plannedEndAt:
               endFromHours ||
@@ -1807,7 +1836,8 @@ export function CalendarSlotModal({
           // ця форма запису його не дублює (POST /calendar/slots дав би другий запис або
           // «Підйомник зайнятий» на власному часі). Механік, обраний у формі, ставиться на
           // запис наряду; форма закривається, календар перечитує записи.
-          if (!editingSlotId && wo.plannedAt && wo.dueDate) {
+          // Наявний запис без наряду наряд забрав собі (`calendarSlotId`) — те саме.
+          if ((!editingSlotId || adoptRange) && wo.plannedAt && wo.dueDate) {
             void adoptWorkOrderSlot(wo);
             return;
           }

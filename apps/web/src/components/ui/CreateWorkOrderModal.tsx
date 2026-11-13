@@ -303,6 +303,11 @@ export interface CreateWOPrefill {
   plannedHours?: string;
   /** Механік запису календаря, з якого відкрито новий наряд, — виконавець нових робіт (BR-WO-030). */
   employeeId?: string;
+  /**
+   * Наявний запис календаря без наряду, з форми якого відкрито новий наряд (BR-WO-020): сервер
+   * прив'язує сам запис до наряду й ставить на його дати, а не створює другого.
+   */
+  calendarSlotId?: string;
 }
 
 /** Рядок `cache:works`: категорія роботи — для BR-WO-030 (запасний варіант без зв'язку). */
@@ -786,6 +791,8 @@ export function CreateWorkOrderModal({
     setPayOpen(false);
     // A fresh modal session starts without a prior partial create.
     createdWoRef.current = null;
+    // Запис календаря, який наряд забере (BR-WO-020), — той, з якого картку відкрито.
+    calendarSlotIdRef.current = isEditMode ? undefined : prefill?.calendarSlotId;
     postedLineKeysRef.current = new Set();
     postedPartKeysRef.current = new Set();
     setCounterpartyDisplayName(prefill?.counterpartyDisplay ?? '');
@@ -1375,6 +1382,7 @@ export function CreateWorkOrderModal({
   // lines/parts that have not been persisted yet — otherwise the same lines
   // would be duplicated on every retry click.
   const createdWoRef = useRef<CreatedWorkOrder | null>(null);
+  const calendarSlotIdRef = useRef<string | undefined>(undefined);
   // Bug #755 (retry-safety РЯДКІВ/ДЕТАЛЕЙ): multi-request submit (POST шапка → N× POST /lines,
   // /parts) при обриві на рядку #2 лишає рядок #1 збереженим на беку. Повторний клік ре-постив
   // би ВСІ рядки з форми → задвоєна сума. Запам'ятовуємо _key кожного успішно збереженого рядка
@@ -1456,6 +1464,7 @@ export function CreateWorkOrderModal({
             plannedAt: localDateTimeToISO(form.plannedStartAt),
             dueDate: localDateTimeToISO(form.plannedEndAt),
             plannedHours: toNumberOrUndefined(form.plannedHours),
+            calendarSlotId: calendarSlotIdRef.current,
           }),
         });
         createdWoRef.current = wo;
