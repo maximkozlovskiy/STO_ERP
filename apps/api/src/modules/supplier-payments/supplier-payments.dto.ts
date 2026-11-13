@@ -11,6 +11,7 @@ import {
   IsNumberString,
   IsIn,
   Matches,
+  MaxLength,
 } from 'class-validator';
 // Стелі — місткість колонок (MONEY_AMOUNT_MAX = Decimal(12,2)) і QTY_MAX для кількості/годин:
 // понад них 400 з назвою поля, а не 500 `numeric field overflow`. На маршрутах із ZodValidationPipe
@@ -96,6 +97,17 @@ export class SupplierPaymentResponseDto {
   @ApiProperty() createdAt!: string;
   @ApiProperty() updatedAt!: string;
   @ApiPropertyOptional() deletedAt?: string | null;
+}
+
+/**
+ * Тіло `POST /supplier-payments/:id/reverse` (BR-SUPPAY-017) — для Swagger; валідує
+ * `paymentReversalSchema` (та сама причина, що в сторно оплати клієнта й каси).
+ */
+export class SupplierPaymentReversalDto {
+  @ApiProperty({ description: 'Причина сторно — обов’язкова, до 500 символів', maxLength: 500 })
+  @IsString()
+  @MaxLength(500)
+  reason!: string;
 }
 
 export class PaginatedSupplierPaymentsDto {

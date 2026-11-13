@@ -1,4 +1,4 @@
-import type { Prisma } from '@prisma/client';
+import { SupplierPaymentStatus, type Prisma } from '@prisma/client';
 import { money, moneyFromDecimal } from '../../common/utils/money';
 import type { SettlementsService } from './settlements.service';
 
@@ -68,6 +68,77 @@ export async function reverseNetFxInTx(
       documentType: params.target.documentType,
       documentId: params.target.documentId,
       notes: params.notes,
+      createdBy: params.userId,
+    },
+    tx,
+  );
+}
+
+/**
+ * BR-SUPPAY-012 / 018: курсова різниця прийнятого й повністю сплаченого валютного замовлення
+ * постачальнику — одна функція для обох порядків подій: проведення оплати, що зробила ПРИЙНЯТЕ
+ * замовлення сплаченим повністю (`SupplierPaymentsService.confirm`), і прийому, що перевів
+ * ПЕРЕДОПЛАЧЕНЕ замовлення в «Отримано» (`PurchaseOrdersService.receive`). Умови (статус «Отримано»,
+ * `paidAt`, валюта не базова) перевіряє виклик; тут — лише сума.
+ *
+ * Чиста FX замовлення вже ≠ 0 — визнано, нічого не пише (повтор безпечний). Інакше
+ * `fx = Σ SUPPLIER_CHARGE.amountBase замовлення − Σ SUPPLIER_PAYMENT.amountBase його проведених
+ * оплат`: нараховано за курсами прийомів, сплачено за курсами оплат — результат не залежить від
+ * того, що було раніше. Викликати в транзакції запису — після проводки, яку сума має включати.
+ */
+export async function recognizeSupplierOrderFxInTx(
+  tx: Prisma.TransactionClient,
+  settlements: SettlementsService,
+  orgId: string,
+  params: { purchaseOrderId: string; supplierId: string; userId?: string },
+): Promise<void> {
+  const poId = params.purchaseOrderId;
+  const [chargeAgg, spIds, fxNet] = await Promise.all([
+    tx.settlementTransaction.aggregate({
+      where: { orgId, type: 'SUPPLIER_CHARGE', documentType: 'PurchaseOrder', documentId: poId },
+      _sum: { amountBase: true },
+    }),
+    tx.supplierPayment.findMany({
+      where: {
+        orgId,
+        purchaseOrderId: poId,
+        status: SupplierPaymentStatus.CONFIRMED,
+        deletedAt: null,
+      },
+      select: { id: true },
+      take: 500,
+    }),
+    // Чиста FX ≠ 0 — уже визнано; сторно, що зробило замовлення не сплаченим, її обнуляє
+    // (BR-SUPPAY-012) — тоді наступна повна оплата визнає її заново.
+    netFxBalanceEffect(tx, orgId, [{ documentType: 'PurchaseOrder', documentId: poId }]),
+  ]);
+  if (hasNetFx(fxNet)) return;
+  const paidAgg = await tx.settlementTransaction.aggregate({
+    where: {
+      orgId,
+      type: 'SUPPLIER_PAYMENT',
+      documentType: 'SupplierPayment',
+      documentId: { in: spIds.map(s => s.id) },
+    },
+    _sum: { amountBase: true },
+  });
+  const chargeBase = moneyFromDecimal(chargeAgg._sum.amountBase);
+  const paidBase = moneyFromDecimal(paidAgg._sum.amountBase);
+  const fx = money(chargeBase - paidBase);
+  if (Math.abs(fx) < FX_NET_EPS) return;
+  await settlements.createTransaction(
+    orgId,
+    {
+      counterpartyId: params.supplierId,
+      // ⚠️ ІНВЕРСІЯ клієнта: SUPPLIER_CHARGE(−1)/SUPPLIER_PAYMENT(+1) → залишок = paidBase−chargeBase.
+      // fx>0 (нарахували більше base) → залишок ВІД'ЄМНИЙ → FX_GAIN(+1) підіймає до 0.
+      // fx<0 (сплатили більше) → залишок ДОДАТНИЙ → FX_LOSS(−1). НЕ копіювати клієнтський тернарник!
+      type: fx > 0 ? 'FX_GAIN' : 'FX_LOSS',
+      amount: Math.abs(fx),
+      // БЕЗ currencyId → base-дельта (rate=1, base=amount).
+      documentType: 'PurchaseOrder',
+      documentId: poId,
+      notes: `Курсова різниця (постачальник): нараховано ${chargeBase.toFixed(2)} за курсом прийому, сплачено ${paidBase.toFixed(2)} за курсом оплат`,
       createdBy: params.userId,
     },
     tx,

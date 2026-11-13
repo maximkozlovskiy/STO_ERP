@@ -370,17 +370,15 @@ const CALL_SITES: Record<string, CallSite> = {
       },
     ],
   },
-  'modules/supplier-payments/supplier-payments.service.ts#confirmInTx:FX_GAIN|FX_LOSS': {
+  // Курсова різниця прийнятого й повністю сплаченого замовлення — одна функція для проведення
+  // оплати (`confirmInTx`) і прийому передоплаченого замовлення (`receive`, BR-SUPPAY-018).
+  'modules/settlements/fx-net.ts#recognizeSupplierOrderFxInTx:FX_GAIN|FX_LOSS': {
     guard:
-      'CAS статусу оплати + CAS paidAmount замовлення (purchaseOrder.updateMany where paidAmount = прочитаний) + ' +
-      'лише при ПЕРШІЙ повній оплаті (paidAt == null) + перевірка наявної проводки: count FX цього PO === 0.',
-    anchors: [
-      /tx\.supplierPayment\.updateMany\(\{\s*where:\s*\{[^}]*\bstatus:\s*SupplierPaymentStatus\.DRAFT\b/,
-      /po\.paidAt == null/,
-      /tx\.purchaseOrder\.updateMany\(\{\s*where:\s*\{[^}]*paidAmount:\s*po\.paidAmount\b/,
-      /if\s*\(paidCas\.count === 0\)\s*\{\s*throw\b/,
-      ...FX_ALREADY_BOOKED,
-    ],
+      'Ранній вихід, коли чиста FX замовлення ≠ 0 (netFxBalanceEffect): друга проводка не пишеться. ' +
+      'Викликачі — у tx запису й лише раз на подію: проведення — після CAS статусу оплати (DRAFT → ' +
+      'CONFIRMED) і CAS paidAmount замовлення, лише при ПЕРШІЙ повній оплаті (paidAt == null); прийом — ' +
+      'після CAS статусу замовлення (ORDERED/PARTIAL → RECEIVED, термінальний для прийому).',
+    anchors: [...FX_ALREADY_BOOKED_EARLY_RETURN],
     raceTests: [
       {
         spec: 'supplier-payments/supplier-payments.payables-fx.spec.ts',
@@ -394,6 +392,14 @@ const CALL_SITES: Record<string, CallSite> = {
       {
         spec: 'supplier-payments/supplier-payments.payables-fx.spec.ts',
         title: 'concurrency: paidAmount CAS count=0 (паралельна оплата) → 400',
+      },
+      {
+        spec: 'purchase-orders/purchase-orders.receive-fx.spec.ts',
+        title: 'чиста FX замовлення вже ≠ 0 → другої курсової різниці не пише',
+      },
+      {
+        spec: 'purchase-orders/purchase-orders.receive-fx.spec.ts',
+        title: 'повторний прийом отриманого замовлення → 400, FX не дублюється',
       },
     ],
   },

@@ -21,6 +21,7 @@ import {
 import { DocumentNumberService } from '../document-number/document-number.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { SettlementsService } from '../settlements/settlements.service';
+import { recognizeSupplierOrderFxInTx } from '../settlements/fx-net';
 import { PricingService } from '../inventory/pricing.service';
 import { SettingsService } from '../settings/settings.service';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
@@ -858,6 +859,10 @@ export class PurchaseOrdersService {
     const coeffByLineId = await this.fetchReceiveCoefficients(orgId, activeLines, resolvedByLineId);
     const baseQty = (line: (typeof activeLines)[number]['line'], receivedQty: number) =>
       receivedQty * (coeffByLineId.get(line.id) ?? 1);
+    // BR-SUPPAY-018: валюта замовлення не базова — прийом у «Отримано» може визнати FX передоплати.
+    // До транзакції: валюта замовлення незмінна, а читання бази в транзакції брало б друге з'єднання.
+    const foreignOrder =
+      po.currencyId != null && !(await this.exchangeRates.sameCurrency(orgId, null, po.currencyId));
 
     return this.prisma.$transaction(
       async tx => {
@@ -1004,6 +1009,23 @@ export class PurchaseOrdersService {
           actorId: userId,
           data: shouldSetPaymentDate ? { paymentDate: addDaysKyiv(kyivToday(), defer) } : {},
         });
+        // BR-SUPPAY-018: ПЕРЕДОПЛАЧЕНЕ валютне замовлення стало «Отримано» — курсова різниця тією ж
+        // функцією, що в проведенні оплати (нараховано за курсами прийомів − сплачено за курсами
+        // оплат). Після SUPPLIER_CHARGE (сума його включає) і статусу; `paidAt` — з транзакції, під
+        // блокуванням рядка, яке щойно взяв запис статусу.
+        if (newStatus === PurchaseOrderStatus.RECEIVED && foreignOrder) {
+          const paid = await tx.purchaseOrder.findFirst({
+            where: { id, orgId, deletedAt: null },
+            select: { paidAt: true },
+          });
+          if (paid?.paidAt) {
+            await recognizeSupplierOrderFxInTx(tx, this.settlements, orgId, {
+              purchaseOrderId: id,
+              supplierId: po.supplierId,
+              userId,
+            });
+          }
+        }
         // Відповідь — з цієї ж транзакції (маршрут під ключем ідемпотентності): читання після
         // коміту, що впало, зняло б резервацію ключа, і повтор ЧАСТКОВОГО прийому оприбуткував
         // би товар удруге — CAS рядків порівнює з `receivedQty`, уже прочитаним повтором.

@@ -28,9 +28,8 @@ import { SupplierOrderOutboxService } from '../supplier-api/outbox/supplier-orde
  * Мультивалюта (Фаза 3): PurchaseOrdersService набув ExchangeRatesService.
  * Дефолт — базова валюта: rate=1, amountBase=amount.
  */
-export const exchangeRatesProvider = () => ({
-  provide: ExchangeRatesService,
-  useValue: {
+export const exchangeRatesProvider = () => {
+  const useValue = {
     // Promise.resolve, а не `async () => ({...})`: у вихідному спеку це була async-стрілка
     // без await, і там eslint її не бачив (для *.spec.ts правило послаблене). У звичайному
     // .ts файлі `require-await` — error, і pre-commit хук це зловив. Поведінка та сама.
@@ -41,8 +40,18 @@ export const exchangeRatesProvider = () => ({
       ),
     getBaseCurrency: vi.fn().mockResolvedValue({ id: null, code: 'UAH' }),
     requireBaseCurrencyId: vi.fn().mockResolvedValue('base-cur-id'),
-  },
-});
+    // BR-SUPPAY-018: прийом питає, чи валюта замовлення базова. Реальна логіка поверх мокнутого
+    // getBaseCurrency (як у фікстурі оплат постачальнику): спек FX перевизначає лише базу.
+    sameCurrency: vi.fn(async (org: string, a: string | null, b: string | null) => {
+      if (a === b) return true;
+      const base = (await useValue.getBaseCurrency(org)) as { id: string | null };
+      const baseId = base.id;
+      const norm = (v: string | null) => v ?? baseId;
+      return norm(a) === norm(b);
+    }),
+  };
+  return { provide: ExchangeRatesService, useValue };
+};
 
 /**
  * BR-PO-009/010: хуки позицій списків купівлі й розподіл отриманого — заглушки (ці спеки не про

@@ -4173,6 +4173,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/supplier-payments/{id}/reverse": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Сторно банківської оплати постачальнику: борг, «сплачено» замовлення й курсова різниця назад */
+        post: operations["SupplierPaymentsController_reverse_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/supplier-payments/{id}": {
         parameters: {
             query?: never;
@@ -9661,6 +9678,10 @@ export interface components {
             outstanding: number;
             /** @description Сума боргу, «налита» на цей PO (після кредит-ліміту) */
             allocated: number;
+        };
+        SupplierPaymentReversalDto: {
+            /** @description Причина сторно — обов’язкова, до 500 символів */
+            reason: string;
         };
         StockDocumentLineResponseDto: {
             id: string;
@@ -18921,6 +18942,34 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupplierPaymentResponseDto"];
+                };
+            };
+        };
+    };
+    SupplierPaymentsController_reverse_v1: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Унікальний ключ запиту (напр. UUID): повтор із тим самим ключем повертає першу відповідь, а не виконує операцію вдруге. Без ключа — 400. */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SupplierPaymentReversalDto"];
+            };
+        };
         responses: {
             200: {
                 headers: {

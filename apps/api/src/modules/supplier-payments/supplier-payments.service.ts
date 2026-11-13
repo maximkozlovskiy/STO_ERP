@@ -25,7 +25,7 @@ import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 import { CashService, type CashOperationExtras } from '../cash/cash.service';
 import type { CashOperationResponseDto } from '../cash/cash.dto';
 import { recordDocumentEvent } from '../automation/record-document-event';
-import { hasNetFx, netFxBalanceEffect, reverseNetFxInTx } from '../settlements/fx-net';
+import { recognizeSupplierOrderFxInTx, reverseNetFxInTx } from '../settlements/fx-net';
 import {
   CreateSupplierPaymentDto,
   SupplierPaymentResponseDto,
@@ -47,8 +47,8 @@ const SP_DETAIL_INCLUDE = {
 
 const SP_TRANSITIONS: Record<SPStatus, SPStatus[]> = {
   DRAFT: [SupplierPaymentStatus.CONFIRMED, SupplierPaymentStatus.CANCELLED],
-  // CONFIRMED → REVERSED робить лише сторно касової операції (BR-CASH-024), не публічний перехід:
-  // карта лишається порожньою, щоб маршрут переходу статусу не міг «розпровести» оплату.
+  // CONFIRMED → REVERSED робить лише `reverse` (каса BR-CASH-024, виписка BR-BANK-039, окрема дія
+  // BR-SUPPAY-017), не перехід статусу: карта порожня, щоб `confirm`/`cancel` не «розпровели» оплату.
   CONFIRMED: [],
   CANCELLED: [],
   REVERSED: [],
@@ -100,6 +100,12 @@ export interface ConfirmPlan {
   } | null;
   conv: { rateUsed: number; amountBase: number };
   confirmDate: Date;
+  /**
+   * Валюта замовлення не базова, а оплата робить його сплаченим повністю — проведення визнає FX
+   * (BR-SUPPAY-012). Рахується до транзакції: «сплачено» в ній захищає CAS за прочитаним значенням,
+   * тож прогноз точний, а читання валюти бази в транзакції забирало б друге з'єднання пулу.
+   */
+  foreignOrder: boolean;
 }
 
 /**
@@ -115,12 +121,14 @@ export interface PreparedSupplierPayment {
 }
 
 /**
- * Документ проводки сторно: рядок сторно каси (BR-CASH-024) або рядок банківської виписки, з якого
- * оплату створено, при скасуванні його рознесення (BR-BANK-039). Рівно один.
+ * Документ проводки сторно: рядок сторно каси (BR-CASH-024), рядок банківської виписки, з якого
+ * оплату створено, при скасуванні його рознесення (BR-BANK-039), або сама оплата — сторно банківської
+ * оплати окремою дією (`paymentDocument`, BR-SUPPAY-017). Рівно один.
  */
 export type SupplierPaymentReversalContext = { reason: string; userId?: string } & (
-  | { cashOperationId: string; bankTransactionId?: undefined }
-  | { bankTransactionId: string; cashOperationId?: undefined }
+  | { cashOperationId: string; bankTransactionId?: undefined; paymentDocument?: undefined }
+  | { bankTransactionId: string; cashOperationId?: undefined; paymentDocument?: undefined }
+  | { paymentDocument: true; cashOperationId?: undefined; bankTransactionId?: undefined }
 );
 
 @Injectable()
@@ -937,7 +945,16 @@ export class SupplierPaymentsService {
     // (conv.amountBase) може перерости колонку на CONFIRM, хоч сама сума в межах — 400 з назвою
     // поля, а не 500 numeric field overflow. Дзеркаль settlements F7.
     assertMoneyFits(conv.amountBase, 'сума оплати постачальнику');
-    return { po, conv, confirmDate };
+    const willBeFullyPaid = (order: NonNullable<ConfirmPlan['po']>) =>
+      order.paidAt == null &&
+      Number(order.totalAmount) > 0 &&
+      money(moneyFromDecimal(order.paidAmount) + moneyFromDecimal(source.amount)) >=
+        Number(order.totalAmount) - 0.005;
+    const foreignOrder =
+      po != null &&
+      willBeFullyPaid(po) &&
+      !(await this.exchangeRates.sameCurrency(orgId, null, po.currencyId));
+    return { po, conv, confirmDate, foreignOrder };
   }
 
   /** Проведення в транзакції виклику (BR-SUPPAY-001, 008): CAS статусу, борг, каса, «сплачено» замовлення. */
@@ -946,7 +963,7 @@ export class SupplierPaymentsService {
     orgId: string,
     id: string,
     pre: ConfirmSource,
-    { po, conv, confirmDate }: ConfirmPlan,
+    { po, conv, confirmDate, foreignOrder }: ConfirmPlan,
     userId: string,
     cashRow?: CashOperationExtras,
   ): Promise<CashOperationResponseDto | null> {
@@ -1059,15 +1076,14 @@ export class SupplierPaymentsService {
         );
       }
 
-      // FX лише коли PO вперше повністю сплачено + не-базова валюта. Курс нарахування (дата
-      // прийому) ≠ курс оплати → base-залишок ≠ 0; одна проводка обнуляє.
-      // Лише для ПРИЙНЯТОГО замовлення (Bug #1054): до прийому нарахування SUPPLIER_CHARGE немає
-      // (chargeBase = 0), і «різниця» дорівнювала б УСІЙ сплаченій сумі — FX_LOSS з'їдав аванс, а
-      // прийом потім нараховував борг удруге. Частково прийняте — те саме на неприйняту частину.
-      // Статус — з транзакції: рядок замовлення щойно заблоковано CAS-ом вище.
+      // FX лише коли PO вперше повністю сплачено + не-базова валюта (`foreignOrder` — до транзакції:
+      // жодного читання через `this.prisma` усередині неї).
+      // Лише для ПРИЙНЯТОГО замовлення: до прийому нарахування SUPPLIER_CHARGE немає, і
+      // «різниця» дорівнювала б УСІЙ сплаченій сумі. FX передоплаченого визнає прийом (BR-SUPPAY-018)
+      // тією самою функцією. Статус — з транзакції: рядок замовлення щойно заблоковано CAS-ом вище.
       if (
         becameFullyPaid &&
-        !(await this.exchangeRates.sameCurrency(orgId, null, po.currencyId)) &&
+        foreignOrder &&
         (
           await tx.purchaseOrder.findFirst({
             where: { id: poId, orgId, deletedAt: null },
@@ -1075,63 +1091,11 @@ export class SupplierPaymentsService {
           })
         )?.status === PurchaseOrderStatus.RECEIVED
       ) {
-        const [chargeAgg, spIds, fxNet] = await Promise.all([
-          tx.settlementTransaction.aggregate({
-            where: {
-              orgId,
-              type: 'SUPPLIER_CHARGE',
-              documentType: 'PurchaseOrder',
-              documentId: poId,
-            },
-            _sum: { amountBase: true },
-          }),
-          tx.supplierPayment.findMany({
-            where: {
-              orgId,
-              purchaseOrderId: poId,
-              status: SupplierPaymentStatus.CONFIRMED,
-              deletedAt: null,
-            },
-            select: { id: true },
-            take: 500,
-          }),
-          // Чиста FX замовлення ≠ 0 — вже визнано; сторно, що зробило замовлення не сплаченим,
-          // її обнуляє (BR-SUPPAY-012) — тоді повна оплата визнає її заново.
-          netFxBalanceEffect(tx, orgId, [{ documentType: 'PurchaseOrder', documentId: poId }]),
-        ]);
-        if (!hasNetFx(fxNet)) {
-          const paidAgg = await tx.settlementTransaction.aggregate({
-            where: {
-              orgId,
-              type: 'SUPPLIER_PAYMENT',
-              documentType: 'SupplierPayment',
-              documentId: { in: spIds.map(s => s.id) },
-            },
-            _sum: { amountBase: true },
-          });
-          const chargeBase = Number(chargeAgg._sum.amountBase ?? 0);
-          const paidBase = Number(paidAgg._sum.amountBase ?? 0);
-          const fx = money(chargeBase - paidBase);
-          if (Math.abs(fx) >= 0.005) {
-            await this.settlements.createTransaction(
-              orgId,
-              {
-                counterpartyId: pre.supplierId,
-                // ⚠️ ІНВЕРСІЯ клієнта: SUPPLIER_CHARGE(−1)/SUPPLIER_PAYMENT(+1) → залишок = paidBase−chargeBase.
-                // fx>0 (нарахували більше base) → залишок ВІД'ЄМНИЙ → FX_GAIN(+1) підіймає до 0.
-                // fx<0 (сплатили більше) → залишок ДОДАТНИЙ → FX_LOSS(−1). НЕ копіювати клієнтський тернарник!
-                type: fx > 0 ? 'FX_GAIN' : 'FX_LOSS',
-                amount: Math.abs(fx),
-                // БЕЗ currencyId → base-дельта (rate=1, base=amount).
-                documentType: 'PurchaseOrder',
-                documentId: poId,
-                notes: `Курсова різниця (постачальник): нараховано ${chargeBase.toFixed(2)} за курсом прийому, сплачено ${paidBase.toFixed(2)} за курсом оплат`,
-                createdBy: userId,
-              },
-              tx,
-            );
-          }
-        }
+        await recognizeSupplierOrderFxInTx(tx, this.settlements, orgId, {
+          purchaseOrderId: poId,
+          supplierId: pre.supplierId,
+          userId,
+        });
       }
     }
     return cashOperation;
@@ -1186,12 +1150,73 @@ export class SupplierPaymentsService {
   }
 
   /**
-   * Сторно проведеної оплати постачальнику — внутрішній метод без маршруту, у транзакції
-   * викликача. Два входи: каса (`CashDeskService.reverse`, BR-CASH-024) після запису рядка сторно
-   * (`ctx.cashOperationId`) і скасування рознесення рядка виписки, з якого оплату створено
-   * (`ctx.bankTransactionId`, BR-BANK-039). «Проведено» → «Сторновано» (публічного переходу немає —
-   * `SP_TRANSITIONS.CONFIRMED` порожній), проводка `SUPPLIER_PAYMENT_CANCEL` з курсом оригіналу
-   * (документ — рядок каси чи рядок виписки), «сплачено» замовлення назад (не нижче нуля), `paidAt`
+   * BR-SUPPAY-017: сторно проведеної БАНКІВСЬКОЇ оплати постачальнику окремою дією з причиною
+   * (`POST /supplier-payments/:id/reverse`). Перевірки — у транзакції, до першого запису: оплата
+   * «Проведено», джерело — банк (касову сторнує каса, BR-CASH-024), рядка виписки, рознесеного на неї,
+   * немає (його знімає скасування рознесення, BR-BANK-039). Далі — той самий `reverse`, документ
+   * проводки — сама оплата. Відповідь читається в транзакції: маршрут під ключем ідемпотентності.
+   */
+  async reverseBankPayment(
+    orgId: string,
+    id: string,
+    dto: { reason: string },
+    userId: string,
+  ): Promise<SupplierPaymentResponseDto> {
+    const locale = getLocale();
+    // Повторює zod-схему маршруту свідомо: сервіс можуть викликати й не через HTTP.
+    const reason = dto.reason?.trim() ?? '';
+    if (!reason) {
+      throw new BadRequestException(translateError('err.cash.reversalReasonRequired', locale));
+    }
+    const sp = await this.prisma.$transaction(
+      async tx => {
+        const current = await tx.supplierPayment.findFirst({
+          where: { id, orgId, deletedAt: null },
+          select: { status: true, sourceType: true },
+        });
+        if (!current) {
+          throw new NotFoundException(translateError('err.supplierPayment.notFound', locale));
+        }
+        if (current.status === SupplierPaymentStatus.REVERSED) {
+          throw new BadRequestException(
+            translateError('err.supplierPayment.alreadyReversed', locale),
+          );
+        }
+        if (current.status !== SupplierPaymentStatus.CONFIRMED) {
+          throw new BadRequestException(
+            translateError('err.supplierPayment.reversalStateChanged', locale),
+          );
+        }
+        if (current.sourceType === PaymentSourceType.CASH_REGISTER) {
+          throw new BadRequestException(
+            translateError('err.supplierPayment.reverseViaCashDesk', locale),
+          );
+        }
+        const bankRow = await tx.bankTransaction.findFirst({
+          where: { orgId, supplierPaymentId: id, deletedAt: null },
+          select: { id: true },
+        });
+        if (bankRow) {
+          throw new BadRequestException(
+            translateError('err.supplierPayment.reverseUnreconcileFirst', locale),
+          );
+        }
+        await this.reverse(orgId, id, { paymentDocument: true, reason, userId }, tx);
+        return this.readDetailInTx(tx, orgId, id);
+      },
+      { timeout: TRANSACTION_TIMEOUT_MS },
+    );
+    return this.toDto(sp);
+  }
+
+  /**
+   * Сторно проведеної оплати постачальнику — у транзакції викликача. Три входи: каса
+   * (`CashDeskService.reverse`, BR-CASH-024) після запису рядка сторно (`ctx.cashOperationId`),
+   * скасування рознесення рядка виписки, з якого оплату створено (`ctx.bankTransactionId`,
+   * BR-BANK-039), і сторно банківської оплати окремою дією (`ctx.paymentDocument`, BR-SUPPAY-017).
+   * «Проведено» → «Сторновано» (публічного переходу немає — `SP_TRANSITIONS.CONFIRMED` порожній),
+   * проводка `SUPPLIER_PAYMENT_CANCEL` з курсом оригіналу (документ — рядок каси, рядок виписки чи
+   * сама оплата), «сплачено» замовлення назад (не нижче нуля), `paidAt`
    * знімається, якщо замовлення вже не сплачене повністю, а з ним відкочується й курсова різниця
    * повної оплати (BR-SUPPAY-012).
    */
@@ -1202,18 +1227,20 @@ export class SupplierPaymentsService {
     tx: Prisma.TransactionClient,
   ): Promise<void> {
     const locale = getLocale();
-    // Помилки — словами входу: каса сторнує операцію, рознесення виписки — саму оплату.
-    const fromBank = ctx.bankTransactionId !== undefined;
-    const alreadyReversedKey = fromBank
-      ? 'err.supplierPayment.alreadyReversed'
-      : 'err.cash.alreadyReversed';
-    const stateChangedKey = fromBank
-      ? 'err.supplierPayment.reversalStateChanged'
-      : 'err.cash.reversalStateChanged';
+    // Помилки — словами входу: каса сторнує операцію, рознесення виписки й маршрут — саму оплату.
+    const fromCash = ctx.cashOperationId !== undefined;
+    const alreadyReversedKey = fromCash
+      ? 'err.cash.alreadyReversed'
+      : 'err.supplierPayment.alreadyReversed';
+    const stateChangedKey = fromCash
+      ? 'err.cash.reversalStateChanged'
+      : 'err.supplierPayment.reversalStateChanged';
     const document =
-      ctx.bankTransactionId !== undefined
-        ? { documentType: 'BankTransaction', documentId: ctx.bankTransactionId }
-        : { documentType: 'CashOperation', documentId: ctx.cashOperationId };
+      ctx.cashOperationId !== undefined
+        ? { documentType: 'CashOperation', documentId: ctx.cashOperationId }
+        : ctx.bankTransactionId !== undefined
+          ? { documentType: 'BankTransaction', documentId: ctx.bankTransactionId }
+          : { documentType: 'SupplierPayment', documentId: id };
     const sp = await tx.supplierPayment.findFirst({
       where: { id, orgId, deletedAt: null },
       select: {

@@ -13604,6 +13604,61 @@
         ]
       }
     },
+    "/api/v1/supplier-payments/{id}/reverse": {
+      "post": {
+        "operationId": "SupplierPaymentsController_reverse_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Унікальний ключ запиту (напр. UUID): повтор із тим самим ключем повертає першу відповідь, а не виконує операцію вдруге. Без ключа — 400.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupplierPaymentReversalDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupplierPaymentResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Сторно банківської оплати постачальнику: борг, «сплачено» замовлення й курсова різниця назад",
+        "tags": [
+          "Supplier Payments"
+        ]
+      }
+    },
     "/api/v1/supplier-payments/{id}": {
       "get": {
         "operationId": "SupplierPaymentsController_findOne_v1",
@@ -32394,6 +32449,19 @@
           "totalAmount",
           "outstanding",
           "allocated"
+        ]
+      },
+      "SupplierPaymentReversalDto": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "maxLength": 500,
+            "description": "Причина сторно — обов’язкова, до 500 символів"
+          }
+        },
+        "required": [
+          "reason"
         ]
       },
       "StockDocumentLineResponseDto": {

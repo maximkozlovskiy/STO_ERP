@@ -19,6 +19,7 @@ import {
   ApiOkResponse,
   ApiCreatedResponse,
   ApiNoContentResponse,
+  ApiBody,
 } from '@nestjs/swagger';
 import { translateError } from '@sto/shared';
 import { getLocale } from '../../common/tenant/tenant-context';
@@ -28,7 +29,12 @@ import { Roles } from '../../auth/decorators/roles.decorator';
 import { OrgContext } from '../../auth/decorators/org-context.decorator';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { SupplierPaymentsService } from './supplier-payments.service';
-import { supplierPaymentCreateSchema, type SupplierPaymentCreateValues } from '@sto/shared';
+import {
+  paymentReversalSchema,
+  supplierPaymentCreateSchema,
+  type PaymentReversalFormValues,
+  type SupplierPaymentCreateValues,
+} from '@sto/shared';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { RequireIdempotencyKey } from '../../common/interceptors/idempotency.interceptor';
 import {
@@ -44,6 +50,7 @@ import {
   PaginatedSupplierPaymentsDto,
   SupplierPaymentScheduleDto,
   SupplierPaymentScheduleDocumentDto,
+  SupplierPaymentReversalDto,
 } from './supplier-payments.dto';
 import { BadRequestException } from '@nestjs/common';
 
@@ -162,6 +169,27 @@ export class SupplierPaymentsController {
     @CurrentUser() user: { id: string },
   ) {
     return this.service.cancel(orgId, id, user?.id);
+  }
+
+  // BR-SUPPAY-017: сторно банківської оплати окремою дією з причиною. Касову сторнують у касі,
+  // рознесену з рядка виписки — скасуванням рознесення (сервіс відповідає 400 з поясненням).
+  @Post(':id/reverse')
+  @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
+  @HttpCode(HttpStatus.OK)
+  @RequireIdempotencyKey() // повтор після обриву віддає збережену відповідь, а не друге сторно
+  @ApiOperation({
+    summary:
+      'Сторно банківської оплати постачальнику: борг, «сплачено» замовлення й курсова різниця назад',
+  })
+  @ApiBody({ type: SupplierPaymentReversalDto })
+  @ApiOkResponse({ type: SupplierPaymentResponseDto })
+  reverse(
+    @OrgContext() orgId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(paymentReversalSchema)) dto: PaymentReversalFormValues,
+    @CurrentUser() user: { id: string },
+  ): Promise<SupplierPaymentResponseDto> {
+    return this.service.reverseBankPayment(orgId, id, dto, user.id);
   }
 
   @Get(':id')
