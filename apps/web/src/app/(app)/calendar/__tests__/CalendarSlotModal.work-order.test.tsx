@@ -86,7 +86,13 @@ function Harness({
   date?: string;
   savedMechanic?: SavedMechanic | null;
   editingWorkOrder?: { number: string; lockedStatus: string | null } | null;
-  editingChain?: { days: number; endAt: string; isFirst: boolean; isLast: boolean } | null;
+  editingChain?: {
+    days: number;
+    startAt?: string;
+    endAt: string;
+    isFirst: boolean;
+    isLast: boolean;
+  } | null;
 }) {
   const [form, setForm] = useState<SlotForm>({
     ...EMPTY_FORM,
@@ -260,35 +266,49 @@ describe('CalendarSlotModal — наряд, створений із форми �
     });
   });
 
-  // guards: BR-WO-020
-  it('ручний ланцюжок з першого дня: кінець — кінець останнього дня, години рахує картка', () => {
-    render(
-      <Harness
-        initial={{ startAt: '14:00', endAt: '18:00', normoHours: '4' }}
-        editingSlotId="slot-1"
-        editingChain={{ days: 2, endAt: '2026-10-21T08:00:00.000Z', isFirst: true, isLast: false }}
-        onSaved={vi.fn()}
-      />,
-    );
-    expect(prefill()).toMatchObject({
-      plannedStartAt: `${FUTURE}T14:00`,
-      plannedEndAt: '2026-10-21T11:00',
-      calendarSlotId: 'slot-1',
-    });
-    expect(prefill().plannedHours).toBeUndefined();
-  });
+  // Ручний ланцюжок вт 14:00–18:00, ср 08:00–11:00 (години 08–18); форма — межі ланцюжка
+  // (`slotToForm` хука: початок першого дня, кінець останнього, нормогодини рахує форма).
+  const MANUAL_CHAIN = {
+    days: 2,
+    startAt: '2026-10-20T11:00:00.000Z',
+    endAt: '2026-10-21T08:00:00.000Z',
+  };
+
+  // guards: BR-WO-020, BR-CAL-020
+  it.each([
+    ['першого дня', { isFirst: true, isLast: false }, FUTURE],
+    ['другого дня (продовження)', { isFirst: false, isLast: true }, '2026-10-21'],
+  ])(
+    'ручний ланцюжок з %s: наряд — на межах усього ланцюжка, години рахує картка',
+    (_l, edges, date) => {
+      render(
+        <Harness
+          initial={{ startAt: '14:00', endAt: '11:00', normoHours: '' }}
+          editingSlotId="slot-1"
+          editingChain={{ ...MANUAL_CHAIN, ...edges }}
+          date={date}
+          onSaved={vi.fn()}
+        />,
+      );
+      expect(prefill()).toMatchObject({
+        plannedStartAt: `${FUTURE}T14:00`,
+        plannedEndAt: '2026-10-21T11:00',
+        calendarSlotId: 'slot-1',
+      });
+      expect(prefill().plannedHours).toBeUndefined();
+    },
+  );
 
   // guards: BR-WO-020
-  it.each([
-    ['запис наряду', { editingWorkOrder: { number: 'НРД-5', lockedStatus: null } }],
-    [
-      'продовження ручного ланцюжка',
-      {
-        editingChain: { days: 2, endAt: '2026-10-21T08:00:00.000Z', isFirst: false, isLast: true },
-      },
-    ],
-  ])("%s — як раніше: без дат і без `calendarSlotId` (прив'язка — «Оновити»)", (_l, extra) => {
-    render(<Harness initial={{}} editingSlotId="slot-1" onSaved={vi.fn()} {...extra} />);
+  it("запис наряду — як раніше: без дат і без `calendarSlotId` (прив'язка — «Оновити»)", () => {
+    render(
+      <Harness
+        initial={{}}
+        editingSlotId="slot-1"
+        onSaved={vi.fn()}
+        editingWorkOrder={{ number: 'НРД-5', lockedStatus: null }}
+      />,
+    );
     expect(prefill().plannedStartAt).toBeUndefined();
     expect(prefill().plannedEndAt).toBeUndefined();
     expect(prefill().calendarSlotId).toBeUndefined();

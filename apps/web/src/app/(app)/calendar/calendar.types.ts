@@ -31,6 +31,8 @@ export interface CalendarSlot {
    */
   chainDays?: number;
   chainEndAt?: string;
+  /** Початок першої частини ланцюжка (BR-CAL-020): форма з будь-якого дня показує межі ланцюжка. */
+  chainStartAt?: string;
   /** Лише відповідь відв'язки від наряду: запис видалено, наряд зберіг дати (BR-WO-028). */
   removed?: boolean;
 }
@@ -106,6 +108,8 @@ export interface ResizeState {
   liftId: string | null;
   /** Наряд запису: нові межі запису наряду змінюють його дати (BR-WO-024). */
   workOrderId: string | null;
+  /** Запис — частина багатоденного ланцюжка: сервер перебудовує його частини (BR-CAL-020). */
+  chain: boolean;
 }
 
 /** Resize state for pending slot edges */

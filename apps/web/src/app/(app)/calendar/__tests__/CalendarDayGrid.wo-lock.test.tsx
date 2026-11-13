@@ -129,7 +129,8 @@ describe('Вид «День» — запис наряду не в редагов
   });
 });
 
-// Рішення власника 2026-10-30 (TECH-DEBT (б) №66): внутрішні межі ланцюжка наряду не тягнуться.
+// Рішення власника 2026-10-30 / 2026-11-13 (TECH-DEBT (б) №66, №92): внутрішні межі ланцюжка
+// наряду й ручного запису не тягнуться.
 describe('Вид «День» — ручки ланцюжка наряду (BR-WO-024)', () => {
   const handles = (el: HTMLElement) =>
     [...el.querySelectorAll<HTMLElement>('[data-part^="resize-"]')].map(h => h.dataset.part);
@@ -151,21 +152,31 @@ describe('Вид «День» — ручки ланцюжка наряду (BR-W
     expect(block('WO-m').querySelector('[data-part="content"]')).toHaveClass('cursor-grab');
   });
 
-  // guards: BR-WO-024
-  it('ручний ланцюжок (без наряду) — обидві ручки, як раніше (TECH-DEBT №92)', async () => {
+  // guards: BR-CAL-020
+  it('ручний ланцюжок (без наряду) — так само: внутрішніх ручок немає, крайні є (TECH-DEBT №92)', async () => {
+    const manual = { workOrderId: null, workOrderNumber: undefined, workOrderStatus: null };
     daySlots = [
       slot('r', '10:00', {
-        workOrderId: null,
-        workOrderNumber: undefined,
-        workOrderStatus: null,
-        counterpartyName: 'Ручний ланцюжок',
+        ...manual,
+        counterpartyName: 'Середній день',
         parentSlotId: 'x',
+        chainDays: 3,
+        chainEndAt: iso('2026-10-16T12:00'),
+      }),
+      slot('f', '13:00', {
+        ...manual,
+        counterpartyName: 'Перший день',
         chainDays: 2,
         chainEndAt: iso('2026-10-16T12:00'),
       }),
     ];
     await renderDay();
-    expect(handles(block('Ручний ланцюжок'))).toEqual(['resize-start', 'resize-end']);
+    expect(handles(block('Середній день'))).toEqual([]);
+    expect(handles(block('Перший день'))).toEqual(['resize-start']);
+    // Блок перетягується цілком — з усім ланцюжком (BR-CAL-020).
+    expect(block('Середній день').querySelector('[data-part="content"]')).toHaveClass(
+      'cursor-grab',
+    );
   });
 });
 

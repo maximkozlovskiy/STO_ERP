@@ -19,7 +19,12 @@ import { notifyCalendarChanged, onCalendarChanged } from '@/lib/calendar-events'
 import { toast } from '@/lib/toast';
 import { workOrdersKeys } from '@/hooks/api/useWorkOrders';
 import { useConfirm } from '@/hooks/useConfirm';
-import { useBranchWorkHours, useBranchWorkHoursQuery } from '@/hooks/useBranchWorkHours';
+import {
+  fetchBranchWorkHours,
+  useBranchWorkHours,
+  useBranchWorkHoursQuery,
+} from '@/hooks/useBranchWorkHours';
+import { isoToKyivLocalDateTime, kyivDateTimeToISO } from '@/lib/format';
 import { useTranslation } from 'react-i18next';
 
 import type {
@@ -53,12 +58,13 @@ import { slotType } from './calendar-categories';
 import {
   nowLinePercent,
   pastPercent,
+  chainInnerEdge,
   slotDeleteConfirmOptions,
-  workOrderChainInnerEdge,
   workOrderDeleteLock,
   workOrderTimeLock,
 } from './calendar-day';
 import { mechanicDroppedText, type MechanicDropResponse } from './calendar-mechanic-drop';
+import { shiftedChainEnd } from './calendar-slot-span';
 
 // Shared drag-id for the pending-slot block (used both by the draggable in JSX
 // and by handleDragEnd to dispatch logic). Exported so sub-components can use it.
@@ -108,10 +114,14 @@ type EditingSaved = {
   workOrderId: string | null;
   workOrderNumber: string | null;
   workOrderStatus: string | null;
-  /** Ланцюжок запису (BR-CAL-019): продовження, кількість частин, кінець останньої. */
+  /**
+   * Ланцюжок запису (BR-CAL-019, BR-CAL-020): продовження, кількість частин, кінець останньої й
+   * початок першої.
+   */
   parentSlotId: string | null;
   chainDays: number;
   chainEndAt: string;
+  chainStartAt: string;
 } & SavedMechanic;
 
 function savedOf(slot: CalendarSlot): EditingSaved {
@@ -125,17 +135,33 @@ function savedOf(slot: CalendarSlot): EditingSaved {
     parentSlotId: slot.parentSlotId ?? null,
     chainDays: slot.chainDays ?? 1,
     chainEndAt: slot.chainEndAt ?? slot.endAt,
+    chainStartAt: slot.chainStartAt ?? slot.startAt,
     liftId: slot.liftId ?? '',
     employeeId: slot.employeeId ?? '',
     employeeName: slot.employeeName ?? null,
   };
 }
 
-/** Форма запису з його збережених полів (час — київський «HH:mm» дня запису). */
+/**
+ * Багатоденний запис без наряду (BR-CAL-020): змінюється як ланцюжок — форма з будь-якого дня
+ * показує межі всього ланцюжка, перетягування зсуває його цілком.
+ */
+export function isManualChain(
+  slot: Pick<CalendarSlot, 'workOrderId' | 'chainDays'> | null | undefined,
+): boolean {
+  return !!slot && !slot.workOrderId && (slot.chainDays ?? 1) > 1;
+}
+
+/**
+ * Форма запису з його збережених полів (час — київський «HH:mm» дня запису). Ручний ланцюжок —
+ * початок першого дня й кінець останнього (BR-CAL-020); нормогодини між ними рахує форма за
+ * годинами філії підйомника.
+ */
 function slotToForm(slot: CalendarSlot): SlotForm {
   const counterpartyDisplay = slot.counterpartyName ?? '';
-  const startH = kyivHours(slot.startAt);
-  const endH = kyivHours(slot.endAt);
+  const chain = isManualChain(slot);
+  const startH = kyivHours(chain ? (slot.chainStartAt ?? slot.startAt) : slot.startAt);
+  const endH = kyivHours(chain ? (slot.chainEndAt ?? slot.endAt) : slot.endAt);
   return {
     type: slotType(slot.type),
     liftId: slot.liftId ?? '',
@@ -149,7 +175,8 @@ function slotToForm(slot: CalendarSlot): SlotForm {
       : '',
     startAt: decimalHoursToHHMM(startH),
     endAt: decimalHoursToHHMM(endH),
-    normoHours: String(+(endH - startH).toFixed(2)),
+    // Ручний ланцюжок: нормогодини між днями рахує форма за годинами філії (BR-CAL-020).
+    normoHours: chain ? '' : String(+(endH - startH).toFixed(2)),
     notes: slot.notes ?? '',
   };
 }
@@ -908,9 +935,9 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
       e.stopPropagation();
       if (!canManageSlots) return;
       const slot = slots.find(s => s.id === slotId);
-      // BR-WO-027: ручок у такого запису немає; BR-WO-024 (№66): внутрішня межа ланцюжка наряду
-      // не тягнеться. Сторож — на випадок застарілого рендера.
-      if (!slot || workOrderTimeLock(slot) || workOrderChainInnerEdge(slot, edge)) return;
+      // BR-WO-027: ручок у такого запису немає; BR-WO-024 / BR-CAL-020 (№66, №92): внутрішня межа
+      // ланцюжка не тягнеться. Сторож — на випадок застарілого рендера.
+      if (!slot || workOrderTimeLock(slot) || chainInnerEdge(slot, edge)) return;
       setResizing({
         slotId,
         edge,
@@ -919,6 +946,7 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
         pointerStart: pointerPos(e),
         liftId: slot.liftId ?? null,
         workOrderId: slot.workOrderId ?? null,
+        chain: (slot.chainDays ?? 1) > 1,
       });
       setResizePreview({
         id: slotId,
@@ -1076,7 +1104,7 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
       const res = resizingRef.current;
       const preview = resizePreviewRef.current;
       if (res && preview) {
-        const { slotId, origStartH, origEndH, workOrderId } = res;
+        const { slotId, origStartH, origEndH, workOrderId, chain } = res;
         const { startH, endH } = preview;
         setResizing(null);
         setResizePreview(null);
@@ -1093,6 +1121,8 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
         try {
           // BR-WO-024: нові межі запису наряду сервер робить плановими датами наряду (ті самі
           // перевірки, що й збереження наряду); відмова — 400, запис повертається на місце.
+          // BR-CAL-020: крайня межа ручного ланцюжка — нові межі ланцюжка (без `chainSpan`:
+          // межі ланцюжка сервер рахує з частини).
           await apiFetch(`/calendar/slots/${slotId}`, {
             method: 'PATCH',
             body: JSON.stringify({
@@ -1104,6 +1134,9 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
             // Картка й списки нарядів — нові планові дати; ланцюжок записів сервер перебудовує,
             // тож вид перечитується з resync відкритої форми (як після перетягування, Bug #884).
             invalidateWorkOrders();
+            notifyCalendarChanged();
+          } else if (chain) {
+            // Ланцюжок перебудовано (частини додано чи прибрано) — перечитати вид із resync форми.
             notifyCalendarChanged();
           } else load();
         } catch (err: unknown) {
@@ -1146,6 +1179,40 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
   }, [pxToDecimalHours, axisGeom, pointerPos, load, t, invalidateWorkOrders]);
 
   // ── Drag-and-drop ─────────────────────────────────────────────────────────
+
+  /**
+   * BR-CAL-020: межі ручного ланцюжка, зсунутого перетягуванням його частини на `shiftMs` — новий
+   * початок першого дня; кінець — ті самі нормогодини від нього (`shiftedChainEnd`) за годинами
+   * філії підйомника, куди перенесено. Годин філії немає (збій) — кінець зсувається на той самий час.
+   */
+  const shiftedChainSpan = useCallback(
+    async (slot: CalendarSlot, shiftMs: number, newLiftId: string | null) => {
+      const branchOf = (liftId: string | null | undefined) =>
+        liftsRef.current.find(l => l.id === liftId)?.branchId;
+      const [from, to] = await Promise.all([
+        fetchBranchWorkHours(queryClient, branchOf(slot.liftId)),
+        fetchBranchWorkHours(queryClient, branchOf(newLiftId)),
+      ]);
+      const start = new Date(slot.chainStartAt ?? slot.startAt);
+      const end = new Date(slot.chainEndAt ?? slot.endAt);
+      const newStart = new Date(start.getTime() + shiftMs);
+      const endLocal = shiftedChainEnd(
+        isoToKyivLocalDateTime(start),
+        isoToKyivLocalDateTime(end),
+        isoToKyivLocalDateTime(newStart),
+        from,
+        to,
+      );
+      const endIso = endLocal
+        ? kyivDateTimeToISO(endLocal.slice(0, 10), endLocal.slice(11, 16))
+        : '';
+      return {
+        startAt: newStart.toISOString(),
+        endAt: endIso || new Date(end.getTime() + shiftMs).toISOString(),
+      };
+    },
+    [queryClient],
+  );
 
   const handleDragEnd = useCallback(
     async (event: DragEndEvent) => {
@@ -1235,11 +1302,16 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
           notifyCalendarChanged();
           return;
         }
+        // BR-CAL-020: частина багатоденного ручного запису зсуває весь ланцюжок (`chainSpan`).
+        const chain = isManualChain(slot);
+        const span = chain
+          ? await shiftedChainSpan(slot, shiftMs, newLiftId)
+          : { startAt: newStart.toISOString(), endAt: newEnd.toISOString() };
         const saved = await apiFetch<MechanicDropResponse>(`/calendar/slots/${slot.id}`, {
           method: 'PATCH',
           body: JSON.stringify({
-            startAt: newStart.toISOString(),
-            endAt: newEnd.toISOString(),
+            ...span,
+            ...(chain && { chainSpan: true }),
             // BR-CAL-012: механік, не закріплений за новим підйомником, знімається сервером
             // (рішення власника 2026-10-16) — перетягування не відхиляється.
             ...(liftChanged && { liftId: newLiftId, dropMechanicNotOnLift: true }),
@@ -1251,12 +1323,24 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
             mechanicDroppedText(t, saved.mechanicDroppedReason, slot.employeeName, lift),
           );
         }
-        load();
+        // Ланцюжок перебудовано — перечитати вид із resync відкритої форми, як після наряду.
+        if (chain) notifyCalendarChanged();
+        else load();
       } catch (e: unknown) {
         toast.error(e instanceof Error ? e.message : t('slot.errMoveFallback'));
       }
     },
-    [slots, load, nowMs, minHour, t, canManageSlots, invalidateWorkOrders, axisGeom],
+    [
+      slots,
+      load,
+      nowMs,
+      minHour,
+      t,
+      canManageSlots,
+      invalidateWorkOrders,
+      axisGeom,
+      shiftedChainSpan,
+    ],
   );
 
   // ── Remove slot ───────────────────────────────────────────────────────────
@@ -1301,7 +1385,7 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
       // (Kyiv → UTC), not local-time-parsing.
       const endAt = decimalHoursToISO(date, resizePreview.endH);
       // Кінець останнього дня ланцюжка — і кінець ланцюжка: інакше ручка кінця зникла б посеред
-      // тягнення (`workOrderChainInnerEdge`, BR-WO-024).
+      // тягнення (`chainInnerEdge`, BR-WO-024, BR-CAL-020).
       const last = !s.chainEndAt || new Date(s.chainEndAt).getTime() <= new Date(s.endAt).getTime();
       return {
         ...s,
@@ -1396,10 +1480,12 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
    * (BR-CAL-009, TECH-DEBT (б) №57). Раніше «День» вважав минулим запис, що почався до поточної
    * години, — запис, що ще триває, у «Дні» не редагувався, а в «Місяці» — так.
    */
-  const isEditingPast = useMemo(
-    () => !!editingSavedSlot && !!nowMs && new Date(editingSavedSlot.endAt).getTime() < nowMs,
-    [editingSavedSlot, nowMs],
-  );
+  const isEditingPast = useMemo(() => {
+    if (!editingSavedSlot || !nowMs) return false;
+    // Ручний ланцюжок форма змінює цілим (BR-CAL-020) — минулий, коли минув останній день.
+    const end = editingSavedSlot.workOrderId ? editingSavedSlot.endAt : editingSavedSlot.chainEndAt;
+    return new Date(end).getTime() < nowMs;
+  }, [editingSavedSlot, nowMs]);
 
   /**
    * Наряд запису, відкритого у формі (як збережено): номер — для підтвердження видалення
@@ -1417,14 +1503,16 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
   );
 
   /**
-   * Запис форми — частина багатоденного ланцюжка (BR-CAL-019, BR-WO-024): кількість днів, чи це
-   * перший і останній день (внутрішні межі не змінюються), кінець останньої частини.
+   * Запис форми — частина багатоденного ланцюжка (BR-CAL-019, BR-WO-024, BR-CAL-020): кількість
+   * днів, чи це перший і останній день (внутрішні межі ланцюжка наряду не змінюються), початок
+   * першої частини й кінець останньої.
    */
   const editingChain = useMemo(
     () =>
       editingSavedSlot && editingSavedSlot.chainDays > 1
         ? {
             days: editingSavedSlot.chainDays,
+            startAt: editingSavedSlot.chainStartAt,
             endAt: editingSavedSlot.chainEndAt,
             isFirst: editingSavedSlot.parentSlotId === null,
             isLast:

@@ -125,19 +125,34 @@ describe('useCalendarState — ланцюжок ручного запису (BR-
     liftId: null,
     parentSlotId: 's-anchor',
     chainDays: 3,
+    chainStartAt: '2026-10-19T13:00:00.000Z',
     chainEndAt: '2026-10-22T09:00:00.000Z',
   });
 
-  // guards: BR-CAL-019
-  it('форма знає ланцюжок: 3 дні, не перший і не останній день, кінець останньої частини', async () => {
+  // guards: BR-CAL-019, BR-CAL-020
+  it('форма знає ланцюжок: 3 дні, не перший і не останній день, початок першої й кінець останньої частини', async () => {
     daySlots = [CONT];
     const hook = await renderDay();
     act(() => hook.result.current.handleEditSlot(CONT));
     expect(hook.result.current.editingChain).toEqual({
       days: 3,
+      startAt: '2026-10-19T13:00:00.000Z',
       endAt: '2026-10-22T09:00:00.000Z',
       isFirst: false,
       isLast: false,
+    });
+  });
+
+  // guards: BR-CAL-020
+  it('ручний ланцюжок із середнього дня: форма — початок першого дня й кінець останнього', async () => {
+    daySlots = [CONT];
+    const hook = await renderDay();
+    act(() => hook.result.current.handleEditSlot(CONT));
+    // Нормогодини між днями рахує форма за годинами філії підйомника — тут порожні.
+    expect(hook.result.current.form).toMatchObject({
+      startAt: '16:00',
+      endAt: '12:00',
+      normoHours: '',
     });
   });
 

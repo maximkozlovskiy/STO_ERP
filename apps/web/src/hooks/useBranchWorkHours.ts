@@ -1,6 +1,6 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, type QueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
 import { DEFAULT_WORK_DAYS } from '@sto/shared';
 import {
@@ -60,6 +60,25 @@ async function fetchWorkHours(
     endHour: r.workEndHour,
     workDays: parseWorkDays(r.workDays),
   };
+}
+
+/**
+ * Робочі години й дні філії поза рендером — обробник перетягування запису (BR-CAL-020): той самий
+ * кеш і запит, що й `useBranchWorkHoursQuery`; `branchId` порожній — основна філія. До відповіді
+ * нічого не показується, тож при збої — типові 09–18, пн–пт, як на сервері.
+ */
+export function fetchBranchWorkHours(
+  queryClient: QueryClient,
+  branchId: string | null | undefined,
+): Promise<WorkHoursWindow> {
+  const key = branchId || null;
+  return queryClient
+    .fetchQuery({
+      queryKey: workHoursKeys.branch(key),
+      queryFn: ({ signal }) => fetchWorkHours(key, signal),
+      staleTime: 60_000,
+    })
+    .catch(() => DEFAULT_WORK_HOURS_WINDOW);
 }
 
 /**

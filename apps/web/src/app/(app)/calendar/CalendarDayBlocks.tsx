@@ -27,7 +27,7 @@ import {
 import {
   isCancelledWorkOrderSlot,
   slotDeleteLockHint,
-  workOrderChainInnerEdge,
+  chainInnerEdge,
   workOrderTimeLock,
 } from './calendar-day';
 import { PENDING_DRAG_ID } from './useCalendarState';
@@ -111,10 +111,11 @@ export const DraggableSlot = memo(function DraggableSlot({
   // перетягується й не розтягується — без ручок і курсору перетягування; підказка — у title.
   const lockedStatus = workOrderTimeLock(slot);
   const movable = canManage && !lockedStatus;
-  // BR-WO-024 (№66): внутрішні межі ланцюжка наряду не тягнуться — ручки лише в початку першого дня
-  // й кінці останнього; блок перетягується цілком (BR-WO-023).
-  const startHandle = movable && !workOrderChainInnerEdge(slot, 'start');
-  const endHandle = movable && !workOrderChainInnerEdge(slot, 'end');
+  // BR-WO-024 / BR-CAL-020 (№66, №92): внутрішні межі ланцюжка — наряду чи ручного — не тягнуться:
+  // ручки лише в початку першого дня й кінці останнього; блок перетягується з усім ланцюжком
+  // (BR-WO-023, BR-CAL-020).
+  const startHandle = movable && !chainInnerEdge(slot, 'start');
+  const endHandle = movable && !chainInnerEdge(slot, 'end');
   // Скасований наряд: час і підйомник так само заблоковані, але запис видаляється (BR-WO-026).
   const lockedHint = (status: string) =>
     t(isCancelledWorkOrderSlot(status) ? 'day.woTimeLockedCancelled' : 'day.woTimeLocked', {

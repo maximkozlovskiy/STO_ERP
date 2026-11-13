@@ -15,6 +15,7 @@ import type { DragEndEvent } from '@dnd-kit/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import i18n from '@/i18n/config';
 import type { CalendarSlot } from '../calendar.types';
+import { SIDEBAR_W } from '../calendar.utils';
 
 let params = new URLSearchParams('view=day&date=2026-10-20');
 vi.mock('next/navigation', () => ({
@@ -364,5 +365,69 @@ describe('useCalendarState — повернута сітка «Години» (B
     const body = patchBody()!;
     expect(body.liftId).toBe('lift-2');
     expect(body.startAt ?? SLOT.startAt).toBe(SLOT.startAt);
+  });
+});
+
+// Рішення власника 2026-11-13 (TECH-DEBT (б) №92): частина багатоденного ручного запису зсуває
+// весь ланцюжок — новий початок першого дня на той самий зсув, кінець — ті самі нормогодини від
+// нього за годинами філії підйомника (тут основна: 08–20, пн–пт), `chainSpan: true`.
+describe('useCalendarState — перетягування частини ручного ланцюжка (BR-CAL-020)', () => {
+  const kyiv = (local: string) => new Date(`${local}:00+03:00`).toISOString();
+  // Пн 16:00–20:00, вт 08:00–20:00 (цей день), ср 08:00–10:00 — 18 нормогодин.
+  const CHAIN_PART: CalendarSlot = {
+    ...SLOT,
+    parentSlotId: 's-anchor',
+    startAt: kyiv('2026-10-20T08:00'),
+    endAt: kyiv('2026-10-20T20:00'),
+    chainDays: 3,
+    chainStartAt: kyiv('2026-10-19T16:00'),
+    chainEndAt: kyiv('2026-10-21T10:00'),
+  };
+
+  // guards: BR-CAL-020
+  it('зсув на 2 год — межі всього ланцюжка: пн 18:00 … ср 12:00, chainSpan', async () => {
+    daySlots = [CHAIN_PART];
+    const { result } = await renderDay();
+
+    // Шкала годин — ширина сітки без колонки підйомників на вікно годин дня.
+    const { windowStart, windowEnd } = result.current;
+    const hourPx = (1200 - SIDEBAR_W) / (windowEnd - windowStart);
+    await act(() => result.current.handleDragEnd(dropOn('lift-1', 2 * hourPx)));
+
+    expect(patchCall()?.[0]).toBe('/calendar/slots/s-1');
+    expect(patchBody()).toEqual({
+      startAt: kyiv('2026-10-19T18:00'),
+      endAt: kyiv('2026-10-21T12:00'),
+      chainSpan: true,
+    });
+  });
+
+  // guards: BR-CAL-020, BR-CAL-012
+  it('на інший підйомник — той самий ланцюжок, механік за прапорцем перетягування', async () => {
+    daySlots = [CHAIN_PART];
+    const { result } = await renderDay();
+
+    await act(() => result.current.handleDragEnd(dropOn('lift-2')));
+
+    expect(patchBody()).toEqual({
+      startAt: CHAIN_PART.chainStartAt,
+      endAt: CHAIN_PART.chainEndAt,
+      chainSpan: true,
+      liftId: 'lift-2',
+      dropMechanicNotOnLift: true,
+    });
+  });
+
+  // guards: BR-CAL-020
+  it('одноденний запис без наряду — як раніше, без chainSpan', async () => {
+    daySlots = [SLOT];
+    const { result } = await renderDay();
+
+    await act(() => result.current.handleDragEnd(dropOn('lift-1', 80)));
+
+    expect(patchBody()).toEqual({
+      startAt: kyiv('2026-10-20T11:00'),
+      endAt: kyiv('2026-10-20T12:00'),
+    });
   });
 });

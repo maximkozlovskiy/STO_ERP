@@ -32,7 +32,7 @@ import { CalendarSlotModal } from '../CalendarSlotModal';
 import { EMPTY_FORM } from '../useCalendarState';
 import type { SlotForm } from '../calendar.types';
 
-type Chain = { days: number; endAt: string; isFirst: boolean; isLast: boolean };
+type Chain = { days: number; startAt?: string; endAt: string; isFirst: boolean; isLast: boolean };
 
 interface HarnessProps {
   initial?: Partial<SlotForm>;
@@ -280,8 +280,8 @@ describe('CalendarSlotModal — ланцюжки (BR-CAL-019, BR-WO-024)', () =>
     expect(callsTo('/calendar/slots/cont', 'DELETE')).toHaveLength(1);
   });
 
-  // guards: BR-CAL-019
-  it('ручний ланцюжок — без блокування меж і підказки (сервер обробляє його поля як раніше)', () => {
+  // guards: BR-CAL-019, BR-CAL-020
+  it('ручний ланцюжок — без блокування меж і підказки про внутрішні межі', () => {
     render(
       <Harness
         date="2026-10-21"
@@ -308,6 +308,89 @@ describe('CalendarSlotModal — ланцюжки (BR-CAL-019, BR-WO-024)', () =>
     expect(pickerInput('Початок')).toBeDisabled();
     expect(pickerInput('Кінець')).not.toBeDisabled();
     expect(screen.getByTestId('slot-chain-hint').textContent).toMatch(/Запис на 2 дні/);
+  });
+});
+
+// Рішення власника 2026-11-13 (TECH-DEBT (б) №92): ручний ланцюжок, відкритий з будь-якого дня,
+// форма показує й змінює цілим — як новий запис: «Початок» — початок першого дня, «Кінець» —
+// кінець останнього, нормогодини між ними, частини за годинами філії; збереження — `chainSpan`.
+describe('CalendarSlotModal — ручний ланцюжок цілим (BR-CAL-020)', () => {
+  // Вт 20.10 10:00–18:00, ср 21.10 09:00–18:00, чт 22.10 09:00–12:00 — 20 нормогодин (09–18).
+  const MIDDLE_DAY: Chain = {
+    days: 3,
+    startAt: '2026-10-20T07:00:00.000Z',
+    endAt: '2026-10-22T09:00:00.000Z',
+    isFirst: false,
+    isLast: false,
+  };
+  const openMiddleDay = () =>
+    render(
+      <Harness
+        date="2026-10-21"
+        // Форма з хука (`slotToForm`): час початку першого дня й кінця останнього, нормогодини — форми.
+        initial={{ startAt: '10:00', endAt: '12:00', normoHours: '' }}
+        editingSlotId="mid"
+        editingChain={MIDDLE_DAY}
+      />,
+    );
+
+  // guards: BR-CAL-020
+  it('з середнього дня: межі всього ланцюжка, нормогодини між ними, усі частини', async () => {
+    openMiddleDay();
+
+    expect(screen.getByDisplayValue('20.10.2026 10:00')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('22.10.2026 12:00')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByPlaceholderText('напр. 1,5')).toHaveValue(20));
+    expect(warning()).toMatch(/3 дні: 20\.10 10:00–18:00, 21\.10 09:00–18:00, 22\.10 09:00–12:00/);
+    // Зайнятість — на межах ланцюжка; власні дні сервер не рахує (excludeSlotId — увесь ланцюжок).
+    await waitFor(() =>
+      expect(apiFetch).toHaveBeenCalledWith(
+        '/calendar/slots/check-conflicts',
+        expect.objectContaining({
+          body: expect.stringContaining('"startAt":"2026-10-20T07:00:00.000Z"'),
+        }),
+      ),
+    );
+  });
+
+  // guards: BR-CAL-020
+  it('нові нормогодини — новий кінець і 4 частини; «Оновити» шле межі ланцюжка з chainSpan', async () => {
+    openMiddleDay();
+    await waitFor(() => expect(screen.getByPlaceholderText('напр. 1,5')).toHaveValue(20));
+
+    fireEvent.change(screen.getByPlaceholderText('напр. 1,5'), { target: { value: '27' } });
+    expect(screen.getByDisplayValue('23.10.2026 10:00')).toBeInTheDocument();
+    expect(warning()).toMatch(/4 дні: .*23\.10 09:00–10:00/);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Оновити' }));
+    await waitFor(() => expect(callsTo('/calendar/slots/mid', 'PATCH')).toHaveLength(1));
+    const body = JSON.parse(callsTo('/calendar/slots/mid', 'PATCH')[0]![1]!.body!) as Record<
+      string,
+      unknown
+    >;
+    expect(body).toMatchObject({
+      startAt: '2026-10-20T07:00:00.000Z',
+      endAt: '2026-10-23T07:00:00.000Z',
+      chainSpan: true,
+    });
+  });
+
+  // guards: BR-CAL-020
+  it('контроль: одноденний ручний запис — без chainSpan, час дня сторінки', async () => {
+    render(
+      <Harness
+        initial={{ startAt: '10:00', endAt: '12:00', normoHours: '2' }}
+        editingSlotId="one"
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Оновити' }));
+    await waitFor(() => expect(callsTo('/calendar/slots/one', 'PATCH')).toHaveLength(1));
+    const body = JSON.parse(callsTo('/calendar/slots/one', 'PATCH')[0]![1]!.body!) as Record<
+      string,
+      unknown
+    >;
+    expect(body).not.toHaveProperty('chainSpan');
+    expect(body.startAt).toBe('2026-10-20T07:00:00.000Z');
   });
 });
 

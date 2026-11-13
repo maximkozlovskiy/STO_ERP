@@ -134,12 +134,19 @@ interface CalendarSlotModalProps {
    */
   editingWorkOrder?: { number: string; lockedStatus: string | null } | null;
   /**
-   * Запис — частина багатоденного ланцюжка (BR-CAL-019, BR-WO-024): `days` — скільки частин,
-   * `endAt` — кінець останньої, `isFirst` / `isLast` — чи це перший і останній день. Внутрішні
-   * межі не змінюються: початок не першого дня й кінець не останнього недоступні, нормогодин
-   * ланцюжок не перераховує. `null` — одноденний запис чи новий.
+   * Запис — частина багатоденного ланцюжка (BR-CAL-019, BR-WO-024, BR-CAL-020): `days` — скільки
+   * частин, `startAt` — початок першої, `endAt` — кінець останньої, `isFirst` / `isLast` — чи це
+   * перший і останній день. Ланцюжок НАРЯДУ: внутрішні межі не змінюються (початок не першого дня й
+   * кінець не останнього недоступні, нормогодин не перераховує). Ручний ланцюжок: форма з будь-якого
+   * дня показує й змінює межі всього ланцюжка. `null` — одноденний запис чи новий.
    */
-  editingChain?: { days: number; endAt: string; isFirst: boolean; isLast: boolean } | null;
+  editingChain?: {
+    days: number;
+    startAt?: string;
+    endAt: string;
+    isFirst: boolean;
+    isLast: boolean;
+  } | null;
   pendingSlot: PendingSlot | null;
   setPendingSlot: Dispatch<SetStateAction<PendingSlot | null>>;
 
@@ -509,12 +516,21 @@ export function CalendarSlotModal({
   );
 
   // Ланцюжок НАРЯДУ: внутрішні межі не змінюються (BR-WO-024 — сервер відповів би 400), нормогодини
-  // не перераховуються. Ручний ланцюжок — лише «Видалити всі N днів?» (BR-CAL-019); його поля сервер
-  // обробляє як раніше (якір із продовженням — 400 з причиною, продовження — окремо).
+  // не перераховуються. Ручний ланцюжок (BR-CAL-020) — як новий запис: «Початок» — початок першого
+  // дня, «Кінець» — кінець останнього, нормогодини між ними, частини за годинами філії підйомника;
+  // збереження з `chainSpan` перебудовує ланцюжок (видалення — «Видалити всі N днів?», BR-CAL-019).
   const woChain = editingChain !== null && editingWorkOrder !== null ? editingChain : null;
+  const manualChain = editingChain !== null && editingWorkOrder === null ? editingChain : null;
   const isChain = woChain !== null;
-  // Сервер ділить на дні новий запис і запис наряду; зміна ручного запису — один запис.
-  const splits = !editingSlotId || !!form.workOrderId;
+  // Сервер ділить на дні новий запис, запис наряду й ручний ланцюжок; зміна одноденного ручного
+  // запису — один запис.
+  const splits = !editingSlotId || !!form.workOrderId || manualChain !== null;
+  // День «Початку»: ручний ланцюжок — день першої частини (форму відкрито з будь-якого дня), інакше
+  // день сторінки. День «Кінця», поки нормогодини його не дають, — день останньої частини.
+  const chainLocal = (iso: string | undefined) =>
+    iso ? isoToKyivLocalDateTime(new Date(iso)).slice(0, 10) : '';
+  const startDay = (manualChain && chainLocal(manualChain.startAt)) || date;
+  const endDay = (manualChain && chainLocal(manualChain.endAt)) || date;
   // Наряд запису відкріплено у формі (×, зміна чи очищення клієнта) — збереження видалить запис.
   const unlinking = !!editingSlotId && editingWorkOrder !== null && !form.workOrderId;
 
@@ -526,14 +542,14 @@ export function CalendarSlotModal({
   const endFor = useCallback(
     (startHHmm: string, normoHours: string): string => {
       const nh = hoursOf(normoHours);
-      if (!date || !startHHmm || !(nh > 0)) return '';
-      const start = `${date}T${startHHmm}`;
+      if (!startDay || !startHHmm || !(nh > 0)) return '';
+      const start = `${startDay}T${startHHmm}`;
       if (splits) return slotEndFromHours(start, nh, wh);
       const [h, m] = startHHmm.split(':').map(Number);
       const total = Math.min((h ?? 0) * 60 + (m ?? 0) + Math.round(nh * 60), 23 * 60 + 59);
       return `${date}T${pad(Math.floor(total / 60))}:${pad(total % 60)}`;
     },
-    [date, splits, wh],
+    [date, startDay, splits, wh],
   );
 
   /**
@@ -549,15 +565,15 @@ export function CalendarSlotModal({
     [date, wh.endHour],
   );
 
-  const startLocal = date && form.startAt ? `${date}T${form.startAt}` : '';
+  const startLocal = startDay && form.startAt ? `${startDay}T${form.startAt}` : '';
   const plannedEnd = isChain ? '' : endFor(form.startAt, form.normoHours);
   // Кінець, який показує поле й шле форма: за нормогодинами, доки «Кінець» з ними збігається;
   // інакше — час поля на дні запису (ланцюжок, ручний ввід).
   const endLocal =
     plannedEnd && plannedEnd.slice(11, 16) === form.endAt
       ? plannedEnd
-      : date && form.endAt
-        ? `${date}T${form.endAt}`
+      : endDay && form.endAt
+        ? `${endDay}T${form.endAt}`
         : '';
   const endDate = endLocal ? endLocal.slice(0, 10) : date;
   // Частини, на які сервер поділить запис (BR-CAL-007, BR-CAL-016) — підказка «Буде розбито».
@@ -604,13 +620,46 @@ export function CalendarSlotModal({
     setPendingSlot,
   ]);
 
+  // BR-CAL-020: ручний ланцюжок — нормогодини між його межами за годинами філії підйомника, щойно
+  // форму відкрито, ланцюжок перечитано чи години філії змінились (обрано підйомник іншої філії,
+  // години довантажились). Поки межі у формі збережені — лише нормогодини (і знімок форми: це не
+  // незбережена зміна); змінені межі — кінець за нормогодинами, як у нового запису.
+  const chainHoursKey = manualChain
+    ? [
+        editingSlotId,
+        manualChain.startAt,
+        manualChain.endAt,
+        wh.startHour,
+        wh.endHour,
+        (wh.workDays ?? []).join(','),
+      ].join('|')
+    : null;
+  const chainHoursKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    const keyChanged = chainHoursKeyRef.current !== chainHoursKey;
+    chainHoursKeyRef.current = chainHoursKey;
+    if (!open || !manualChain?.startAt) return;
+    const savedStart = isoToKyivLocalDateTime(new Date(manualChain.startAt));
+    const savedEnd = isoToKyivLocalDateTime(new Date(manualChain.endAt));
+    const { startAt, endAt, normoHours } = formRef.current;
+    if (startAt === savedStart.slice(11, 16) && endAt === savedEnd.slice(11, 16)) {
+      if (!keyChanged && normoHours !== '') return;
+      const nh = slotHoursBetween(savedStart, savedEnd, wh);
+      if (nh && nh !== normoHours) adjustForm(f => ({ ...f, normoHours: nh }));
+      return;
+    }
+    if (!keyChanged || fieldsLocked) return;
+    const end = endFor(startAt, normoHours);
+    if (end && end.slice(11, 16) !== endAt) adjustForm(f => ({ ...f, endAt: end.slice(11, 16) }));
+  }, [chainHoursKey, open, manualChain, form.normoHours, wh, fieldsLocked, endFor, adjustForm]);
+
   // Conflict check when liftId / employeeId / times change
   useEffect(() => {
     if (!open) {
       clearConflict();
       return;
     }
-    const startIso = form.startAt ? kyivDateTimeToISO(date, form.startAt) : null;
+    const startIso = form.startAt ? kyivDateTimeToISO(startDay, form.startAt) : null;
     // Кінець — справжній (на дні завершення), як у збереженні: багатоденний запис перевіряється
     // на всіх днях, а не на «кінці» першого дня. Зміну ручного запису сервер не ділить (`splits`)
     // — 17:00–20:00 лишається 17:00–20:00, а не «завтра до 11:00».
@@ -637,7 +686,7 @@ export function CalendarSlotModal({
     endLocal,
     wh,
     splits,
-    date,
+    startDay,
     editingSlotId,
     checkConflict,
     clearConflict,
@@ -654,9 +703,10 @@ export function CalendarSlotModal({
    */
   const adoptRange = (() => {
     if (!editingSlotId || editingWorkOrder !== null || serviceType || isEditingPast) return null;
-    if (editingChain && !editingChain.isFirst) return null;
-    const end = editingChain ? isoToKyivLocalDateTime(new Date(editingChain.endAt)) : endLocal;
-    return startLocal && end ? { slotId: editingSlotId, start: startLocal, end } : null;
+    // Ручний ланцюжок — межі всього ланцюжка з будь-якого дня (BR-CAL-020).
+    return startLocal && endLocal
+      ? { slotId: editingSlotId, start: startLocal, end: endLocal }
+      : null;
   })();
   const [createWoEditId, setCreateWoEditId] = useState<string | undefined>(undefined);
 
@@ -795,7 +845,7 @@ export function CalendarSlotModal({
     }
     // DST-aware: kyivDateTimeToISO замість `new Date(...).toISOString()`
     // local-парсингу без TZ (+02 зима, +03 літо).
-    const startIso = kyivDateTimeToISO(date, form.startAt);
+    const startIso = kyivDateTimeToISO(startDay, form.startAt);
     // Справжній кінець — на дні завершення (№72: скільки завгодно днів, без обрізання до 23:59);
     // сервер ділить запис на ті самі частини, що показує підказка.
     const endIso = kyivDateTimeToISO(endDate, endLocal.slice(11, 16));
@@ -818,6 +868,8 @@ export function CalendarSlotModal({
       endAt: endIso,
       // Стерта примітка у зміні запису — `null` (Bug #901): без нього сервер лишав стару.
       notes: form.notes || (editingSlotId ? null : undefined),
+      // BR-CAL-020: межі форми — межі всього ручного ланцюжка, а не дня, з якого її відкрито.
+      ...(manualChain && !form.workOrderId && { chainSpan: true }),
     };
     try {
       if (editingSlotId) {
@@ -1071,7 +1123,7 @@ export function CalendarSlotModal({
             <div>
               <DateTimePickerInput
                 label={t('slot.fieldStart')}
-                value={date && form.startAt ? `${date}T${form.startAt}` : ''}
+                value={startLocal}
                 minHour={startMinHour}
                 maxHour={wh.endHour - 1}
                 // BR-WO-024: початок продовження — внутрішня межа ланцюжка.
@@ -1149,7 +1201,7 @@ export function CalendarSlotModal({
                 inputClassName="h-8 text-[13px]"
                 onChange={val => {
                   let endAt = val ? val.slice(11, 16) : '';
-                  let endFull = val ? `${date}T${endAt}` : '';
+                  let endFull = val ? `${endDay}T${endAt}` : '';
                   let normoHours: string | null = null;
                   if (val && startLocal && !isChain && val > startLocal) {
                     // Нормогодини — як їх прочитає сервер (кінець того ж дня понад закриття —

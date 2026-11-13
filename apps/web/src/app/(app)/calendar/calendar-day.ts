@@ -39,17 +39,16 @@ export function workOrderTimeLock(
 }
 
 /**
- * BR-WO-024 (TECH-DEBT (б) №66): межа запису наряду — внутрішня межа багатоденного ланцюжка, яку
- * не тягнуть: початок продовження (`parentSlotId`) і кінець не останнього дня (`chainEndAt` — кінець
- * останньої частини — пізніше за кінець цієї). Тягнуть лише початок першого дня й кінець
- * останнього; сервер на зміну внутрішньої межі відповідає 400 `err.calendar.chainInnerEdge`.
- * Ручний ланцюжок (без наряду) — `false`: його межі правило не охоплює (TECH-DEBT №92).
+ * BR-WO-024 / BR-CAL-020 (TECH-DEBT (б) №66, №92): межа запису — внутрішня межа багатоденного
+ * ланцюжка (наряду чи ручного), яку не тягнуть: початок продовження (`parentSlotId`) і кінець не
+ * останнього дня (`chainEndAt` — кінець останньої частини — пізніше за кінець цієї). Тягнуть лише
+ * початок першого дня й кінець останнього; сервер на зміну внутрішньої межі відповідає 400
+ * `err.calendar.chainInnerEdge`.
  */
-export function workOrderChainInnerEdge(
-  slot: Pick<CalendarSlot, 'workOrderId' | 'parentSlotId' | 'endAt' | 'chainEndAt'>,
+export function chainInnerEdge(
+  slot: Pick<CalendarSlot, 'parentSlotId' | 'endAt' | 'chainEndAt'>,
   edge: 'start' | 'end',
 ): boolean {
-  if (!slot.workOrderId) return false;
   if (edge === 'start') return !!slot.parentSlotId;
   return !!slot.chainEndAt && new Date(slot.chainEndAt).getTime() > new Date(slot.endAt).getTime();
 }

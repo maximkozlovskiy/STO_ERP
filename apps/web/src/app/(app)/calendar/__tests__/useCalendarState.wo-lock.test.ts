@@ -222,13 +222,12 @@ describe('useCalendarState — внутрішні межі ланцюжка на
     expect(writes().map(c => c[0])).toEqual(['/calendar/slots/s-1']);
   });
 
-  // guards: BR-WO-024
-  it('ручний ланцюжок (без наряду) — правило не стосується: обидві межі тягнуться (TECH-DEBT №92)', async () => {
+  // guards: BR-CAL-020
+  it('ручний ланцюжок (без наряду) — внутрішні межі так само без запиту (TECH-DEBT №92)', async () => {
+    const manual = { workOrderId: null, workOrderNumber: undefined, workOrderStatus: null };
     daySlots = [
       woSlot('DRAFT', {
-        workOrderId: null,
-        workOrderNumber: undefined,
-        workOrderStatus: null,
+        ...manual,
         parentSlotId: 'anchor',
         chainDays: 3,
         chainEndAt: NEXT_DAY_END,
@@ -238,7 +237,27 @@ describe('useCalendarState — внутрішні межі ланцюжка на
 
     await resize(hook, 'start', 100);
     await resize(hook, 'end', 100);
-    expect(writes()).toHaveLength(2);
+    expect(writes()).toEqual([]);
+  });
+
+  // guards: BR-CAL-020
+  it('кінець останнього дня ручного ланцюжка — PATCH частини без chainSpan (межі рахує сервер)', async () => {
+    const end = new Date('2026-10-20T11:00:00+03:00').toISOString();
+    const manual = { workOrderId: null, workOrderNumber: undefined, workOrderStatus: null };
+    daySlots = [
+      woSlot('DRAFT', {
+        ...manual,
+        parentSlotId: 'anchor',
+        chainDays: 2,
+        chainEndAt: end,
+        endAt: end,
+      }),
+    ];
+    const hook = await renderDay();
+
+    await resize(hook, 'end', 100);
+    expect(writes().map(c => c[0])).toEqual(['/calendar/slots/s-1']);
+    expect(JSON.parse(String(writes()[0]![1]!.body))).not.toHaveProperty('chainSpan');
   });
 
   // guards: BR-WO-024

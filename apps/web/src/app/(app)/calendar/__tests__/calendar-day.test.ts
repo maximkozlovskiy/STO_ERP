@@ -9,7 +9,7 @@ import {
   nowLinePercent,
   pastPercent,
   slotDeleteConfirmOptions,
-  workOrderChainInnerEdge,
+  chainInnerEdge,
 } from '../calendar-day';
 import { chainEnds } from '../calendar-month';
 import type { CalendarSlot } from '../calendar.types';
@@ -230,7 +230,7 @@ describe('slotDeleteConfirmOptions — ланцюжок ручного запи�
   });
 });
 
-describe('workOrderChainInnerEdge — внутрішні межі ланцюжка наряду (BR-WO-024, №66)', () => {
+describe('chainInnerEdge — внутрішні межі ланцюжка наряду й ручного запису (BR-WO-024, BR-CAL-020)', () => {
   const end = iso('2026-10-15T18:00');
   const nextEnd = iso('2026-10-16T12:00');
   const wo = { workOrderId: 'wo-1', endAt: end };
@@ -238,29 +238,36 @@ describe('workOrderChainInnerEdge — внутрішні межі ланцюжк
   // guards: BR-WO-024
   it('перший день: початок тягнеться, кінець (ланцюжок далі) — ні', () => {
     const anchor = { ...wo, parentSlotId: null, chainEndAt: nextEnd };
-    expect(workOrderChainInnerEdge(anchor, 'start')).toBe(false);
-    expect(workOrderChainInnerEdge(anchor, 'end')).toBe(true);
+    expect(chainInnerEdge(anchor, 'start')).toBe(false);
+    expect(chainInnerEdge(anchor, 'end')).toBe(true);
   });
 
   // guards: BR-WO-024
   it('середній день — жодна межа; останній — лише кінець', () => {
     const middle = { ...wo, parentSlotId: 'a', chainEndAt: nextEnd };
-    expect(workOrderChainInnerEdge(middle, 'start')).toBe(true);
-    expect(workOrderChainInnerEdge(middle, 'end')).toBe(true);
+    expect(chainInnerEdge(middle, 'start')).toBe(true);
+    expect(chainInnerEdge(middle, 'end')).toBe(true);
     const last = { ...wo, parentSlotId: 'a', chainEndAt: end };
-    expect(workOrderChainInnerEdge(last, 'start')).toBe(true);
-    expect(workOrderChainInnerEdge(last, 'end')).toBe(false);
+    expect(chainInnerEdge(last, 'start')).toBe(true);
+    expect(chainInnerEdge(last, 'end')).toBe(false);
   });
 
   // guards: BR-WO-024
-  it('одноденний запис наряду і ручний ланцюжок (без наряду) — обидві межі тягнуться', () => {
+  it('одноденний запис — обидві межі тягнуться', () => {
     const single = { ...wo, parentSlotId: null, chainEndAt: end };
-    expect(workOrderChainInnerEdge(single, 'start')).toBe(false);
-    expect(workOrderChainInnerEdge(single, 'end')).toBe(false);
+    expect(chainInnerEdge(single, 'start')).toBe(false);
+    expect(chainInnerEdge(single, 'end')).toBe(false);
     // Відповідь без полів ланцюжка (стара збірка API) — як одноденний.
-    expect(workOrderChainInnerEdge({ ...wo }, 'end')).toBe(false);
-    const manual = { workOrderId: null, endAt: end, parentSlotId: 'a', chainEndAt: nextEnd };
-    expect(workOrderChainInnerEdge(manual, 'start')).toBe(false);
-    expect(workOrderChainInnerEdge(manual, 'end')).toBe(false);
+    expect(chainInnerEdge({ ...wo }, 'end')).toBe(false);
+  });
+
+  // guards: BR-CAL-020
+  it('ручний ланцюжок (без наряду) — внутрішні межі сховані так само, крайні тягнуться', () => {
+    const manual = { workOrderId: null, endAt: end, chainEndAt: nextEnd };
+    expect(chainInnerEdge({ ...manual, parentSlotId: null }, 'start')).toBe(false);
+    expect(chainInnerEdge({ ...manual, parentSlotId: null }, 'end')).toBe(true);
+    const last = { workOrderId: null, endAt: nextEnd, chainEndAt: nextEnd, parentSlotId: 'a' };
+    expect(chainInnerEdge(last, 'start')).toBe(true);
+    expect(chainInnerEdge(last, 'end')).toBe(false);
   });
 });

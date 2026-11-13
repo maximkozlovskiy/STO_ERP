@@ -103,6 +103,23 @@ export function slotHoursBetween(start: string, end: string, wh: WorkHoursWindow
 }
 
 /**
+ * Кінець багатоденного ланцюжка, перенесеного на новий початок (BR-CAL-020, перетягування в «Дні»):
+ * ті самі нормогодини, що між старими межами `start`..`end` за годинами філії старого підйомника
+ * (`from`), від нового початку за годинами філії нового (`to`) — як форма рахує кінець за
+ * нормогодинами. '' — межі невалідні.
+ */
+export function shiftedChainEnd(
+  start: string,
+  end: string,
+  newStart: string,
+  from: WorkHoursWindow,
+  to: WorkHoursWindow,
+): string {
+  const hours = Number(slotHoursBetween(start, end, from));
+  return hours > 0 ? slotEndFromHours(newStart, hours, to) : '';
+}
+
+/**
  * Справжній кінець запису (як серверний `overflowEnd`): кінець на ТОМУ Ж дні після закриття
  * робочого дня (ручний вибір кінця 20:00) — залишок після закриття переходить на наступні робочі
  * дні; інакше — як є.
