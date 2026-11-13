@@ -234,6 +234,8 @@ export function procurementHarness(opts: ProcurementOptions = {}) {
     { enqueueInitial: vi.fn().mockResolvedValue(undefined) } as never,
     {
       requireBaseCurrencyId: vi.fn().mockResolvedValue('cur-uah'),
+      // BR-SUPPAY-018: прийом питає, чи валюта замовлення базова — замовлення цього світу гривневі.
+      sameCurrency: vi.fn().mockResolvedValue(true),
       resolveBaseConversion: vi.fn((_o: string, _c: string, _d: Date, amount: number) =>
         Promise.resolve({ rateUsed: 1, amountBase: amount }),
       ),

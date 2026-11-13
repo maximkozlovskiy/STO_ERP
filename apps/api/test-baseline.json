@@ -1485,6 +1485,7 @@
    "BankReconciliationService.reconcile — SUPPLIER_PAYMENT, прив’язка до наявної оплати оплата чужої організації → 404, рядок UNMATCHED",
    "BankReconciliationService.reconcile — SUPPLIER_PAYMENT, прив’язка до наявної оплати оплата ще чернетка (DRAFT) → 400, рядок UNMATCHED, нічого не проводиться",
    "BankReconciliationService.reconcile — SUPPLIER_PAYMENT, прив’язка до наявної оплати оплати з таким id немає → 404",
+   "BankReconciliationService.reconcile — SUPPLIER_PAYMENT, прив’язка до наявної оплати оплату сторновано між перевіркою і транзакцією → 400, рядок UNMATCHED",
    "BankReconciliationService.reconcile — SUPPLIER_PAYMENT, прив’язка до наявної оплати проведена оплата з того самого рахунку на ту саму суму → рядок прив’язано; нічого не проводиться",
    "BankReconciliationService.reconcile — SUPPLIER_PAYMENT, прив’язка до наявної оплати унікальний індекс спрацював на записі (P2002) → 409, а не 500"
   ],
@@ -5949,6 +5950,21 @@
    "PurchaseOrdersService.applyPricing ціна змінилась → виклик $transaction([good.updateMany, priceHistory.createMany])",
    "PurchaseOrdersService.applyPricing ціна не змінилась (різниця < 0.001) → skip: не пише ні good.updateMany ні priceHistory"
   ],
+  "apps/api/src/modules/purchase-orders/purchase-orders.receive-fx.spec.ts": [
+   "PurchaseOrdersService.receive — курсова різниця передоплати (BR-SUPPAY-018) «Отримано» без приймання (нарахування немає) → повна оплата FX не пише",
+   "PurchaseOrdersService.receive — курсова різниця передоплати (BR-SUPPAY-018) «оплата → прийом» і «прийом → оплата» дають ту саму курсову різницю",
+   "PurchaseOrdersService.receive — курсова різниця передоплати (BR-SUPPAY-018) базова валюта з переплатою: ні прийом, ні проведення FX не пишуть",
+   "PurchaseOrdersService.receive — курсова різниця передоплати (BR-SUPPAY-018) валютна переплата: FX лише на сплачене в межах нарахованого, надлишок лишається авансом",
+   "PurchaseOrdersService.receive — курсова різниця передоплати (BR-SUPPAY-018) валюту бази звірено ДО транзакції прийому",
+   "PurchaseOrdersService.receive — курсова різниця передоплати (BR-SUPPAY-018) замовлення в базовій валюті → FX немає",
+   "PurchaseOrdersService.receive — курсова різниця передоплати (BR-SUPPAY-018) неповна оплата (paidAt немає) → FX немає",
+   "PurchaseOrdersService.receive — курсова різниця передоплати (BR-SUPPAY-018) передоплачене валютне замовлення → «Отримано» → FX_GAIN на різницю нараховано − сплачено",
+   "PurchaseOrdersService.receive — курсова різниця передоплати (BR-SUPPAY-018) повторний прийом отриманого замовлення → 400, FX не дублюється",
+   "PurchaseOrdersService.receive — курсова різниця передоплати (BR-SUPPAY-018) сплачено в базовій валюті більше, ніж нараховано → FX_LOSS",
+   "PurchaseOrdersService.receive — курсова різниця передоплати (BR-SUPPAY-018) у транзакції прийому, після SUPPLIER_CHARGE і запису статусу",
+   "PurchaseOrdersService.receive — курсова різниця передоплати (BR-SUPPAY-018) частковий прийом («Частково») → FX немає",
+   "PurchaseOrdersService.receive — курсова різниця передоплати (BR-SUPPAY-018) чиста FX замовлення вже ≠ 0 → другої курсової різниці не пише"
+  ],
   "apps/api/src/modules/purchase-orders/purchase-orders.receive-ledger.spec.ts": [
    "PurchaseOrdersService.receive — CAS рядків → RECEIPT → SUPPLIER_CHARGE Bug #995: статус замовлення змінився до запису → CAS за прочитаним статусом, 400 і відкат прийому",
    "PurchaseOrdersService.receive — CAS рядків → RECEIPT → SUPPLIER_CHARGE CAS ДРУГОГО рядка не зійшовся → throw; жодного RECEIPT-руху (і для першого рядка теж) і без SUPPLIER_CHARGE",
@@ -7262,6 +7278,10 @@
    "supplierPaymentCreateSchema — межі суми (Bug #846) найбільша сума, яку вміщує колонка, проходить",
    "supplierPaymentCreateSchema — межі суми (Bug #846) сума понад місткість Decimal(12,2) → відмова на полі amount, а не 500 від бази"
   ],
+  "apps/api/src/modules/supplier-payments/supplier-payments.fx-compensation.integration.spec.ts": [
+   "Міграція компенсації хибних FX передоплати (BR-SUPPAY-019) — жива БД, з відкатом «Частково» з хибною FX після нарахування: доповнення зводить FX до 0, «Отримано» не чіпає",
+   "Міграція компенсації хибних FX передоплати (BR-SUPPAY-019) — жива БД, з відкатом хибна FX без відкату компенсована, відкочена й правильна — ні; повтор нічого не пише"
+  ],
   "apps/api/src/modules/supplier-payments/supplier-payments.no-fiscal-loyalty.spec.ts": [
    "BR-SUPPAY-007 — оплата постачальнику без ПРРО і без лояльності детектор бачить порушення: BullModule.registerQueue({ name: 'loyalty' }),",
    "BR-SUPPAY-007 — оплата постачальнику без ПРРО і без лояльності детектор бачить порушення: await this.loyalty.queueEarn(orgId, supplierId, amount, id);",
@@ -7325,6 +7345,34 @@
    "SupplierPaymentsService.confirm — дата курсу (opts.rateDate) з rateDate: проведення взаєморозрахунків отримує date = rateDate",
    "SupplierPaymentsService.confirm — дата курсу (opts.rateDate) з rateDate: проведення отримує той самий курс і базову суму, що записано в оплату",
    "SupplierPaymentsService.confirm — дата курсу (opts.rateDate) з порожнім opts — стара поведінка: курс і дата проведення на поточний момент"
+  ],
+  "apps/api/src/modules/supplier-payments/supplier-payments.reverse-bank.spec.ts": [
+   "POST /supplier-payments/:id/reverse — HTTP-контракт (BR-SUPPAY-017) ACCOUNTANT → 200; сервіс отримує організацію, оплату, причину й автора",
+   "POST /supplier-payments/:id/reverse — HTTP-контракт (BR-SUPPAY-017) ADMIN → 200; сервіс отримує організацію, оплату, причину й автора",
+   "POST /supplier-payments/:id/reverse — HTTP-контракт (BR-SUPPAY-017) MECHANIC → 403",
+   "POST /supplier-payments/:id/reverse — HTTP-контракт (BR-SUPPAY-017) OWNER → 200; сервіс отримує організацію, оплату, причину й автора",
+   "POST /supplier-payments/:id/reverse — HTTP-контракт (BR-SUPPAY-017) RECEPTIONIST → 403",
+   "POST /supplier-payments/:id/reverse — HTTP-контракт (BR-SUPPAY-017) STOREKEEPER → 403",
+   "POST /supplier-payments/:id/reverse — HTTP-контракт (BR-SUPPAY-017) без Idempotency-Key → 400, сторно не викликається",
+   "POST /supplier-payments/:id/reverse — HTTP-контракт (BR-SUPPAY-017) повтор із тим самим ключем → та сама відповідь, сторно рівно раз",
+   "POST /supplier-payments/:id/reverse — HTTP-контракт (BR-SUPPAY-017) причина {\"reason\":\"   \"} → 400 до сервісу",
+   "POST /supplier-payments/:id/reverse — HTTP-контракт (BR-SUPPAY-017) причина {\"reason\":\"\"} → 400 до сервісу",
+   "POST /supplier-payments/:id/reverse — HTTP-контракт (BR-SUPPAY-017) причина {\"reason\":\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\"} → 400 до сервісу",
+   "POST /supplier-payments/:id/reverse — HTTP-контракт (BR-SUPPAY-017) причина {} → 400 до сервісу",
+   "SupplierPaymentsService.reverseBankPayment — відмови до запису (BR-SUPPAY-017) оплата блокується (FOR UPDATE) до перевірки рядка виписки",
+   "SupplierPaymentsService.reverseBankPayment — відмови до запису (BR-SUPPAY-017) оплата з каси → 400 «сторнуйте її касову операцію»",
+   "SupplierPaymentsService.reverseBankPayment — відмови до запису (BR-SUPPAY-017) оплата іншої організації → 404, нічого не записано",
+   "SupplierPaymentsService.reverseBankPayment — відмови до запису (BR-SUPPAY-017) оплату створено з рядка виписки (він же на неї вказує) → та сама відмова",
+   "SupplierPaymentsService.reverseBankPayment — відмови до запису (BR-SUPPAY-017) рядок виписки прив’язано до оплати → 400 «спершу зніміть рознесення рядка»",
+   "SupplierPaymentsService.reverseBankPayment — відмови до запису (BR-SUPPAY-017) рядок виписки іншої оплати чи іншої організації не заважає",
+   "SupplierPaymentsService.reverseBankPayment — відмови до запису (BR-SUPPAY-017) статус CANCELLED → 400 «оплата змінилась», нічого не записано",
+   "SupplierPaymentsService.reverseBankPayment — відмови до запису (BR-SUPPAY-017) статус DRAFT → 400 «оплата змінилась», нічого не записано",
+   "SupplierPaymentsService.reverseBankPayment — відмови до запису (BR-SUPPAY-017) уже сторновано → 400 «Оплату постачальнику вже сторновано»",
+   "SupplierPaymentsService.reverseBankPayment — сторно (BR-SUPPAY-017) «сплачено» замовлення назад, paidAt знято, курсова різниця повної оплати відкочена",
+   "SupplierPaymentsService.reverseBankPayment — сторно (BR-SUPPAY-017) подія статусу «Проведено» → «Сторновано» з автором",
+   "SupplierPaymentsService.reverseBankPayment — сторно (BR-SUPPAY-017) порядок блокувань той самий, що в проведенні: оплата → рахунок розрахунків → замовлення",
+   "SupplierPaymentsService.reverseBankPayment — сторно (BR-SUPPAY-017) причина обрізається; порожня (пробіли) → 400 до транзакції",
+   "SupplierPaymentsService.reverseBankPayment — сторно (BR-SUPPAY-017) проводка SUPPLIER_PAYMENT_CANCEL на документ-оплату, з курсом оригіналу й причиною; у транзакції"
   ],
   "apps/api/src/modules/supplier-payments/supplier-payments.reverse.spec.ts": [
    "SupplierPaymentsService.reverse — «сплачено» замовлення «сплачено» не йде нижче нуля (розійшлось раніше: 250 при оплаті 400) → 0",
