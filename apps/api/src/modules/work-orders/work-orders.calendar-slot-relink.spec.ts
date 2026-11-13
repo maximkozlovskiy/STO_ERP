@@ -209,6 +209,42 @@ describe("Перев'язка запису на інший наряд (BR-WO-028
     expect(h.prisma.$queryRaw.mock.calls[0]!.slice(1)).toEqual([ORG, [WO_ID, OTHER_WO]]);
   });
 
+  // guards: BR-WO-028, BR-WO-020
+  it('запис без наряду забрав інший наряд між читанням і транзакцією перевʼязки → 400, запис лишився в того наряду', async () => {
+    const h = planned({
+      extra: [
+        slotRow('plain', {
+          workOrderId: null,
+          counterpartyId: CLIENT,
+          startAt: kyiv(D2, '13:00'),
+          endAt: kyiv(D2, '14:00'),
+        }),
+      ],
+    });
+    // Перев'язка прочитала запис вільним, а наряд, створений із цього запису (BR-WO-020), уже
+    // забрав його собі до транзакції перев'язки.
+    const findFirst = h.calendarSlot.findFirst.getMockImplementation()!;
+    h.calendarSlot.findFirst.mockImplementation(async (args: { where: { id?: unknown } }) => {
+      const row = structuredClone(await findFirst(args as never));
+      const plain = slotOf(h, 'plain');
+      if (args.where.id === 'plain' && plain.workOrderId === null) plain.workOrderId = WO_ID;
+      return row;
+    });
+    const otherBefore = structuredClone(woOf(h, OTHER_WO));
+
+    const err = await h.service
+      .updateCalendarSlot(ORG, 'plain', { workOrderId: OTHER_WO }, USER)
+      .then(
+        () => null,
+        (e: unknown) => e,
+      );
+
+    expect(err).toBeInstanceOf(BadRequestException);
+    expect((err as Error).message).toBe(msg('err.calendar.slotConcurrentChange'));
+    expect(slotOf(h, 'plain')).toMatchObject({ workOrderId: WO_ID, deletedAt: null });
+    expect(woOf(h, OTHER_WO)).toEqual(otherBefore);
+  });
+
   // guards: BR-WO-028
   it('дати нового наряду зайняті на його підйомнику → 400 «зайнятий», ні наряди, ні записи не змінено', async () => {
     const h = planned({

@@ -1208,14 +1208,19 @@ export class WorkOrdersService {
           },
           data: { deletedAt: new Date() },
         });
-        await tx.calendarSlot.updateMany({
-          where: { orgId, id: { in: chainIds }, deletedAt: null },
+        // CAS за прочитаним нарядом запису: між читанням і транзакцією ланцюжок могли забрати
+        // (наряд, створений із цього запису, BR-WO-020; паралельна перев'язка) чи перебудувати —
+        // інакше перев'язка мовчки відібрала б запис у наряду з датами (BR-WO-020).
+        const relinked = await tx.calendarSlot.updateMany({
+          where: { orgId, id: { in: chainIds }, deletedAt: null, workOrderId: oldWorkOrderId },
           data: {
             workOrderId: newWorkOrderId,
             counterpartyId: target.counterpartyId,
             vehicleId: target.vehicleId,
           },
         });
+        if (relinked.count !== chainIds.length)
+          throw new BadRequestException(err('err.calendar.slotConcurrentChange'));
         if (oldWorkOrderId && previousHours)
           released = await this.releaseWorkOrderDates(
             tx,

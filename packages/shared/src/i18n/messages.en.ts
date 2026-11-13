@@ -824,6 +824,8 @@ export const en: Record<string, string> = {
     'The booking spans several days — its first day cannot be changed: edit the following days separately, or delete the whole booking and create it again',
   'err.calendar.chainInnerEdge':
     'An inner edge of a multi-day booking cannot be changed — change the start of the first day or the end of the last one',
+  'err.calendar.slotConcurrentChange':
+    'The calendar booking was changed by a concurrent operation — refresh the calendar and try again',
   'err.calendar.slotNotFound': 'Slot not found',
   'err.calendar.serviceSlotNoClient':
     'A service record (maintenance, break, meeting) cannot be linked to a client, vehicle or work order',
