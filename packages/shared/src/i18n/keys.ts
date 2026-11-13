@@ -654,6 +654,8 @@ export const VALIDATION_KEYS = [
   'err.supplierPayment.orderNotPayable',
   'err.supplierPayment.alreadyReversed',
   'err.supplierPayment.reversalStateChanged',
+  'err.supplierPayment.reverseViaCashDesk',
+  'err.supplierPayment.reverseUnreconcileFirst',
   // Exception-повідомлення: purchase-orders-модуль
   'err.deliveryProvider.invalidCode',
   'err.deliveryProvider.unknown',

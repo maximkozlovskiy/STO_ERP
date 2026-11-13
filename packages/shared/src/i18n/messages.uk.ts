@@ -533,6 +533,10 @@ export const uk: Record<string, string> = {
   'err.supplierPayment.alreadyReversed': 'Оплату постачальнику вже сторновано',
   'err.supplierPayment.reversalStateChanged':
     'Оплата постачальнику змінилась — оновіть сторінку й повторіть',
+  'err.supplierPayment.reverseViaCashDesk':
+    'Оплату з каси сторнують у касі — сторнуйте її касову операцію',
+  'err.supplierPayment.reverseUnreconcileFirst':
+    'Оплата рознесена з рядка банківської виписки — спершу зніміть рознесення рядка',
 
   // ── Exception-повідомлення: purchase-orders-модуль ──
   'err.deliveryProvider.invalidCode': 'Некоректний код служби',

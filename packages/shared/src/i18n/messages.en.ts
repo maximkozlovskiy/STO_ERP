@@ -542,6 +542,10 @@ export const en: Record<string, string> = {
   'err.supplierPayment.alreadyReversed': 'The supplier payment has already been reversed',
   'err.supplierPayment.reversalStateChanged':
     'The supplier payment has changed — refresh and retry',
+  'err.supplierPayment.reverseViaCashDesk':
+    'A cash payment is reversed in the cash desk — reverse its cash operation',
+  'err.supplierPayment.reverseUnreconcileFirst':
+    'The payment is reconciled with a bank statement line — unreconcile the line first',
 
   // ── Exception messages: purchase-orders module ──
   'err.deliveryProvider.invalidCode': 'Invalid service code',
