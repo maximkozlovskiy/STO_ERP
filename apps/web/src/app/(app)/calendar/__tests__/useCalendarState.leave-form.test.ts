@@ -2,6 +2,8 @@
 // №58): будь-який перехід на іншу дату чи місяць — форма без змін закривається, з незбереженими
 // змінами — «Закрити форму без збереження?», відмова лишає і форму, і дату. Знімок форми — на
 // відкритті; поправки, які форма робить сама, і перечитаний запис (Bug #884) змінами не є.
+// Інші входи, що закривають форму (рішення власника 2026-11-13, TECH-DEBT (б) №93): клік по сітці
+// дня й малювання нового запису, «+ Слот», «Статистика» — той самий сторож; «Скасувати» — без питання.
 
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { createQueryWrapper } from '@/__tests__/query-utils';
@@ -244,6 +246,148 @@ describe('useCalendarState — зміна дати при відкритій ф�
     await waitFor(() => expect(hook.result.current.form.startAt).toBe('13:00'));
 
     act(() => hook.result.current.nextDay());
+    expect(dialog(hook).open).toBe(false);
+    expect(hook.result.current.showAdd).toBe(false);
+  });
+});
+
+/** Сітка «Дня» в DOM: рядок підйомника всередині `timelineRef` — ціль `pointerdown` малювання. */
+function mountGrid(hook: Hook): HTMLElement {
+  const timeline = document.createElement('div');
+  const row = document.createElement('div');
+  row.dataset.liftId = 'lift-1';
+  timeline.appendChild(row);
+  document.body.appendChild(timeline);
+  (hook.result.current.timelineRef as { current: unknown }).current = timeline;
+  return row;
+}
+
+const pointer = (el: HTMLElement, type: 'pointerdown' | 'pointerup') =>
+  act(() => {
+    el.dispatchEvent(new MouseEvent(type, { button: 0, bubbles: true, clientX: 300 }));
+  });
+
+async function answer(hook: Hook, ok: boolean) {
+  await act(async () => {
+    const d = dialog(hook);
+    if (d.open) (ok ? d.onConfirm : d.onCancel)();
+  });
+}
+
+describe('useCalendarState — інші входи, що закривають форму (BR-CAL-018, TECH-DEBT (б) №93)', () => {
+  afterEach(() => {
+    document.body.innerHTML = '';
+  });
+
+  // guards: BR-CAL-018
+  it('клік по вільному місцю сітки: незбережена форма — питання, малювання не починається', async () => {
+    const hook = await renderState();
+    const row = mountGrid(hook);
+    openDirtyNew(hook);
+
+    pointer(row, 'pointerdown');
+    expect(dialog(hook).open).toBe(true);
+    expect(hook.result.current.ghost).toBeNull();
+    await answer(hook, false);
+    expect(hook.result.current.showAdd).toBe(true);
+    expect(hook.result.current.form.notes).toBe('Не зберігати');
+    pointer(row, 'pointerup');
+    expect(hook.result.current.pendingSlot).toBeNull();
+
+    pointer(row, 'pointerdown');
+    await answer(hook, true);
+    pointer(row, 'pointerup');
+    expect(hook.result.current.showAdd).toBe(false);
+    expect(hook.result.current.ghost).toBeNull();
+
+    // Форма закрита — наступний клік малює новий запис, як раніше.
+    pointer(row, 'pointerdown');
+    expect(hook.result.current.ghost).not.toBeNull();
+    pointer(row, 'pointerup');
+    expect(hook.result.current.showAdd).toBe(true);
+    expect(hook.result.current.pendingSlot).toMatchObject({ liftId: 'lift-1' });
+    expect(hook.result.current.form.notes).toBe('');
+  });
+
+  // guards: BR-CAL-018
+  it('клік по сітці при формі без змін — форма закривається без питання', async () => {
+    const hook = await renderState();
+    const row = mountGrid(hook);
+    act(() => hook.result.current.toggleNewSlot());
+
+    pointer(row, 'pointerdown');
+    expect(dialog(hook).open).toBe(false);
+    expect(hook.result.current.showAdd).toBe(false);
+    expect(hook.result.current.ghost).toBeNull();
+  });
+
+  // guards: BR-CAL-018
+  it('«+ Слот» при незбереженій формі — питання; «Залишитися» лишає, «Закрити форму» закриває', async () => {
+    const hook = await renderState();
+    openDirtyNew(hook);
+
+    act(() => hook.result.current.toggleNewSlot());
+    expect(dialog(hook).open).toBe(true);
+    await answer(hook, false);
+    expect(hook.result.current.showAdd).toBe(true);
+    expect(hook.result.current.form.notes).toBe('Не зберігати');
+
+    act(() => hook.result.current.toggleNewSlot());
+    await answer(hook, true);
+    expect(hook.result.current.showAdd).toBe(false);
+
+    // Наступне «+ Слот» — порожня форма, без питання.
+    act(() => hook.result.current.toggleNewSlot());
+    expect(dialog(hook).open).toBe(false);
+    expect(hook.result.current.showAdd).toBe(true);
+    expect(hook.result.current.form.notes).toBe('');
+
+    // Без змін — «+ Слот» закриває одразу.
+    act(() => hook.result.current.toggleNewSlot());
+    expect(dialog(hook).open).toBe(false);
+    expect(hook.result.current.showAdd).toBe(false);
+  });
+
+  // guards: BR-CAL-018
+  it('«Статистика» при незбереженій формі — питання; «День» ↔ «Місяць» форму лишає без питання', async () => {
+    const hook = await renderState();
+    openDirtyNew(hook);
+    const toStats = () => replace.mock.calls.some(c => String(c[0]).includes('view=stats'));
+
+    act(() => hook.result.current.switchView('month'));
+    expect(dialog(hook).open).toBe(false);
+    expect(hook.result.current.showAdd).toBe(true);
+    expect(replace).toHaveBeenCalledWith(expect.stringContaining('view=month'), expect.anything());
+
+    act(() => hook.result.current.switchView('stats'));
+    expect(dialog(hook).open).toBe(true);
+    await answer(hook, false);
+    expect(toStats()).toBe(false);
+    expect(hook.result.current.showAdd).toBe(true);
+    expect(hook.result.current.form.notes).toBe('Не зберігати');
+
+    act(() => hook.result.current.switchView('stats'));
+    await answer(hook, true);
+    expect(toStats()).toBe(true);
+    expect(hook.result.current.showAdd).toBe(false);
+    expect(hook.result.current.editingSlotId).toBeNull();
+  });
+
+  // guards: BR-CAL-018
+  it('«Статистика» при формі без змін — закриває форму без питання', async () => {
+    const hook = await renderState();
+    act(() => hook.result.current.toggleNewSlot());
+    act(() => hook.result.current.switchView('stats'));
+    expect(dialog(hook).open).toBe(false);
+    expect(hook.result.current.showAdd).toBe(false);
+    expect(replace).toHaveBeenCalledWith(expect.stringContaining('view=stats'), expect.anything());
+  });
+
+  // guards: BR-CAL-018
+  it('«Скасувати» — свідома відмова: незбережена форма закривається одразу, без питання', async () => {
+    const hook = await renderState();
+    openDirtyNew(hook);
+    act(() => hook.result.current.handleModalClose());
     expect(dialog(hook).open).toBe(false);
     expect(hook.result.current.showAdd).toBe(false);
   });

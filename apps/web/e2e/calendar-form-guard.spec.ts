@@ -7,7 +7,8 @@ test.use({ storageState: 'e2e/.auth/admin.json', viewport: { width: 1280, height
  * Форма запису календаря і пікер дати-часу (рішення власника 2026-10-30), через браузер:
  *  1. зміна дати при відкритій формі (BR-CAL-018, TECH-DEBT (б) №58): з незбереженими змінами —
  *     «Закрити форму без збереження?», відмова лишає і форму, і дату; без змін — форма просто
- *     закривається. «День» (‹ ›) і «Місяць» (місяць ‹ ›);
+ *     закривається. «День» (‹ ›) і «Місяць» (місяць ‹ ›); інші входи (TECH-DEBT (б) №93) — «+ Слот»,
+ *     клік по вільному місцю сітки (малювання нового запису), «Статистика»; «Скасувати» — без питання;
  *  2. пікер дати-часу біля нижнього краю вікна 720 px (TECH-DEBT (б) №74) — над полем, у межах
  *     вікна; прокрутка картки, що зрушила поле, закриває попап.
  *
@@ -39,6 +40,14 @@ const noteField = (form: Locator) =>
 
 async function typeNote(form: Locator) {
   await noteField(form).fill(NOTE);
+}
+
+/** Вільне місце доріжки першого підйомника — біля кінця робочого дня (записів день не має). */
+async function clickGrid(page: Page) {
+  const lane = page.locator('[data-lift-id]').first();
+  const box = await lane.boundingBox();
+  expect(box, 'доріжку підйомника видно').not.toBeNull();
+  await lane.click({ position: { x: box!.width - 12, y: box!.height / 2 } });
 }
 
 test.describe('Зміна дати при відкритій формі запису — BR-CAL-018', () => {
@@ -96,6 +105,63 @@ test.describe('Зміна дати при відкритій формі запи
     await leaveDialog(page).getByRole('button', { name: 'Закрити форму' }).click();
     await expect(slotForm(page)).toHaveCount(0);
     await expect(page.locator(`[data-date="${day}"]`)).toHaveCount(0);
+  });
+});
+
+test.describe('Інші входи, що закривають форму запису — BR-CAL-018, TECH-DEBT (б) №93', () => {
+  test('«+ Слот», клік по сітці, «Статистика» — питання при незбереженій формі; «Скасувати» — без', async ({
+    page,
+  }) => {
+    const day = DAY();
+    await page.goto(`/calendar?view=day&date=${day}`);
+    await expect(page.locator('[data-lift-id]').first()).toBeVisible({ timeout: 30_000 });
+
+    // «+ Слот» при відкритій формі з уведеним — питання; «Залишитися» лишає уведене.
+    let form = await openNewSlot(page);
+    await typeNote(form);
+    await page.getByRole('button', { name: /^Слот$/ }).click();
+    await leaveDialog(page).getByRole('button', { name: 'Залишитися' }).click();
+    await expect(leaveDialog(page)).toHaveCount(0);
+    await expect(noteField(form)).toHaveValue(NOTE);
+    await page.getByRole('button', { name: /^Слот$/ }).click();
+    await leaveDialog(page).getByRole('button', { name: 'Закрити форму' }).click();
+    await expect(slotForm(page)).toHaveCount(0);
+
+    // Клік по вільному місцю сітки — те саме питання; новий запис не малюється.
+    form = await openNewSlot(page);
+    await typeNote(form);
+    await clickGrid(page);
+    await leaveDialog(page).getByRole('button', { name: 'Залишитися' }).click();
+    await expect(noteField(form)).toHaveValue(NOTE);
+    await expect(slotForm(page)).toHaveCount(1);
+    await clickGrid(page);
+    await leaveDialog(page).getByRole('button', { name: 'Закрити форму' }).click();
+    await expect(slotForm(page)).toHaveCount(0);
+    // Форму закрито — наступний клік малює новий запис: порожня форма з часом із сітки.
+    await clickGrid(page);
+    form = slotForm(page);
+    await expect(form).toBeVisible();
+    await expect(noteField(form)).toHaveValue('');
+
+    // «Скасувати» — свідома відмова: уведене не питає.
+    await typeNote(form);
+    await form.getByRole('button', { name: 'Скасувати' }).click();
+    await expect(leaveDialog(page)).toHaveCount(0);
+    await expect(slotForm(page)).toHaveCount(0);
+
+    // «Статистика» — питання; «Залишитися» лишає «День» і форму, «Закрити форму» — переходить.
+    form = await openNewSlot(page);
+    await typeNote(form);
+    await page.getByRole('button', { name: 'Статистика', exact: true }).click();
+    await leaveDialog(page).getByRole('button', { name: 'Залишитися' }).click();
+    await expect(page).not.toHaveURL(/view=stats/);
+    await expect(noteField(form)).toHaveValue(NOTE);
+    await page.getByRole('button', { name: 'Статистика', exact: true }).click();
+    await leaveDialog(page).getByRole('button', { name: 'Закрити форму' }).click();
+    await expect(page).toHaveURL(/view=stats/);
+    await page.getByRole('button', { name: 'День', exact: true }).first().click();
+    await expect(page.locator('[data-lift-id]').first()).toBeVisible();
+    await expect(slotForm(page)).toHaveCount(0);
   });
 });
 
