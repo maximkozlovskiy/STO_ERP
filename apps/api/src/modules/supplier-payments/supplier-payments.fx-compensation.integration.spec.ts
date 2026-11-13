@@ -35,6 +35,14 @@ const MIGRATION_SQL = readFileSync(
   ),
   'utf-8',
 );
+const FOLLOW_UP_SQL = readFileSync(
+  join(
+    __dirname,
+    '../../../../../packages/database/prisma/migrations',
+    '20261113140000_compensate_unreceived_supplier_fx/migration.sql',
+  ),
+  'utf-8',
+);
 const NOTE = 'Компенсація хибної курсової різниці передоплати (Bug #1054)';
 
 let dbAvailable = false;
@@ -84,7 +92,7 @@ type Posting = { type: string; amount: number; at: string; payment?: boolean };
 async function seedOrder(
   tx: Tx,
   label: string,
-  po: { status: 'ORDERED' | 'RECEIVED' | 'CANCELLED'; paid: boolean },
+  po: { status: 'ORDERED' | 'PARTIAL' | 'RECEIVED' | 'CANCELLED'; paid: boolean },
   postings: Posting[],
 ) {
   const sign: Record<string, number> = {
@@ -270,5 +278,61 @@ describe('Міграція компенсації хибних FX передоп
     expect(
       await raw.counterparty.count({ where: { orgId, companyName: { startsWith: MARKER } } }),
     ).toBe(0);
+  }, 90_000);
+
+  // Bug #1062: «Частково» прийняте й ПОТІМ повністю сплачене — хибна FX пізніша за останнє нарахування,
+  // і перша міграція її не бачить; прийом у «Отримано» вважав би її «уже визнаною». Доповнення
+  // `20261113140000_compensate_unreceived_supplier_fx` зводить чисту FX не прийнятого замовлення до 0.
+  // Mutation-verify: прибрати умову `status <> 'RECEIVED'` у доповненні → правильна FX «Отримано» (D)
+  // теж обнуляється, кейс червоний.
+  // guards: BR-SUPPAY-019
+  it('«Частково» з хибною FX після нарахування: доповнення зводить FX до 0, «Отримано» не чіпає', async ctx => {
+    if (!dbAvailable) return ctx.skip();
+    let result: Record<string, unknown> = {};
+
+    await expect(
+      raw.$transaction(
+        async tx => {
+          const e = await seedOrder(tx, 'E', { status: 'PARTIAL', paid: true }, [
+            { type: 'SUPPLIER_CHARGE', amount: 2100, at: '2026-01-09T10:00:00Z' },
+            { type: 'SUPPLIER_PAYMENT', amount: 4100, at: '2026-01-10T10:00:00Z', payment: true },
+            { type: 'FX_LOSS', amount: 2000, at: '2026-01-10T10:00:01Z' },
+          ]);
+          const d = await seedOrder(tx, 'D2', { status: 'RECEIVED', paid: true }, [
+            { type: 'SUPPLIER_CHARGE', amount: 4200, at: '2026-01-12T10:00:00Z' },
+            { type: 'SUPPLIER_PAYMENT', amount: 4100, at: '2026-01-13T10:00:00Z', payment: true },
+            { type: 'FX_GAIN', amount: 100, at: '2026-01-13T10:00:01Z' },
+          ]);
+
+          await tx.$executeRawUnsafe(MIGRATION_SQL);
+          const afterFirst = await stateOf(tx, e);
+          await tx.$executeRawUnsafe(FOLLOW_UP_SQL);
+          const afterFollowUp = { e: await stateOf(tx, e), d: await stateOf(tx, d) };
+          await tx.$executeRawUnsafe(FOLLOW_UP_SQL);
+          const again = { e: await stateOf(tx, e), d: await stateOf(tx, d) };
+          result = { afterFirst, afterFollowUp, again };
+          throw new Rollback('відкат');
+        },
+        { timeout: 60_000 },
+      ),
+    ).rejects.toBeInstanceOf(Rollback);
+
+    const { afterFirst, afterFollowUp, again } = result as {
+      afterFirst: Awaited<ReturnType<typeof stateOf>>;
+      afterFollowUp: Record<string, Awaited<ReturnType<typeof stateOf>>>;
+      again: Record<string, Awaited<ReturnType<typeof stateOf>>>;
+    };
+    // Перша міграція «Частково» не бачить: FX_LOSS 2000 лишається, аванс з'їдено.
+    expect(afterFirst).toEqual({ compensations: [], net: -2000, balance: 0 });
+    // Доповнення: FX_GAIN 2000 — на рахунку аванс 2000 (сплачено 4100 − нараховано 2100).
+    expect(afterFollowUp.e).toEqual({
+      compensations: [{ type: 'FX_GAIN', amount: 2000, currencyId: null, sameAccount: true }],
+      net: 0,
+      balance: 2000,
+    });
+    // «Отримано» з правильною FX — не чіпається.
+    expect(afterFollowUp.d).toEqual({ compensations: [], net: 100, balance: 0 });
+    // Повторний запуск — без змін.
+    expect(again).toEqual(afterFollowUp);
   }, 90_000);
 });
