@@ -410,6 +410,41 @@ describe('XlsxService', () => {
       );
     });
 
+    // guards: BR-GOOD-011
+    // №17: товар без жодного правила (computePriceFromRules → null) ціну НЕ змінює — у звіті він
+    // «без правила» (лічильник і позначка), історії немає. Раніше ціна ставала = собівартості.
+    it('товар без правила: ціна та сама, історії немає, у звіті — «без правила»', async () => {
+      const csv = 'sku,barcode,name\nRULED,,З правилом\nFREE,,Без правила\n';
+      const goods = [
+        { id: 'g-ruled', name: 'З правилом', sku: 'RULED', purchasePrice: 100, salePrice: 130 },
+        { id: 'g-free', name: 'Без правила', sku: 'FREE', purchasePrice: 100, salePrice: 175 },
+      ].map(g => ({ ...g, category: null, goodType: null, brandId: null, barcodes: [] }));
+      seedGoods(goods);
+      pricingService.computePriceFromRules.mockReturnValueOnce(150).mockReturnValueOnce(null);
+
+      const result = await service.applyPricingFromList(ORG, Buffer.from(csv, 'utf-8'), 'csv');
+
+      expect(result).toMatchObject({ found: 2, updated: 1, noRule: 1, notFound: [] });
+      expect(result.details).toEqual([
+        expect.objectContaining({ goodId: 'g-ruled', newSalePrice: 150, noRule: false }),
+        expect.objectContaining({
+          goodId: 'g-free',
+          oldSalePrice: 175,
+          newSalePrice: 175,
+          noRule: true,
+        }),
+      ]);
+      expect(prisma.good.updateMany).toHaveBeenCalledTimes(1);
+      expect(prisma.good.updateMany).toHaveBeenCalledWith({
+        where: { id: 'g-ruled', orgId: ORG, deletedAt: null },
+        data: { salePrice: 150 },
+      });
+      const history = prisma.priceHistory.createMany.mock.calls.flatMap(
+        c => (c[0] as { data: Array<{ goodId: string }> }).data,
+      );
+      expect(history.map(h => h.goodId)).toEqual(['g-ruled']);
+    });
+
     it('порожній CSV (тільки header) → BadRequestException', async () => {
       const csv = 'sku,barcode,name\n';
       const buffer = Buffer.from(csv, 'utf-8');

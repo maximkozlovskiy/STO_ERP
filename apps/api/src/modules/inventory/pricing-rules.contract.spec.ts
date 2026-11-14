@@ -107,7 +107,8 @@ function existingRule(patch: Record<string, unknown> = {}): Record<string, unkno
 }
 
 const pricingServiceMock = {
-  applyRuleToGoods: vi.fn().mockResolvedValue(42),
+  applyRuleToGoods: vi.fn().mockResolvedValue({ updated: 42, noRule: 0 }),
+  categoryWithDescendants: vi.fn().mockResolvedValue([]),
 };
 
 // C1b: тримаємо посилання на audit-mock, щоб асертити аргументи record() (money-critical).
@@ -504,18 +505,20 @@ describe('PricingRules — HTTP Contract', () => {
   });
 
   describe('POST /pricing-rules/:id/apply-all', () => {
-    it('повертає 200 + { updated, message }', async () => {
+    // guards: BR-GOOD-011
+    it('повертає 200 + { updated, noRule, message } — «без правила» названо в повідомленні', async () => {
       prismaMock.pricingRule.findFirst.mockResolvedValueOnce({ id: 'rule-uuid' });
-      pricingServiceMock.applyRuleToGoods.mockResolvedValueOnce(42);
+      pricingServiceMock.applyRuleToGoods.mockResolvedValueOnce({ updated: 42, noRule: 3 });
       const res = await (app as NestFastifyApplication).inject({
         method: 'POST',
         url: '/pricing-rules/00000000-0000-4000-8000-000000000001/apply-all',
       });
       expect(res.statusCode).toBe(201);
       const body = res.json();
-      expect(body).toMatchObject({
-        updated: expect.any(Number),
-        message: expect.any(String),
+      expect(body).toEqual({
+        updated: 42,
+        noRule: 3,
+        message: 'Перераховано 42 товарів; без правила — 3 (ціну не змінено)',
       });
     });
 

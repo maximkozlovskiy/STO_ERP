@@ -159,7 +159,7 @@ describe('PurchaseOrdersService.applyPricing', () => {
     expect(prisma.good.updateMany).toHaveBeenCalledTimes(1);
   });
 
-  it('PO без lines → { updated: 0, details: [] } без жодного writeу', async () => {
+  it('PO без lines → { updated: 0, noRule: 0, details: [] } без жодного writeу', async () => {
     prisma.purchaseOrder.findFirst.mockResolvedValueOnce({
       id: PO_ID,
       orgId: ORG,
@@ -168,7 +168,7 @@ describe('PurchaseOrdersService.applyPricing', () => {
       lines: [],
     });
     const result = await service.applyPricing(ORG, PO_ID);
-    expect(result).toEqual({ updated: 0, details: [] });
+    expect(result).toEqual({ updated: 0, noRule: 0, details: [] });
     expect(pricingService.resolveRule).not.toHaveBeenCalled();
     expect(prisma.good.updateMany).not.toHaveBeenCalled();
     expect(prisma.priceHistory.createMany).not.toHaveBeenCalled();
@@ -373,14 +373,16 @@ describe('PurchaseOrdersService.applyPricing', () => {
 
     const result = await service.applyPricing(ORG, PO_ID, '33333333-3333-4333-8333-333333333333');
 
-    expect(result).toEqual({ updated: 0, details: [] });
+    expect(result).toEqual({ updated: 0, noRule: 0, details: [] });
     expect(prisma.good.updateMany).not.toHaveBeenCalled();
     expect(prisma.priceHistory.createMany).not.toHaveBeenCalled();
     expect(prisma.purchaseOrderLine.update).not.toHaveBeenCalled();
   });
 
-  // Без ruleId поведінка стара: рядок без правила лишається в плані з ціною = собівартість.
-  it('Bug #832: без ruleId рядок без правила розцінюється як раніше (ціна = собівартість)', async () => {
+  // guards: BR-PO-006, BR-GOOD-011
+  // №17 (рішення власника 2026-10-30): і без ruleId рядок без жодного правила ціну НЕ змінює —
+  // до блоку 4 тут ставала собівартість, і націнка мовчки зникала. У звіті рядок «без правила».
+  it('без ruleId рядок без правила: ні ціни, ні історії, ні рядка — у звіті «без правила»', async () => {
     prisma.purchaseOrder.findFirst.mockResolvedValueOnce({
       id: PO_ID,
       orgId: ORG,
@@ -394,11 +396,58 @@ describe('PurchaseOrdersService.applyPricing', () => {
 
     const result = await service.applyPricing(ORG, PO_ID);
 
-    expect(result.details).toHaveLength(1);
-    expect(prisma.good.updateMany).toHaveBeenCalledWith({
-      where: { id: 'g1', orgId: ORG, deletedAt: null },
-      data: { salePrice: 300 },
+    expect(result).toEqual({
+      updated: 0,
+      noRule: 1,
+      details: [
+        {
+          goodId: 'g1',
+          goodName: 'Товар',
+          costPrice: 300,
+          oldSalePrice: 345,
+          newSalePrice: 345,
+          noRule: true,
+        },
+      ],
     });
+    expect(prisma.good.updateMany).not.toHaveBeenCalled();
+    expect(prisma.priceHistory.createMany).not.toHaveBeenCalled();
+    expect(prisma.purchaseOrderLine.update).not.toHaveBeenCalled();
+    expect(prisma.purchaseOrder.updateMany).not.toHaveBeenCalled();
+  });
+
+  // guards: BR-PO-006, BR-GOOD-011
+  it('без ruleId: звіт у порядку рядків — розцінені й «без правила»; пишеться лише розцінений', async () => {
+    prisma.purchaseOrder.findFirst.mockResolvedValueOnce({
+      id: PO_ID,
+      orgId: ORG,
+      number: 'PO-17',
+      status: PurchaseOrderStatus.RECEIVED,
+      supplierId: null,
+      lines: [
+        { id: 'l-free', goodId: 'g-free', price: 100, good: { name: 'Вільний', salePrice: 180 } },
+        { id: 'l-rule', goodId: 'g-rule', price: 100, good: { name: 'Правило', salePrice: 120 } },
+      ],
+    });
+    pricingService.resolveRule
+      .mockReturnValueOnce({ price: 100, ruleName: null })
+      .mockReturnValueOnce({ price: 140, ruleName: 'Усе +40%' });
+
+    const result = await service.applyPricing(ORG, PO_ID);
+
+    expect(result.updated).toBe(1);
+    expect(result.noRule).toBe(1);
+    expect(result.details.map(d => [d.goodId, d.newSalePrice, d.noRule])).toEqual([
+      ['g-free', 180, true],
+      ['g-rule', 140, false],
+    ]);
+    expect(prisma.good.updateMany).toHaveBeenCalledTimes(1);
+    expect(prisma.purchaseOrderLine.update).toHaveBeenCalledTimes(1);
+    expect(prisma.purchaseOrderLine.update).toHaveBeenCalledWith({
+      where: { id: 'l-rule', orgId: ORG },
+      data: { pricedSalePrice: 140, pricingRuleName: 'Усе +40%' },
+    });
+    expect(prisma.purchaseOrder.updateMany).toHaveBeenCalledTimes(1);
   });
 
   // Bug #835: ruleId іде у `where: { id }` — не-UUID без DTO давав помилку Prisma і 500.

@@ -101,8 +101,9 @@ describe('PricingService.computePriceFromRules — формула ціни', () 
   const price = (rule: Partial<Rule>, cost: number) =>
     service.computePriceFromRules(ctxOf([makeRule(rule)]), good(), cost);
 
-  it('правил немає → повертає costPrice', () => {
-    expect(service.computePriceFromRules(ctxOf([]), good(), 100)).toBe(100);
+  // guards: BR-GOOD-011
+  it('правил немає → null: ціну не чіпати (№17), а не «ціна = собівартість»', () => {
+    expect(service.computePriceFromRules(ctxOf([]), good(), 100)).toBeNull();
   });
 
   it('PERCENT: cost * (1 + p/100)', () => {
@@ -202,7 +203,7 @@ describe('PricingService.resolveRule — яке правило діє на то�
   it('правило зі списком НЕ діє на товар поза списком — воно не «весь асортимент»', () => {
     const list = makeRule({ id: 'list', name: 'list', goods: ['other'] });
     expect(ruleFor([list], good())).toBeNull();
-    expect(service.computePriceFromRules(ctxOf([list]), good(), 100)).toBe(100);
+    expect(service.computePriceFromRules(ctxOf([list]), good(), 100)).toBeNull();
   });
 
   // guards: BR-GOOD-009
@@ -535,14 +536,14 @@ describe('PricingService.applyRuleToGoods', () => {
 
   it('повертає 0 якщо rule не знайдено', async () => {
     prisma.pricingRule.findFirst.mockResolvedValue(null);
-    expect(await service.applyRuleToGoods('org', 'missing')).toBe(0);
+    expect(await service.applyRuleToGoods('org', 'missing')).toEqual({ updated: 0, noRule: 0 });
   });
 
   it('перераховує тільки ті товари, де ціна змінилась', async () => {
     prisma.pricingRule.findFirst.mockResolvedValue(targetRule());
     prisma.pricingRule.findMany.mockResolvedValue([activeRule()]);
     prisma.good.findMany.mockResolvedValue([goodRow('g1', 135), goodRow('g2', 100)]);
-    expect(await service.applyRuleToGoods('org', 'r1')).toBe(1); // лише g2
+    expect((await service.applyRuleToGoods('org', 'r1')).updated).toBe(1); // лише g2
   });
 
   // Bug #178 (аудит 2026-09-04): область — ОДИН найточніший вимір, а не AND усіх полів.
@@ -603,7 +604,7 @@ describe('PricingService.applyRuleToGoods', () => {
       activeRule({ id: 'r1', percentValue: 35, _count: { goods: 1 } }),
     ]);
     prisma.pricingRuleGood.findMany.mockResolvedValue([{ pricingRuleId: 'r1', goodId: 'g1' }]);
-    expect(await service.applyRuleToGoods('org', 'r1')).toBe(1);
+    expect((await service.applyRuleToGoods('org', 'r1')).updated).toBe(1);
     expect(prisma.good.updateMany).toHaveBeenCalledWith({
       where: { id: 'g1', orgId: 'org', deletedAt: null },
       data: { salePrice: 135 },
@@ -616,7 +617,7 @@ describe('PricingService.applyRuleToGoods', () => {
     prisma.pricingRule.findMany.mockResolvedValue([activeRule()]);
     prisma.good.findMany.mockResolvedValue([goodRow('g-target', 100)]);
 
-    expect(await service.applyRuleToGoods('org', 'r1')).toBe(1);
+    expect((await service.applyRuleToGoods('org', 'r1')).updated).toBe(1);
     expect(prisma.good.updateMany).toHaveBeenCalledTimes(1);
     expect(prisma.good.updateMany).toHaveBeenCalledWith({
       where: { id: 'g-target', orgId: 'org', deletedAt: null },
@@ -647,7 +648,7 @@ describe('PricingService.applyRuleToGoods', () => {
     prisma.good.findMany.mockResolvedValue([goodRow('g1', 100), goodRow('g2', 100)]);
     prisma.pricingRuleGood.findMany.mockResolvedValue([{ pricingRuleId: 'list', goodId: 'g1' }]);
 
-    expect(await service.applyRuleToGoods('org', 'all')).toBe(2);
+    expect((await service.applyRuleToGoods('org', 'all')).updated).toBe(2);
     const history = prisma.priceHistory.createMany.mock.calls[0]![0].data as Array<{
       goodId: string;
       newPrice: number;
@@ -681,7 +682,10 @@ describe('PricingService.applyRuleToGoods', () => {
       .mockResolvedValueOnce(firstPage)
       .mockResolvedValueOnce([goodRow('g-last', 100)]);
 
-    expect(await service.applyRuleToGoods('org', 'r1')).toBe(APPLY_PAGE + 1);
+    expect(await service.applyRuleToGoods('org', 'r1')).toEqual({
+      updated: APPLY_PAGE + 1,
+      noRule: 0,
+    });
     expect(prisma.good.findMany).toHaveBeenCalledTimes(2);
     const second = prisma.good.findMany.mock.calls[1]![0] as Record<string, unknown>;
     expect(second.cursor).toEqual({ id: firstPage[APPLY_PAGE - 1]!.id });
