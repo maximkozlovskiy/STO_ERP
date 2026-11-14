@@ -198,10 +198,12 @@ describe('Modal — повернення фокуса після закритт�
 
     await user.keyboard('{Escape}');
     await waitFor(() => expect(screen.queryByLabelText('Пошук товару')).toBeNull());
+    // Фокус повертає прибиральник пастки вкладеної модалки — після її зникнення з DOM, а не в тому
+    // ж такті (flaky у CI 43545637270: на мить фокус на <body>), тож чекаємо, а не перевіряємо одразу.
+    await waitFor(() => expect(screen.getByLabelText('Назва правила')).toHaveFocus());
     expect(screen.getByRole('dialog', { name: 'Нове правило' })).toContainElement(
       document.activeElement as HTMLElement,
     );
-    expect(screen.getByLabelText('Назва правила')).toHaveFocus();
   });
 
   it('чужий фокус не відбирається: поле поза вікном, що взяло фокус, його тримає', async () => {
