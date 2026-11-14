@@ -1022,6 +1022,8 @@ export const en: Record<string, string> = {
   'err.brand.nameExists': 'A brand with this name already exists',
   'err.brand.nameExistsCaseInsensitive':
     'Brand «{{name}}» already exists — brand names are case-insensitive',
+  'err.brand.nameOfDeleted':
+    'Name «{{name}}» belongs to a deleted brand — restore it («Show deleted») or choose another name',
   'err.brand.activeNameExists':
     'An active brand with this name already exists — restore is not possible',
   'err.brand.synonymTaken': 'Synonym "{{synonym}}" already belongs to the brand "{{brand}}"',

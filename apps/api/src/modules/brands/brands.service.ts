@@ -280,6 +280,16 @@ export class BrandsService {
       if (!existing) throw new NotFoundException(translateError('err.brand.notFound', getLocale()));
       const namesake = await this.findActiveNamesake(tx, orgId, name, id);
       if (namesake) throw this.nameTaken(name, namesake, 'err.brand.nameExists');
+      // `@@unique([orgId, name])` тримає й видалені бренди: точна назва видаленого дала б P2002 →
+      // безлике «Запис з таким значенням вже існує» (Bug #1068). Його відновлюють, а не дублюють.
+      const deletedHolder = await tx.brand.findFirst({
+        where: { orgId, name, NOT: { id }, deletedAt: { not: null } },
+        select: { id: true },
+      });
+      if (deletedHolder)
+        throw new ConflictException(
+          translateError('err.brand.nameOfDeleted', getLocale(), { name }),
+        );
       await this.assertWritingsFree(tx, orgId, id, name, synonyms);
 
       await tx.brand.update({ where: { id, orgId }, data: { name } });

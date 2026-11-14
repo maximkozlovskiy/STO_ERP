@@ -398,6 +398,18 @@ describe('BrandsService — назва бренду унікальна без у
     expect(w.writes).toEqual([]);
   });
 
+  it('update: назва ВИДАЛЕНОГО бренду (точне написання) → 409 «відновіть його», без P2002 (Bug #1068)', async () => {
+    const world = makeWorld([brand('b-live', 'Live'), brand('b-del', 'Del', T0)], []);
+    const act = world.service.update(ORG, 'b-live', { name: 'Del' });
+    await expect(act).rejects.toThrow(ConflictException);
+    await expect(act).rejects.toThrow('Назва «Del» належить видаленому бренду');
+    expect(world.writes).toEqual([]);
+    // Інше написання не займає слот `@@unique([orgId, name])` — перейменування проходить.
+    await expect(world.service.update(ORG, 'b-live', { name: 'DEL' })).resolves.toMatchObject({
+      name: 'DEL',
+    });
+  });
+
   it('update: зміна регістру власної назви («ASAM» → «Asam») проходить', async () => {
     await expect(w.service.update(ORG, 'b-asam', { name: 'Asam' })).resolves.toMatchObject({
       name: 'Asam',

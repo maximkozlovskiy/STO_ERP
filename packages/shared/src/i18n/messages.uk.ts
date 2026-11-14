@@ -1006,6 +1006,8 @@ export const uk: Record<string, string> = {
   'err.brand.nameExists': 'Бренд з такою назвою вже існує',
   'err.brand.nameExistsCaseInsensitive':
     'Бренд «{{name}}» уже існує — назви брендів не розрізняють великі й малі літери',
+  'err.brand.nameOfDeleted':
+    'Назва «{{name}}» належить видаленому бренду — відновіть його («Показати видалені») або оберіть іншу назву',
   'err.brand.activeNameExists': 'Активний бренд з такою назвою вже існує — відновлення неможливе',
   'err.brand.synonymTaken': 'Синонім «{{synonym}}» уже належить бренду «{{brand}}»',
   'err.brand.synonymIsBrandName': 'Синонім «{{synonym}}» збігається з назвою бренду «{{brand}}»',

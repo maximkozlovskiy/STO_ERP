@@ -1022,6 +1022,7 @@ export const VALIDATION_KEYS = [
   'err.brand.notFound',
   'err.brand.nameExists',
   'err.brand.nameExistsCaseInsensitive',
+  'err.brand.nameOfDeleted',
   'err.brand.activeNameExists',
   'err.brand.synonymTaken',
   'err.brand.synonymIsBrandName',
