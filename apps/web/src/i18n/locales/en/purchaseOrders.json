@@ -91,7 +91,8 @@
     "returnUpdated": "Return updated",
     "orderSaved": "Order saved",
     "orderCreatedNo": "Order {{number}} created",
-    "pricedGoods": "Goods priced: {{count}}"
+    "pricedGoods": "Goods priced: {{count}}",
+    "pricedGoodsNoRule": "Goods priced: {{count}}; no rule — {{noRule}} (price unchanged)"
   },
   "aria": {
     "selectAll": "Select all",
@@ -109,10 +110,8 @@
   },
   "rulePricer": {
     "title": "Select a pricing rule",
-    "supplier": "Supplier",
-    "allRules": "All rules",
-    "noSupplierRules": "No rules for this supplier",
-    "noActiveRules": "No active pricing rules"
+    "hint": "Only rules that can price this order: active, with no supplier or this supplier.",
+    "noApplicableRules": "No rules can price this order"
   },
   "card": {
     "checkForm": "Check the form fields",

@@ -35,7 +35,11 @@
     "added": "added",
     "selectAll": "Select all",
     "deselectAll": "Deselect all",
-    "count": "Added {{added}} of {{shown}} shown"
+    "count": "Added {{added}} of {{shown}} shown",
+    "deselectConfirmTitle": "Deselect all shown goods?",
+    "deselectConfirmMessage": "Goods to be removed from the list: {{n}}.",
+    "deselectConfirmLabel": "Deselect",
+    "addCategory": "Add the whole category"
   },
   "categoryTree": {
     "all": "All",

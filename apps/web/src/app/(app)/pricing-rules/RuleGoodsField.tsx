@@ -127,6 +127,44 @@ export default function RuleGoodsField({
     if (accepted.length > 0) commit([...goods, ...accepted.map(toRuleGood)]);
   };
 
+  /**
+   * «Додати всю категорію» (BR-GOOD-009, №21): сервер віддає ВСІ товари категорії з нащадками
+   * (не лише 50 показаних); у список іде, скільки вміщує ліміт, — як «Відмітити всі». Категорія
+   * понад ліміт — 400 з текстом сервера. Список, як і решта змін, зберігається разом із правилом.
+   */
+  const addCategory = async (categoryId: string) => {
+    try {
+      const res = await apiFetch<{ items: RuleGood[]; total: number }>(
+        `/pricing-rules/category-goods?goodCategoryId=${encodeURIComponent(categoryId)}`,
+      );
+      const goods = goodsRef.current;
+      const have = new Set(goods.map(g => g.id));
+      const fresh = res.items.filter(g => !have.has(g.id));
+      const room = Math.max(PRICING_RULE_MAX_GOODS - goods.length, 0);
+      const accepted = fresh.slice(0, room);
+      if (accepted.length > 0) commit([...goods, ...accepted]);
+      if (fresh.length > room) {
+        setNotice({ kind: 'error', text: limitMessage() });
+        toast.error(limitMessage());
+        return;
+      }
+      const text =
+        res.items.length === 0
+          ? t('goods.categoryEmpty')
+          : t('goods.categoryAdded', {
+              added: accepted.length,
+              already: res.items.length - fresh.length,
+            });
+      setNotice({ kind: 'success', text });
+      toast.success(text);
+    } catch (e: unknown) {
+      // Модалка вибору перекриває форму — помилку показуємо ще й тостом.
+      const text = e instanceof Error ? e.message : t('goods.categoryError');
+      setNotice({ kind: 'error', text });
+      toast.error(text);
+    }
+  };
+
   const removeGoods = (ids: string[]) => {
     const goods = goodsRef.current;
     const drop = new Set(ids);
@@ -397,6 +435,8 @@ export default function RuleGoodsField({
         selectAllLabel={t('goods.pickerSelectAll')}
         deselectAllLabel={t('goods.pickerDeselectAll')}
         countLabel={(added, shown) => t('goods.pickerCount', { added, shown })}
+        onAddCategory={addCategory}
+        addCategoryLabel={t('goods.pickerAddCategory')}
       />
       <ConfirmDialog {...dialogProps} />
     </div>

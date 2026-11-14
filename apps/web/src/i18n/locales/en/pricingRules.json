@@ -22,7 +22,9 @@
       "cost": "Cost",
       "old": "Old",
       "new": "New"
-    }
+    },
+    "noRuleLabel": "No rule:",
+    "noRule": "no rule"
   },
   "table": {
     "date": "Date",
@@ -183,7 +185,11 @@
     "pickerAdded": "added",
     "pickerSelectAll": "Select all shown",
     "pickerDeselectAll": "Deselect all shown",
-    "pickerCount": "Added {{added}} of {{shown}} shown"
+    "pickerCount": "Added {{added}} of {{shown}} shown",
+    "pickerAddCategory": "Add the whole category",
+    "categoryAdded": "Added {{added}} (already listed {{already}})",
+    "categoryError": "Failed to load the category goods",
+    "categoryEmpty": "The category has no goods — the list is unchanged"
   },
   "goodsImport": {
     "heading": "File recognition result",
@@ -259,5 +265,9 @@
         ]
       }
     ]
+  },
+  "applyResult": {
+    "done": "Recalculated {{n}} goods",
+    "doneNoRule": "Recalculated {{n}} goods; no rule — {{noRule}} (price unchanged)"
   }
 }

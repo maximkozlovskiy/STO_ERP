@@ -135,6 +135,8 @@ export default function PricingRulesClient() {
   interface PricingImportResult {
     found: number;
     updated: number;
+    /** Товари без жодного правила: ціну не змінено (№17). */
+    noRule: number;
     notFound: string[];
     details: {
       goodId: string;
@@ -143,6 +145,7 @@ export default function PricingRulesClient() {
       costPrice: number;
       oldSalePrice: number;
       newSalePrice: number;
+      noRule: boolean;
     }[];
   }
   const [pricingImportResult, setPricingImportResult] = useState<PricingImportResult | null>(null);
@@ -247,12 +250,17 @@ export default function PricingRulesClient() {
       return;
     setApplyingId(rule.id);
     try {
-      const res = await apiFetch<{ updated: number; message: string }>(
+      const res = await apiFetch<{ updated: number; noRule: number }>(
         `/pricing-rules/${rule.id}/apply-all`,
         { method: 'POST' },
       );
       if (mountedRef.current) setError('');
-      toast.success(res.message);
+      // №17: товари без жодного правила ціну не змінюють — тост називає, скільки їх.
+      toast.success(
+        res.noRule > 0
+          ? t('applyResult.doneNoRule', { n: res.updated, noRule: res.noRule })
+          : t('applyResult.done', { n: res.updated }),
+      );
     } catch (e: unknown) {
       if (mountedRef.current) setError(e instanceof Error ? e.message : t('errors.apply'));
     } finally {
@@ -405,6 +413,12 @@ export default function PricingRulesClient() {
                   {t('import.updated')}{' '}
                   <strong className="text-success">{pricingImportResult.updated}</strong>
                 </span>
+                {pricingImportResult.noRule > 0 && (
+                  <span className="text-muted-foreground">
+                    {t('import.noRuleLabel')}{' '}
+                    <strong className="text-warning-text">{pricingImportResult.noRule}</strong>
+                  </span>
+                )}
                 {pricingImportResult.notFound.length > 0 && (
                   <span className="text-muted-foreground">
                     {t('import.notFoundLabel')}{' '}
@@ -462,7 +476,12 @@ export default function PricingRulesClient() {
                           <td
                             className={`px-3 py-1.5 text-right font-medium ${Math.abs(d.oldSalePrice - d.newSalePrice) >= 0.001 ? 'text-foreground' : 'text-muted-foreground'}`}
                           >
-                            {fmtMoney(d.newSalePrice)} ₴
+                            {/* №17: правила немає — ціна та сама, рядок підписаний «без правила». */}
+                            {d.noRule ? (
+                              <span className="text-warning-text">{t('import.noRule')}</span>
+                            ) : (
+                              <>{fmtMoney(d.newSalePrice)} ₴</>
+                            )}
                           </td>
                         </tr>
                       ))}

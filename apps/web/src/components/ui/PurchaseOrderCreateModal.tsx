@@ -68,7 +68,11 @@ import {
   type SupplierPaymentPrefill,
 } from '@/components/ui/SupplierPaymentCreateModal';
 import type { SupplierPayment } from '@/hooks/api/useSupplierPayments';
-import { RulePricerModal } from '@/components/ui/purchase-order/RulePricerModal';
+import {
+  RulePricerModal,
+  applicablePricingRules,
+  type PricingRuleOption,
+} from '@/components/ui/purchase-order/RulePricerModal';
 import {
   SupplierApiOrderBlock,
   useSentOrderForce,
@@ -225,7 +229,6 @@ export function PurchaseOrderCreateModal({
   const [rulePricerOpen, setRulePricerOpen] = useState(false);
   const [pricingRules, setPricingRules] = useState<PricingRule[]>([]);
   const [pricingRulesLoading, setPricingRulesLoading] = useState(false);
-  const [ruleFilterBySupplier, setRuleFilterBySupplier] = useState(true);
   const [error, setError] = useState('');
   // Документ позначено на видалення → картка лише на перегляд. Прапорець прив'язано до id
   // завантаженого документа, тож інший документ у тій самій модалці його не успадковує.
@@ -991,13 +994,19 @@ export function PurchaseOrderCreateModal({
     setApplyingPricing(true);
     setError('');
     try {
-      const result = await apiFetch<{ updated: number }>(
+      const result = await apiFetch<{ updated: number; noRule: number }>(
         `/purchase-orders/${purchaseOrderId}/apply-pricing`,
         {
           method: 'POST',
         },
       );
-      if (features.toastEnabled) toast.success(t('toast.pricedGoods', { count: result.updated }));
+      // №17: товари без жодного правила ціну не змінюють — тост називає, скільки їх.
+      if (features.toastEnabled)
+        toast.success(
+          result.noRule > 0
+            ? t('toast.pricedGoodsNoRule', { count: result.updated, noRule: result.noRule })
+            : t('toast.pricedGoods', { count: result.updated }),
+        );
       // Reload lines to show pricedSalePrice + pricingRuleName
       if (purchaseOrderId) await loadPo(purchaseOrderId, true);
     } catch (e: unknown) {
@@ -1009,32 +1018,21 @@ export function PurchaseOrderCreateModal({
     }
   };
 
-  const fetchPricingRules = async (bySupplier: boolean) => {
+  // BR-PO-006, №18: лише правила, що можуть розцінити це замовлення — активні й без постачальника
+  // або постачальника замовлення. Один запит усіх правил і відбір на клієнті: `?supplierId=` дав би
+  // лише правила постачальника без загальних, а сторінка правил і так віддає `isActive`/`supplierId`.
+  const openRulePricer = async () => {
+    setRulePricerOpen(true);
     setPricingRulesLoading(true);
     try {
-      const params = new URLSearchParams({ limit: '100' });
-      const supId = getValues('supplierId');
-      if (bySupplier && supId) params.set('supplierId', supId);
-      const data = await apiFetch<{
-        items: Array<{ id: string; name: string; description: string | null }>;
-      }>(`/pricing-rules?${params}`);
-      setPricingRules(Array.isArray(data.items) ? data.items : []);
+      const data = await apiFetch<{ items: PricingRuleOption[] }>('/pricing-rules');
+      const items = Array.isArray(data.items) ? data.items : [];
+      setPricingRules(applicablePricingRules(items, getValues('supplierId')));
     } catch {
       setPricingRules([]);
     } finally {
       setPricingRulesLoading(false);
     }
-  };
-
-  const openRulePricer = async () => {
-    setRuleFilterBySupplier(true);
-    setRulePricerOpen(true);
-    await fetchPricingRules(true);
-  };
-
-  const toggleRuleSupplierFilter = async (bySupplier: boolean) => {
-    setRuleFilterBySupplier(bySupplier);
-    await fetchPricingRules(bySupplier);
   };
 
   const handleApplyPricingByRule = async (ruleId: string) => {
@@ -1995,10 +1993,6 @@ export function PurchaseOrderCreateModal({
       <RulePricerModal
         open={rulePricerOpen}
         onClose={() => setRulePricerOpen(false)}
-        supplierId={supplierIdValue}
-        supplierDisplay={supplierDisplay}
-        ruleFilterBySupplier={ruleFilterBySupplier}
-        onToggleFilter={bySupplier => void toggleRuleSupplierFilter(bySupplier)}
         pricingRules={pricingRules}
         pricingRulesLoading={pricingRulesLoading}
         onSelectRule={ruleId => void handleApplyPricingByRule(ruleId)}

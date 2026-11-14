@@ -35,7 +35,11 @@
     "added": "додано",
     "selectAll": "Відмітити всі",
     "deselectAll": "Зняти всі",
-    "count": "Додано {{added}} з {{shown}} показаних"
+    "count": "Додано {{added}} з {{shown}} показаних",
+    "deselectConfirmTitle": "Зняти всі показані товари?",
+    "deselectConfirmMessage": "Зі списку буде прибрано товарів: {{n}}.",
+    "deselectConfirmLabel": "Зняти",
+    "addCategory": "Додати всю категорію"
   },
   "categoryTree": {
     "all": "Всі",

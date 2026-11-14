@@ -12,6 +12,14 @@ import { pickScannedGood } from '@/lib/barcode';
 import { fmtQty } from '@/lib/format';
 import { CategoryTree, collectDescendantIds } from './category-tree';
 import type { CategoryNode } from './category-tree';
+import { ConfirmDialog } from './confirm-dialog';
+import { useConfirm } from '@/hooks/useConfirm';
+
+/**
+ * «Зняти всі показані» понад стільки товарів питає підтвердження (№20): сторінка пошуку — до 50
+ * товарів, і випадковий клік знімав їх усі. До цього числа — одразу, як і раніше.
+ */
+export const DESELECT_CONFIRM_OVER = 20;
 
 export interface GoodPickerItem {
   id: string;
@@ -48,6 +56,16 @@ export function fetchGoodPickerItems(
         primary: g.name,
         secondary: secondary(g),
       })),
+  );
+}
+
+/**
+ * Сторінка `GET /goods` для вікна вибору. Сервер віддає `brandName` прямо (spread його зберігає),
+ * а `unitShortName` — це `unit` (окремого поля в DTO немає). Спільне для пошуку й сканера.
+ */
+function fetchPickerPage(params: URLSearchParams): Promise<GoodPickerItem[]> {
+  return apiFetch<{ items: GoodSearchRow[] }>(`/goods?${params}`).then(r =>
+    (Array.isArray(r.items) ? r.items : []).map(g => ({ ...g, unitShortName: g.unit ?? null })),
   );
 }
 
@@ -90,6 +108,12 @@ interface Props {
   doneLabel?: string;
   /** Лише для `multiple`: позначка вже доданого товару. */
   addedLabel?: string;
+  /**
+   * Лише для `multiple`: «Додати всю категорію» — кнопка з'являється, коли в дереві обрано
+   * категорію; викликач сам додає ВСІ її товари з нащадками (не лише показані 50), №21.
+   */
+  onAddCategory?: (categoryId: string) => Promise<void> | void;
+  addCategoryLabel?: string;
 }
 
 export function GoodPickerModal({
@@ -107,6 +131,8 @@ export function GoodPickerModal({
   selectAllLabel: selectAllLabelProp,
   deselectAllLabel: deselectAllLabelProp,
   countLabel: countLabelProp,
+  onAddCategory,
+  addCategoryLabel,
 }: Props) {
   // Типові підписи — з локалі, як у ConfirmDialog (Bug #911).
   const { t } = useTranslation('common');
@@ -127,6 +153,8 @@ export function GoodPickerModal({
   const [error, setError] = useState('');
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reqRef = useRef(0);
+  const { confirm, dialogProps } = useConfirm();
+  const [addingCategory, setAddingCategory] = useState(false);
 
   const categoriesLoadedRef = useRef(false);
   useEffect(() => {
@@ -171,19 +199,9 @@ export function GoodPickerModal({
           // /goods і /goods/stock-totals sequential — stock-totals потребує ids з
           // response /goods. sto-optimize: shared EMPTY_STOCK_MAP замість `new Map()`
           // на кожному 0-results call → стабільна reference (re-render skip downstream).
-          apiFetch<{
-            items: (Omit<GoodPickerItem, 'unitShortName'> & {
-              unit?: string | null;
-            })[];
-          }>(`/goods?${params}`)
-            .then(r => {
+          fetchPickerPage(params)
+            .then(goods => {
               if (reqId !== reqRef.current) return;
-              // Backend (GoodResponseDto) returns `brandName` directly — spread preserves it.
-              // `unitShortName` derives from `unit` (DTO has no separate short-name field).
-              const goods = (Array.isArray(r.items) ? r.items : []).map(g => ({
-                ...g,
-                unitShortName: g.unit ?? null,
-              }));
               setItems(goods);
               setLoading(false);
               // Fetch stock totals for the loaded goods batch
@@ -280,198 +298,235 @@ export function GoodPickerModal({
   const shownAdded = multiple ? items.filter(i => selectedSet.has(i.id)) : [];
   const shownFree = multiple ? items.filter(i => !selectedSet.has(i.id)) : [];
   const showBulk = multiple && !loading && items.length > 0 && !!(onSelectMany || onDeselectMany);
+  const showAddCategory = multiple && !!onAddCategory && !!selectedCatId;
+
+  // №20: понад DESELECT_CONFIRM_OVER показаних — лише після підтвердження.
+  const deselectShown = async () => {
+    if (shownAdded.length === 0 || !onDeselectMany) return;
+    const ids = shownAdded.map(i => i.id);
+    if (ids.length > DESELECT_CONFIRM_OVER) {
+      const ok = await confirm({
+        title: t('goodPicker.deselectConfirmTitle'),
+        message: t('goodPicker.deselectConfirmMessage', { n: ids.length }),
+        confirmLabel: t('goodPicker.deselectConfirmLabel'),
+        variant: 'destructive',
+      });
+      if (!ok) return;
+    }
+    onDeselectMany(ids);
+  };
+
+  const addCategory = async () => {
+    if (!onAddCategory || !selectedCatId || addingCategory) return;
+    setAddingCategory(true);
+    try {
+      await onAddCategory(selectedCatId);
+    } finally {
+      setAddingCategory(false);
+    }
+  };
   // Кнопка, якій нема на що діяти, лишається у фокусі (`aria-disabled`, не `disabled`): після
   // «Відмітити всі» вона сама стає недіяльною, а атрибут `disabled` скинув би фокус клавіатури
   // на <body> — користувач без миші губив би місце у вікні.
   const bulkOffClass = 'aria-disabled:opacity-50 aria-disabled:cursor-not-allowed';
 
   return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title={t('goodPicker.title')}
-      size="lg"
-      footer={multiple ? <Button onClick={onClose}>{doneLabel}</Button> : undefined}
-    >
-      <div className="flex flex-col gap-3">
-        <Input
-          placeholder={t('goodPicker.searchPlaceholder')}
-          value={query}
-          autoFocus
-          onChange={e => setQuery(e.target.value)}
-          onKeyDown={e => {
-            // Сканер ШК: Enter → авто-вибір за точним ШК або єдиним результатом.
-            if (e.key !== 'Enter') return;
-            e.preventDefault();
-            // Сканер друкує ШК + Enter швидше за debounce (300ms), тож на момент Enter
-            // `items` ще відображає ДО-скан-результати. Флашимо відкладений fetch і
-            // підбираємо товар за свіжими результатами; якщо debounce вже відпрацював —
-            // підбираємо одразу за поточними items.
-            const pending = timeoutRef.current !== null;
-            if (pending && query) {
-              clearTimeout(timeoutRef.current!);
-              timeoutRef.current = null;
-              const reqId = ++reqRef.current;
-              setLoading(true);
-              setError('');
-              const params = new URLSearchParams({ limit: '50' });
-              params.set('q', query);
-              if (selectedCatId) {
-                collectDescendantIds(categories, selectedCatId).forEach(id =>
-                  params.append('goodCategoryIds', id),
-                );
-              }
-              apiFetch<{
-                items: (Omit<GoodPickerItem, 'unitShortName'> & { unit?: string | null })[];
-              }>(`/goods?${params}`)
-                .then(r => {
-                  if (reqId !== reqRef.current) return;
-                  const goods = (Array.isArray(r.items) ? r.items : []).map(g => ({
-                    ...g,
-                    unitShortName: g.unit ?? null,
-                  }));
-                  setItems(goods);
-                  setLoading(false);
-                  const picked = pickScannedGood(goods, query);
-                  if (picked) selectGood(picked);
-                })
-                .catch((err: unknown) => {
-                  if (reqId !== reqRef.current) return;
-                  setError(err instanceof Error ? err.message : t('goodPicker.loadError'));
-                  setLoading(false);
-                });
-              return;
-            }
-            const picked = pickScannedGood(items, query);
-            if (picked) selectGood(picked);
-          }}
-        />
-
-        {showBulk && (
-          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-            {onSelectMany && (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                aria-disabled={shownFree.length === 0}
-                className={bulkOffClass}
-                onClick={() => {
-                  if (shownFree.length > 0) onSelectMany(shownFree.map(toPicked));
-                }}
-              >
-                {selectAllLabel}
-              </Button>
-            )}
-            {onDeselectMany && (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                aria-disabled={shownAdded.length === 0}
-                className={bulkOffClass}
-                onClick={() => {
-                  if (shownAdded.length > 0) onDeselectMany(shownAdded.map(i => i.id));
-                }}
-              >
-                {deselectAllLabel}
-              </Button>
-            )}
-            {/* Видимі цифри «3 / 50» читач екрана озвучив би як «три скісна п'ятдесят» — для нього
-                окремий зрозумілий рядок; ввічливий (polite), щоб не перебивати назву рядка. */}
-            <span className="tabular-nums" aria-hidden="true">
-              {shownAdded.length} / {items.length}
-            </span>
-            <span className="sr-only" role="status">
-              {countLabel(shownAdded.length, items.length)}
-            </span>
-          </div>
-        )}
-
-        <div className="flex gap-0 min-h-0" style={{ height: '420px' }}>
-          {/* Results */}
-          <div className="flex-1 overflow-y-auto pr-3">
-            {error && (
-              <p className="text-sm text-destructive-text bg-destructive-subtle border border-destructive/20 rounded-lg px-3 py-2 mb-2">
-                {error}
-              </p>
-            )}
-            {loading ? (
-              <div className="flex justify-center py-10">
-                <Spinner size="sm" />
-              </div>
-            ) : items.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-10 text-center">
-                {t('goodPicker.nothingFound')}
-              </p>
-            ) : (
-              <div className="space-y-1">
-                {items.map(item => {
-                  const added = multiple && selectedSet.has(item.id);
-                  const selected = multiple ? added : item.id === selectedId;
-                  // sto-optimize: підняти qty lookup з IIFE у тілі JSX — раніше
-                  // `(() => { const qty = stockMap.get(item.id) ?? 0; return <span>... })()`
-                  // створював нову arrow на кожен render для КОЖНОГО row.
-                  // Округлення до 3 знаків зрізає хвости float-суми по складах; нуль після
-                  // округлення — це «немає». Порівнюємо ЧИСЛО, а не відформатований рядок:
-                  // підпис залежить від локалі, а дрібний від'ємний хвіст форматується як «-0».
-                  const qty = Math.round((stockMap.get(item.id) ?? 0) * 1000) / 1000;
-                  const qtyLabel = fmtQty(qty);
-                  return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => clickGood(item)}
-                      aria-pressed={multiple ? added : undefined}
-                      className={cn(
-                        'w-full text-left px-3 py-2 rounded-lg border transition-colors',
-                        selected
-                          ? 'border-primary bg-primary/5'
-                          : 'border-border bg-surface hover:border-primary hover:bg-primary/5',
-                      )}
-                    >
-                      <div className="text-sm font-medium text-foreground">
-                        {item.name}
-                        {added && (
-                          <span className="ml-2 text-[11px] font-normal text-success">
-                            ✓ {addedLabel}
-                          </span>
-                        )}
-                      </div>
-                      <div className="text-xs text-muted-foreground mt-0.5 flex gap-3">
-                        {(item.internalCode || item.sku || item.brandName) && (
-                          <span className="text-[11px] text-muted-foreground/80">
-                            {[item.internalCode, item.sku, item.brandName]
-                              .filter(Boolean)
-                              .join(' · ')}
-                          </span>
-                        )}
-                        <span>{item.salePrice} ₴</span>
-                        <span className={qty > 0 ? 'text-success' : 'text-destructive-text'}>
-                          {qty > 0
-                            ? t('goodPicker.inStock', { qty: qtyLabel })
-                            : t('goodPicker.outOfStock')}
-                        </span>
-                      </div>
-                    </button>
+    <>
+      <Modal
+        open={open}
+        onClose={onClose}
+        title={t('goodPicker.title')}
+        size="lg"
+        footer={multiple ? <Button onClick={onClose}>{doneLabel}</Button> : undefined}
+      >
+        <div className="flex flex-col gap-3">
+          <Input
+            placeholder={t('goodPicker.searchPlaceholder')}
+            value={query}
+            autoFocus
+            onChange={e => setQuery(e.target.value)}
+            onKeyDown={e => {
+              // Сканер ШК: Enter → авто-вибір за точним ШК або єдиним результатом.
+              if (e.key !== 'Enter') return;
+              e.preventDefault();
+              // Сканер друкує ШК + Enter швидше за debounce (300ms), тож на момент Enter
+              // `items` ще відображає ДО-скан-результати. Флашимо відкладений fetch і
+              // підбираємо товар за свіжими результатами; якщо debounce вже відпрацював —
+              // підбираємо одразу за поточними items.
+              const pending = timeoutRef.current !== null;
+              if (pending && query) {
+                clearTimeout(timeoutRef.current!);
+                timeoutRef.current = null;
+                const reqId = ++reqRef.current;
+                setLoading(true);
+                setError('');
+                const params = new URLSearchParams({ limit: '50' });
+                params.set('q', query);
+                if (selectedCatId) {
+                  collectDescendantIds(categories, selectedCatId).forEach(id =>
+                    params.append('goodCategoryIds', id),
                   );
-                })}
-              </div>
-            )}
-          </div>
-
-          {/* Category tree sidebar */}
-          <CategoryTree
-            tree={categories}
-            selectedId={selectedCatId}
-            onSelect={setSelectedCatId}
-            label={t('goodPicker.categories')}
-            storageKey="sto:cat-tree:good-picker"
-            hideInactive
-            className="ml-0 border-l rounded-none rounded-r-xl"
+                }
+                fetchPickerPage(params)
+                  .then(goods => {
+                    if (reqId !== reqRef.current) return;
+                    setItems(goods);
+                    setLoading(false);
+                    const picked = pickScannedGood(goods, query);
+                    if (picked) selectGood(picked);
+                  })
+                  .catch((err: unknown) => {
+                    if (reqId !== reqRef.current) return;
+                    setError(err instanceof Error ? err.message : t('goodPicker.loadError'));
+                    setLoading(false);
+                  });
+                return;
+              }
+              const picked = pickScannedGood(items, query);
+              if (picked) selectGood(picked);
+            }}
           />
+
+          {(showBulk || showAddCategory) && (
+            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              {showAddCategory && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  loading={addingCategory}
+                  onClick={() => void addCategory()}
+                >
+                  {addCategoryLabel ?? t('goodPicker.addCategory')}
+                </Button>
+              )}
+              {showBulk && onSelectMany && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  aria-disabled={shownFree.length === 0}
+                  className={bulkOffClass}
+                  onClick={() => {
+                    if (shownFree.length > 0) onSelectMany(shownFree.map(toPicked));
+                  }}
+                >
+                  {selectAllLabel}
+                </Button>
+              )}
+              {showBulk && onDeselectMany && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  aria-disabled={shownAdded.length === 0}
+                  className={bulkOffClass}
+                  onClick={() => void deselectShown()}
+                >
+                  {deselectAllLabel}
+                </Button>
+              )}
+              {showBulk && (
+                <>
+                  {/* Видимі цифри «3 / 50» читач екрана озвучив би як «три скісна п'ятдесят» — для
+                    нього окремий зрозумілий рядок; ввічливий (polite), щоб не перебивати назву. */}
+                  <span className="tabular-nums" aria-hidden="true">
+                    {shownAdded.length} / {items.length}
+                  </span>
+                  <span className="sr-only" role="status">
+                    {countLabel(shownAdded.length, items.length)}
+                  </span>
+                </>
+              )}
+            </div>
+          )}
+
+          <div className="flex gap-0 min-h-0" style={{ height: '420px' }}>
+            {/* Results */}
+            <div className="flex-1 overflow-y-auto pr-3">
+              {error && (
+                <p className="text-sm text-destructive-text bg-destructive-subtle border border-destructive/20 rounded-lg px-3 py-2 mb-2">
+                  {error}
+                </p>
+              )}
+              {loading ? (
+                <div className="flex justify-center py-10">
+                  <Spinner size="sm" />
+                </div>
+              ) : items.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-10 text-center">
+                  {t('goodPicker.nothingFound')}
+                </p>
+              ) : (
+                <div className="space-y-1">
+                  {items.map(item => {
+                    const added = multiple && selectedSet.has(item.id);
+                    const selected = multiple ? added : item.id === selectedId;
+                    // sto-optimize: підняти qty lookup з IIFE у тілі JSX — раніше
+                    // `(() => { const qty = stockMap.get(item.id) ?? 0; return <span>... })()`
+                    // створював нову arrow на кожен render для КОЖНОГО row.
+                    // Округлення до 3 знаків зрізає хвости float-суми по складах; нуль після
+                    // округлення — це «немає». Порівнюємо ЧИСЛО, а не відформатований рядок:
+                    // підпис залежить від локалі, а дрібний від'ємний хвіст форматується як «-0».
+                    const qty = Math.round((stockMap.get(item.id) ?? 0) * 1000) / 1000;
+                    const qtyLabel = fmtQty(qty);
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => clickGood(item)}
+                        aria-pressed={multiple ? added : undefined}
+                        className={cn(
+                          'w-full text-left px-3 py-2 rounded-lg border transition-colors',
+                          selected
+                            ? 'border-primary bg-primary/5'
+                            : 'border-border bg-surface hover:border-primary hover:bg-primary/5',
+                        )}
+                      >
+                        <div className="text-sm font-medium text-foreground">
+                          {item.name}
+                          {added && (
+                            <span className="ml-2 text-[11px] font-normal text-success">
+                              ✓ {addedLabel}
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-xs text-muted-foreground mt-0.5 flex gap-3">
+                          {(item.internalCode || item.sku || item.brandName) && (
+                            <span className="text-[11px] text-muted-foreground/80">
+                              {[item.internalCode, item.sku, item.brandName]
+                                .filter(Boolean)
+                                .join(' · ')}
+                            </span>
+                          )}
+                          <span>{item.salePrice} ₴</span>
+                          <span className={qty > 0 ? 'text-success' : 'text-destructive-text'}>
+                            {qty > 0
+                              ? t('goodPicker.inStock', { qty: qtyLabel })
+                              : t('goodPicker.outOfStock')}
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Category tree sidebar */}
+            <CategoryTree
+              tree={categories}
+              selectedId={selectedCatId}
+              onSelect={setSelectedCatId}
+              label={t('goodPicker.categories')}
+              storageKey="sto:cat-tree:good-picker"
+              hideInactive
+              className="ml-0 border-l rounded-none rounded-r-xl"
+            />
+          </div>
         </div>
-      </div>
-    </Modal>
+      </Modal>
+      <ConfirmDialog {...dialogProps} />
+    </>
   );
 }

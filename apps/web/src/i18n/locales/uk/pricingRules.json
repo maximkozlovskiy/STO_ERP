@@ -22,7 +22,9 @@
       "cost": "Собів.",
       "old": "Стара",
       "new": "Нова"
-    }
+    },
+    "noRuleLabel": "Без правила:",
+    "noRule": "без правила"
   },
   "table": {
     "date": "Дата",
@@ -183,7 +185,11 @@
     "pickerAdded": "додано",
     "pickerSelectAll": "Відмітити всі показані",
     "pickerDeselectAll": "Зняти всі показані",
-    "pickerCount": "Додано {{added}} з {{shown}} показаних"
+    "pickerCount": "Додано {{added}} з {{shown}} показаних",
+    "pickerAddCategory": "Додати всю категорію",
+    "categoryAdded": "Додано {{added}} (уже були {{already}})",
+    "categoryError": "Не вдалося отримати товари категорії",
+    "categoryEmpty": "У категорії немає товарів — список не змінився"
   },
   "goodsImport": {
     "heading": "Результат розпізнавання файла",
@@ -259,5 +265,9 @@
         ]
       }
     ]
+  },
+  "applyResult": {
+    "done": "Перераховано {{n}} товарів",
+    "doneNoRule": "Перераховано {{n}} товарів; без правила — {{noRule}} (ціну не змінено)"
   }
 }
