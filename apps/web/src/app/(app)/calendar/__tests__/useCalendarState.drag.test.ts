@@ -430,6 +430,22 @@ describe('useCalendarState — перетягування частини руч�
       endAt: kyiv('2026-10-20T12:00'),
     });
   });
+
+  // guards: BR-CAL-020 — Bug #1065: перетягнутий одноденний запис, чию форму відкрито, — форма
+  // бере нові межі (resync); інакше «Оновити» мовчки повертала запис на старий час.
+  it('одноденний запис із відкритою формою → після перетягування форма показує новий час', async () => {
+    daySlots = [SLOT];
+    const { result } = await renderDay();
+    act(() => result.current.handleEditSlot(SLOT));
+    await waitFor(() => expect(result.current.form.startAt).toBe('10:00'));
+
+    // Сервер переніс запис (і міг поділити його на дні, №96) — вид перечитує новий час.
+    daySlots = [{ ...SLOT, startAt: kyiv('2026-10-20T11:00'), endAt: kyiv('2026-10-20T12:00') }];
+    await act(() => result.current.handleDragEnd(dropOn('lift-1', 80)));
+
+    await waitFor(() => expect(result.current.form.startAt).toBe('11:00'));
+    expect(result.current.editingSlotId).toBe('s-1');
+  });
 });
 
 // Рішення власника 2026-11-14 (TECH-DEBT (б) №97): ланцюжок, що вже почався, не переноситься.

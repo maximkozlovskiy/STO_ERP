@@ -1105,7 +1105,7 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
       const res = resizingRef.current;
       const preview = resizePreviewRef.current;
       if (res && preview) {
-        const { slotId, origStartH, origEndH, workOrderId, chain } = res;
+        const { slotId, origStartH, origEndH, workOrderId } = res;
         const { startH, endH } = preview;
         setResizing(null);
         setResizePreview(null);
@@ -1142,10 +1142,12 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
             // тож вид перечитується з resync відкритої форми (як після перетягування, Bug #884).
             invalidateWorkOrders();
             notifyCalendarChanged();
-          } else if (chain) {
-            // Ланцюжок перебудовано (частини додано чи прибрано) — перечитати вид із resync форми.
+          } else {
+            // Ланцюжок перебудовано (частини додано чи прибрано; одноденний запис сервер ділить і
+            // при зміні, №96) — перечитати вид із resync відкритої форми: інакше форма цього запису
+            // тримала б старі межі й «Оновити» мовчки повертала б запис назад (Bug #1065).
             notifyCalendarChanged();
-          } else load();
+          }
         } catch (err: unknown) {
           toast.error(err instanceof Error ? err.message : t('slot.errUpdateFallback'));
           load();
@@ -1336,24 +1338,14 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
             mechanicDroppedText(t, saved.mechanicDroppedReason, slot.employeeName, lift),
           );
         }
-        // Ланцюжок перебудовано — перечитати вид із resync відкритої форми, як після наряду.
-        if (chain) notifyCalendarChanged();
-        else load();
+        // Ланцюжок перебудовано (і одноденний запис, який сервер поділив, №96) — перечитати вид із
+        // resync відкритої форми, як після наряду: форма запису бере нові межі (Bug #1065).
+        notifyCalendarChanged();
       } catch (e: unknown) {
         toast.error(e instanceof Error ? e.message : t('slot.errMoveFallback'));
       }
     },
-    [
-      slots,
-      load,
-      nowMs,
-      minHour,
-      t,
-      canManageSlots,
-      invalidateWorkOrders,
-      axisGeom,
-      shiftedChainSpan,
-    ],
+    [slots, nowMs, minHour, t, canManageSlots, invalidateWorkOrders, axisGeom, shiftedChainSpan],
   );
 
   // ── Remove slot ───────────────────────────────────────────────────────────
