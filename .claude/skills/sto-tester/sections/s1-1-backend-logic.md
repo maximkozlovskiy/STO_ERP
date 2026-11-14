@@ -212,7 +212,7 @@ grep -rn "CREATE UNIQUE INDEX" packages/database/prisma/migrations/ | grep -v "W
 
 **PATCH що змінює unique-поле → ConflictException (Bug #151)**
 
-- [ ] `update()` з `dto.field` що є у `@@unique` → re-check: `findFirst({ orgId, field, NOT: { id } })` → `ConflictException` якщо знайшов
+- [ ] `update()` поля з `@@unique` → `findFirst({ orgId, field, NOT: { id } })` БЕЗ `deletedAt: null` (unique тримає й видалені, #1068) → 409
 - [ ] Hard-delete на моделі БЕЗ `deletedAt` = НЕ порушення §5 (false-positive guard) — `T1.1-064`
 - [ ] CRITICAL для soft-delete + @@unique без partial filter (Bug #297) — `T1.1-065`
 
