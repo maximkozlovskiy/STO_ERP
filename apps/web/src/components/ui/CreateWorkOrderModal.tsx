@@ -52,8 +52,13 @@ import { useWorkOrderActions } from '@/hooks/useWorkOrderActions';
 import { getCached, setCache } from '@/lib/ref-cache';
 import { kyivToday, isoToKyivLocalDateTime, localDateTimeToISO } from '@/lib/format';
 import { notifyCalendarChanged } from '@/lib/calendar-events';
-import { useBranchWorkHours } from '@/hooks/useBranchWorkHours';
-import { calcEndFromHours, calcPlannedHours } from './work-order/planned-dates';
+import { useBranchWorkHours, useBranchWorkHoursQuery } from '@/hooks/useBranchWorkHours';
+import {
+  calcEndFromHours,
+  calcPlannedHours,
+  sameWorkHoursWindow,
+  type WorkHoursWindow,
+} from './work-order/planned-dates';
 import {
   cn,
   displayCounterpartyName,
@@ -1204,11 +1209,45 @@ export function CreateWorkOrderModal({
     (liftId: string) => (liftId ? (liftsById.get(liftId)?.branchId ?? null) : null),
     [liftsById],
   );
+  // №98: підйомник іншої філії зберігає нормогодини — «Завершення» від того ж початку за годинами
+  // й днями нової філії (`calcEndFromHours`, як сервер); нормогодини не змінюються. Нормогодин у
+  // полі немає — робочі години між датами за годинами філії, з якої наряд іде. Години нової філії
+  // ще не прочитано чи запит упав — дати лишаються, і завершення так само рахує сервер (дати ті
+  // самі, що збережені). Години філій однакові — дати теж лишаються (як на сервері).
+  const [keepHours, setKeepHours] = useState<{
+    branch: string;
+    start: string;
+    hours: number;
+    from: WorkHoursWindow;
+  } | null>(null);
+  const keepHoursTo = useBranchWorkHoursQuery(keepHours?.branch ?? null);
+  useEffect(() => {
+    if (!keepHours || !keepHoursTo) return;
+    setKeepHours(null);
+    if (sameWorkHoursWindow(keepHours.from, keepHoursTo)) return;
+    setForm(f =>
+      f.branchId !== keepHours.branch || f.plannedStartAt !== keepHours.start
+        ? f
+        : {
+            ...f,
+            plannedEndAt:
+              calcEndFromHours(keepHours.start, keepHours.hours, keepHoursTo) || f.plannedEndAt,
+          },
+    );
+  }, [keepHours, keepHoursTo, setForm]);
   const pickLift = (liftId: string) => {
     const branch = liftBranchOf(liftId);
-    const prevBranch = getValues('branchId') ?? '';
+    const prev = getValues();
+    const prevBranch = prev.branchId ?? '';
     setForm(f => ({ ...f, liftId, ...(branch && branch !== f.branchId && { branchId: branch }) }));
-    if (branch && branch !== prevBranch) setBranchFromLift(branch);
+    if (!branch || branch === prevBranch) return;
+    setBranchFromLift(branch);
+    const start = (prev.plannedStartAt as string) ?? '';
+    const typed = Number(((prev.plannedHours as string | undefined) ?? '').replace(',', '.'));
+    const from = workHoursRef.current;
+    const hours =
+      typed > 0 ? typed : Number(calcPlannedHours(start, prev.plannedEndAt as string, from));
+    setKeepHours(start && hours > 0 ? { branch, start, hours, from } : null);
   };
   // Новий наряд із підйомником (картку відкрито з календаря): підйомники довантажились — філія
   // з підйомника; програмна зміна, не дія користувача (`shouldDirty: false`, як автовибір філії).

@@ -26,6 +26,18 @@ export const DEFAULT_WORK_HOURS_WINDOW: Readonly<WorkHoursWindow> = Object.freez
   workDays: DEFAULT_WORK_DAYS,
 });
 
+/**
+ * Ті самі робочі години й дні (переліку немає чи порожній — пн–пт) — дзеркало серверного
+ * `sameWorkHours`: зміна підйомника між такими філіями нормогодин не перераховує (№98).
+ */
+export function sameWorkHoursWindow(a: WorkHoursWindow, b: WorkHoursWindow): boolean {
+  const days = (wh: WorkHoursWindow) =>
+    [...new Set(wh.workDays && wh.workDays.length > 0 ? wh.workDays : DEFAULT_WORK_DAYS)]
+      .sort((x, y) => x - y)
+      .join(',');
+  return a.startHour === b.startHour && a.endHour === b.endHour && days(a) === days(b);
+}
+
 const pad = (n: number) => String(n).padStart(2, '0');
 const DT_RE = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/;
 

@@ -271,6 +271,7 @@ function CalendarPageClient() {
           editingChain={cs.editingChain}
           startLocked={cs.editingStarted}
           formWorkHours={cs.formWorkHours}
+          savedWorkHours={cs.savedWorkHours}
           pendingSlot={cs.pendingSlot}
           setPendingSlot={cs.setPendingSlot}
           formMounted={cs.formMounted}

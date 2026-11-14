@@ -1480,6 +1480,12 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
     [editingSlotId, editingSaved],
   );
 
+  // №98: години філії підйомника, на якому запис збережено, — за ними нормогодини ручного
+  // ланцюжка, коли у формі обрано підйомник філії з іншими годинами (кінець — за годинами нової).
+  const savedLiftBranchId = lifts.find(l => l.id === editingSavedSlot?.liftId)?.branchId ?? null;
+  const savedLiftHours = useBranchWorkHoursQuery(savedLiftBranchId);
+  const savedWorkHours = savedLiftBranchId ? savedLiftHours : null;
+
   /**
    * Запис у формі — минулий (лише перегляд): за його `endAt`, однаково у виді «Місяць» і «День»
    * (BR-CAL-009, TECH-DEBT (б) №57). Раніше «День» вважав минулим запис, що почався до поточної
@@ -1779,6 +1785,7 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
     editingChain,
     editingStarted,
     formWorkHours,
+    savedWorkHours,
     error,
     setError,
     saving,

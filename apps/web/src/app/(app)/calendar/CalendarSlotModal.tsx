@@ -57,7 +57,11 @@ import {
   slotDeleteLockHint,
 } from './calendar-day';
 import type { CreatedWorkOrder } from '@/components/ui/CreateWorkOrderModal';
-import { calcEndFromHours, type WorkHoursWindow } from '@/components/ui/work-order/planned-dates';
+import {
+  calcEndFromHours,
+  sameWorkHoursWindow,
+  type WorkHoursWindow,
+} from '@/components/ui/work-order/planned-dates';
 import {
   slotEndFromHours,
   slotHoursBetween,
@@ -175,6 +179,12 @@ interface CalendarSlotModalProps {
    * філія невідома: години основної філії (`windowStart` / `windowEnd` / `windowWorkDays`).
    */
   formWorkHours?: WorkHoursWindow | null;
+  /**
+   * Робочі години й дні філії підйомника, на якому запис ЗБЕРЕЖЕНО (№98): за ними — нормогодини
+   * ручного ланцюжка, коли у формі обрано підйомник філії з іншими годинами. `null` — новий запис,
+   * підйомник без відомої філії чи години ще не прочитано.
+   */
+  savedWorkHours?: WorkHoursWindow | null;
   nowMs: number;
 
   error: string;
@@ -217,6 +227,7 @@ export function CalendarSlotModal({
   windowEnd,
   windowWorkDays,
   formWorkHours = null,
+  savedWorkHours = null,
   nowMs,
   error,
   setError,
@@ -630,6 +641,9 @@ export function CalendarSlotModal({
   // форму відкрито, ланцюжок перечитано чи години філії змінились (обрано підйомник іншої філії,
   // години довантажились). Поки межі у формі збережені — лише нормогодини (і знімок форми: це не
   // незбережена зміна); змінені межі — кінець за нормогодинами, як у нового запису.
+  // №98: обрано підйомник філії з ІНШИМИ годинами, а межі ще збережені — ті самі нормогодини (за
+  // годинами філії збереженого підйомника), кінець від них за годинами нової, як на сервері.
+  const savedLiftId = savedMechanic?.liftId ?? null;
   const chainHoursKey = manualChain
     ? [
         editingSlotId,
@@ -638,6 +652,9 @@ export function CalendarSlotModal({
         wh.startHour,
         wh.endHour,
         (wh.workDays ?? []).join(','),
+        savedWorkHours
+          ? `${savedWorkHours.startHour}-${savedWorkHours.endHour}-${(savedWorkHours.workDays ?? []).join(',')}`
+          : '',
       ].join('|')
     : null;
   const chainHoursKeyRef = useRef<string | null>(null);
@@ -647,8 +664,22 @@ export function CalendarSlotModal({
     if (!open || !manualChain?.startAt) return;
     const savedStart = isoToKyivLocalDateTime(new Date(manualChain.startAt));
     const savedEnd = isoToKyivLocalDateTime(new Date(manualChain.endAt));
-    const { startAt, endAt, normoHours } = formRef.current;
+    const { startAt, endAt, normoHours, liftId } = formRef.current;
     if (startAt === savedStart.slice(11, 16) && endAt === savedEnd.slice(11, 16)) {
+      const moved =
+        keyChanged &&
+        !fieldsLocked &&
+        savedWorkHours !== null &&
+        savedLiftId !== null &&
+        liftId !== savedLiftId &&
+        !sameWorkHoursWindow(savedWorkHours, wh);
+      const kept = moved ? slotHoursBetween(savedStart, savedEnd, savedWorkHours) : '';
+      const keptEnd = kept ? endFor(startAt, kept) : '';
+      if (keptEnd) {
+        if (kept !== normoHours || keptEnd.slice(11, 16) !== endAt)
+          adjustForm(f => ({ ...f, normoHours: kept, endAt: keptEnd.slice(11, 16) }));
+        return;
+      }
       if (!keyChanged && normoHours !== '') return;
       const nh = slotHoursBetween(savedStart, savedEnd, wh);
       if (nh && nh !== normoHours) adjustForm(f => ({ ...f, normoHours: nh }));
@@ -657,7 +688,18 @@ export function CalendarSlotModal({
     if (!keyChanged || fieldsLocked) return;
     const end = endFor(startAt, normoHours);
     if (end && end.slice(11, 16) !== endAt) adjustForm(f => ({ ...f, endAt: end.slice(11, 16) }));
-  }, [chainHoursKey, open, manualChain, form.normoHours, wh, fieldsLocked, endFor, adjustForm]);
+  }, [
+    chainHoursKey,
+    open,
+    manualChain,
+    form.normoHours,
+    wh,
+    fieldsLocked,
+    endFor,
+    adjustForm,
+    savedWorkHours,
+    savedLiftId,
+  ]);
 
   // Conflict check when liftId / employeeId / times change
   useEffect(() => {
