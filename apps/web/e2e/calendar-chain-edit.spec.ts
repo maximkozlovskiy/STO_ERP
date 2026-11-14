@@ -141,7 +141,7 @@ test.describe('Зміна багатоденного ручного запису
     const busy = new Set<string | null | undefined>();
     for (const d of days()) for (const s of await slotsOn(page, d)) busy.add(s.liftId);
     const free = lifts.body.filter(l => !busy.has(l.id));
-    state.lift = free.find(l => !l.name.startsWith('E2E')) ?? free[0];
+    state.lift = free.find(l => !/^(000 )?E2E/.test(l.name)) ?? free[0];
     expect(state.lift, 'потрібен підйомник, вільний пн–чт').toBeTruthy();
     const wh = await api<{ workStartHour: number; workEndHour: number }>(
       page,

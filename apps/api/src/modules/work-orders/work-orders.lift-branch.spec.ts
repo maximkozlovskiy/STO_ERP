@@ -18,6 +18,7 @@ import {
   BRANCH,
   BRANCH_2,
   LIFT_1,
+  LIFT_2,
   LIFT_B2,
   NOW,
   ORG,
@@ -291,5 +292,159 @@ describe('BR-WO-040 — філія наряду з підйомника', () => 
 
     expect(wo(h)).toMatchObject({ branchId: BRANCH_2, liftId: LIFT_B2 });
     expect(spans(h)).toEqual([[LIFT_B2, iso(FRI, '10:00'), iso(FRI, '12:00')]]);
+  });
+});
+
+/**
+ * №98 (рішення власника 2026-11-14): зміна підйомника на підйомник філії з іншими годинами зберігає
+ * НОРМОГОДИНИ, а не межі: початок лишається, завершення — за годинами й днями нової філії; сам
+ * `plannedHours` не змінюється; дати, явно змінені в тому самому запиті, — як задано.
+ * Наряд пт 16:00 – сб 12:00 на LIFT_1 (BRANCH 08–18 щодня): 2 год у пт + 4 у сб = 6 нормогодин.
+ * На LIFT_B2 (BRANCH_2 09–18 пн–пт) ті самі 6 год — пт 16–18 і пн 09–13.
+ */
+describe('BR-WO-040 — підйомник іншої філії зберігає нормогодини (№98)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ now: NOW, toFake: ['Date'] });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** Наряд пт 16:00 – сб 12:00 з ланцюжком запису пт 16–18 + сб 08–12 на LIFT_1. */
+  function twoDays(woOver: Record<string, unknown> = {}) {
+    return planningHarness({
+      workOrders: [
+        woRow({
+          liftId: LIFT_1,
+          plannedAt: kyiv(FRI, '16:00'),
+          dueDate: kyiv(SAT, '12:00'),
+          ...woOver,
+        }),
+      ],
+      slots: [
+        slotRow('anchor', { startAt: kyiv(FRI, '16:00'), endAt: kyiv(FRI, '18:00') }),
+        slotRow('cont', {
+          parentSlotId: 'anchor',
+          startAt: kyiv(SAT, '08:00'),
+          endAt: kyiv(SAT, '12:00'),
+        }),
+      ],
+    });
+  }
+  const KEPT = [
+    [LIFT_B2, iso(FRI, '16:00'), iso(FRI, '18:00')],
+    [LIFT_B2, iso(MON, '09:00'), iso(MON, '13:00')],
+  ];
+
+  // guards: BR-WO-040
+  it.each([
+    ['нормогодини наряду', { plannedHours: 6 }, 6],
+    ['без нормогодин — робочі години між датами за годинами старої філії', {}, null],
+  ])(
+    'картка: лише підйомник (дати ті самі) → завершення за %s',
+    async (_l, woOver, plannedHours) => {
+      const h = twoDays(woOver);
+
+      await h.service.update(
+        ORG,
+        WO_ID,
+        { liftId: LIFT_B2, plannedAt: iso(FRI, '16:00'), dueDate: iso(SAT, '12:00') },
+        'user-1',
+      );
+
+      expect(wo(h)).toMatchObject({ branchId: BRANCH_2, liftId: LIFT_B2, plannedHours });
+      expect(t(wo(h).plannedAt)).toBe(t(kyiv(FRI, '16:00')));
+      expect(t(wo(h).dueDate)).toBe(t(kyiv(MON, '13:00')));
+      expect(spans(h)).toEqual(KEPT);
+      expect(h.audit.record).toHaveBeenCalledWith(
+        ORG,
+        'WorkOrder',
+        WO_ID,
+        'UPDATE',
+        'user-1',
+        expect.objectContaining({ dueDate: kyiv(SAT, '12:00') }),
+        expect.objectContaining({ dueDate: iso(MON, '13:00') }),
+      );
+    },
+  );
+
+  // guards: BR-WO-040
+  it('нормогодини наряду — пріоритет над межами: 3 год від пт 16:00 → пн 10:00', async () => {
+    const h = twoDays({ plannedHours: 3 });
+
+    await h.service.update(ORG, WO_ID, { liftId: LIFT_B2 });
+
+    expect(t(wo(h).dueDate)).toBe(t(kyiv(MON, '10:00')));
+    expect(wo(h).plannedHours).toBe(3);
+  });
+
+  // guards: BR-WO-040
+  it('картка: підйомник і явно змінене завершення → завершення як задано', async () => {
+    const h = twoDays({ plannedHours: 6 });
+
+    await h.service.update(ORG, WO_ID, {
+      liftId: LIFT_B2,
+      plannedAt: iso(FRI, '16:00'),
+      dueDate: iso(MON, '15:00'),
+    });
+
+    expect(t(wo(h).dueDate)).toBe(t(kyiv(MON, '15:00')));
+    expect(wo(h).plannedHours).toBe(6);
+  });
+
+  // guards: BR-WO-040
+  it('філія з тими самими годинами й днями → межі без змін, навіть коли нормогодини інші', async () => {
+    // Філія без рядка налаштувань — типові 09–18 пн–пт, як у BRANCH_2.
+    const h = planned({ branchId: 'branch-defaults', plannedHours: 3 });
+
+    await h.service.update(ORG, WO_ID, { liftId: LIFT_B2 });
+
+    expect(wo(h)).toMatchObject({ branchId: BRANCH_2, plannedHours: 3 });
+    expect(t(wo(h).dueDate)).toBe(t(kyiv(FRI, '12:00')));
+  });
+
+  // guards: BR-WO-040
+  it('підйомник без зони (філія та сама) → межі без змін', async () => {
+    const h = twoDays({ plannedHours: 3 });
+
+    await h.service.update(ORG, WO_ID, { liftId: LIFT_2 });
+
+    expect(wo(h)).toMatchObject({ branchId: BRANCH, liftId: LIFT_2, plannedHours: 3 });
+    expect(t(wo(h).dueDate)).toBe(t(kyiv(SAT, '12:00')));
+  });
+
+  // guards: BR-WO-040, BR-WO-024
+  it.each([
+    ['нормогодини наряду', 6],
+    ['без нормогодин — вони й лишаються порожніми', null],
+  ])('зміна запису наряду: лише підйомник іншої філії → завершення за (%s)', async (_l, ph) => {
+    const h = twoDays({ plannedHours: ph });
+
+    await h.service.updateCalendarSlot(ORG, 'cont', {
+      liftId: LIFT_B2,
+      startAt: iso(SAT, '08:00'),
+      endAt: iso(SAT, '12:00'),
+    });
+
+    expect(wo(h)).toMatchObject({ branchId: BRANCH_2, liftId: LIFT_B2, plannedHours: ph });
+    expect(t(wo(h).plannedAt)).toBe(t(kyiv(FRI, '16:00')));
+    expect(t(wo(h).dueDate)).toBe(t(kyiv(MON, '13:00')));
+    expect(spans(h)).toEqual(KEPT);
+  });
+
+  // guards: BR-WO-040, BR-WO-023
+  it('перенесення на рядок підйомника іншої філії → новий початок, ті самі нормогодини', async () => {
+    const h = twoDays({ plannedHours: 6 });
+
+    await h.service.reschedule(ORG, WO_ID, {
+      slotId: 'anchor',
+      startAt: iso(FRI, '15:00'),
+      liftId: LIFT_B2,
+    });
+
+    // Пт 15–18 (3 год) + пн 09–12 (3 год); зсув кінця на годину дав би сб 11:00 — вихідний.
+    expect(wo(h)).toMatchObject({ branchId: BRANCH_2, liftId: LIFT_B2, plannedHours: 6 });
+    expect(t(wo(h).plannedAt)).toBe(t(kyiv(FRI, '15:00')));
+    expect(t(wo(h).dueDate)).toBe(t(kyiv(MON, '12:00')));
   });
 });

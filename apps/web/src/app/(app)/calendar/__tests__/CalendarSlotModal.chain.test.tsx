@@ -41,6 +41,11 @@ interface HarnessProps {
   editingChain?: Chain | null;
   startLocked?: boolean;
   formWorkHours?: WorkHoursWindow | null;
+  /** Години філії за підйомником форми (як `useCalendarState`): є — замість `formWorkHours`. */
+  hoursByLift?: Record<string, WorkHoursWindow>;
+  savedWorkHours?: WorkHoursWindow | null;
+  savedLiftId?: string;
+  lifts?: { id: string; name: string }[];
   date?: string;
   onSaved?: (o?: { workOrderChanged?: boolean }) => void;
   onDeleted?: () => void;
@@ -53,6 +58,10 @@ function Harness({
   editingChain = null,
   startLocked = false,
   formWorkHours = null,
+  hoursByLift,
+  savedWorkHours = null,
+  savedLiftId,
+  lifts = [{ id: L1, name: 'П1' }],
   date = '2026-10-20',
   onSaved = () => {},
   onDeleted = () => {},
@@ -75,7 +84,7 @@ function Harness({
       onSaved={onSaved}
       onDeleted={onDeleted}
       date={date}
-      lifts={[{ id: L1, name: 'П1' }]}
+      lifts={lifts}
       form={form}
       setForm={setForm}
       editingSlotId={editingSlotId}
@@ -93,7 +102,11 @@ function Harness({
       windowStart={9}
       windowEnd={18}
       windowWorkDays={[1, 2, 3, 4, 5]}
-      formWorkHours={formWorkHours}
+      formWorkHours={hoursByLift ? (hoursByLift[form.liftId] ?? null) : formWorkHours}
+      savedWorkHours={savedWorkHours}
+      savedMechanic={
+        savedLiftId ? { liftId: savedLiftId, employeeId: '', employeeName: null } : null
+      }
       nowMs={new Date('2026-10-15T12:00:00+03:00').getTime()}
       error=""
       setError={() => {}}
@@ -525,5 +538,76 @@ describe('CalendarSlotModal — розпочатий запис (BR-CAL-020, BR-
 
     expect(pickerInput('Початок')).not.toBeDisabled();
     expect(screen.queryByTestId('slot-started-hint')).toBeNull();
+  });
+});
+
+describe('CalendarSlotModal — підйомник іншої філії зберігає нормогодини (BR-CAL-020, №98)', () => {
+  const L2 = '11111111-1111-4111-8111-000000000002';
+  const L3 = '11111111-1111-4111-8111-000000000003';
+  const MON_FRI: WorkHoursWindow = { startHour: 9, endHour: 18, workDays: [1, 2, 3, 4, 5] };
+  const MON_SAT: WorkHoursWindow = { startHour: 9, endHour: 18, workDays: [1, 2, 3, 4, 5, 6] };
+  // Пт 23.10 17:00–18:00 + пн 26.10 09:00–12:00 (після переходу на +02:00) на П1 — 4 нормогодини.
+  const FRI_MON: Chain = {
+    days: 2,
+    startAt: '2026-10-23T14:00:00.000Z',
+    endAt: '2026-10-26T10:00:00.000Z',
+    isFirst: true,
+    isLast: false,
+  };
+  const openChain = () =>
+    render(
+      <Harness
+        date="2026-10-23"
+        initial={{ startAt: '17:00', endAt: '12:00', normoHours: '' }}
+        editingSlotId="a"
+        editingChain={FRI_MON}
+        lifts={[
+          { id: L1, name: 'П1' },
+          { id: L2, name: 'П2' },
+          { id: L3, name: 'П3' },
+        ]}
+        hoursByLift={{ [L1]: MON_FRI, [L2]: MON_SAT, [L3]: { ...MON_FRI } }}
+        savedWorkHours={MON_FRI}
+        savedLiftId={L1}
+      />,
+    );
+  const normo = () => screen.getByPlaceholderText('напр. 1,5');
+  const lift = () => screen.getByRole('combobox', { name: /Підйомник/ });
+
+  // guards: BR-CAL-020
+  it('підйомник філії пн–сб → «Кінець» сб 12:00, ті самі 4 год; PATCH — новий кінець, chainSpan', async () => {
+    openChain();
+    await waitFor(() => expect(normo()).toHaveValue(4));
+    expect(screen.getByDisplayValue('26.10.2026 12:00')).toBeInTheDocument();
+
+    fireEvent.change(lift(), { target: { value: L2 } });
+
+    await waitFor(() => expect(screen.getByDisplayValue('24.10.2026 12:00')).toBeInTheDocument());
+    expect(normo()).toHaveValue(4);
+    expect(warning()).toMatch(/2 дні: 23\.10 17:00–18:00, 24\.10 09:00–12:00/);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Оновити' }));
+    await waitFor(() => expect(callsTo('/calendar/slots/a', 'PATCH')).toHaveLength(1));
+    expect(JSON.parse(callsTo('/calendar/slots/a', 'PATCH')[0]![1]!.body!)).toMatchObject({
+      liftId: L2,
+      startAt: '2026-10-23T14:00:00.000Z',
+      endAt: '2026-10-24T09:00:00.000Z',
+      chainSpan: true,
+    });
+  });
+
+  // guards: BR-CAL-020
+  it('назад на збережений підйомник — збережений кінець; філія з тими самими годинами — без змін', async () => {
+    openChain();
+    await waitFor(() => expect(normo()).toHaveValue(4));
+
+    fireEvent.change(lift(), { target: { value: L2 } });
+    await waitFor(() => expect(screen.getByDisplayValue('24.10.2026 12:00')).toBeInTheDocument());
+    fireEvent.change(lift(), { target: { value: L1 } });
+    await waitFor(() => expect(screen.getByDisplayValue('26.10.2026 12:00')).toBeInTheDocument());
+
+    fireEvent.change(lift(), { target: { value: L3 } });
+    expect(screen.getByDisplayValue('26.10.2026 12:00')).toBeInTheDocument();
+    expect(normo()).toHaveValue(4);
   });
 });

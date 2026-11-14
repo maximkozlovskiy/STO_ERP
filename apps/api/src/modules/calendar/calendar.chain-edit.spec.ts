@@ -649,3 +649,94 @@ describe('CalendarService.updateSlot — розпочатий ручний за�
     expect(liveChain(rows)).toEqual([['a', null, ...span(FRI, '17:00', '19:00')]]);
   });
 });
+
+/**
+ * №98 (рішення власника 2026-11-14): лише новий підйомник (межі ті самі, що збережені) філії з
+ * іншими годинами — ланцюжок зберігає нормогодини: робочі години між збереженими межами за годинами
+ * філії старого підйомника, від того ж початку за годинами нової (як форма й перетягування,
+ * `shiftedChainEnd`). Ланцюжок `chain()` на `lift-1` (08–20 щодня): пт 16–20 + сб 12 год + нд 2 год
+ * = 18 нормогодин. Межі пт 16:00 – нд 10:00 на `lift-b` (09–18 пн–пт) дали б лише 2 год у пт.
+ */
+describe('CalendarService.updateSlot — підйомник іншої філії зберігає нормогодини (BR-CAL-020, №98)', () => {
+  const KEPT = [
+    ['a', null, ...span(FRI, '16:00', '18:00')],
+    ['a2', 'a', ...span(MON, '09:00', '18:00')],
+    ['a3', 'a', ...span(TUE, '09:00', '16:00')],
+  ];
+
+  // guards: BR-CAL-020
+  it.each([
+    [
+      'форма (chainSpan) із тими самими межами',
+      'a2',
+      { liftId: 'lift-b', startAt: iso(FRI, '16:00'), endAt: iso(SUN, '10:00'), chainSpan: true },
+    ],
+    ['лише підйомник (планшет)', 'a3', { liftId: 'lift-b' }],
+    [
+      'межі частини без змін (без chainSpan)',
+      'a',
+      { liftId: 'lift-b', startAt: iso(FRI, '16:00'), endAt: iso(FRI, '20:00') },
+    ],
+  ])('%s → 18 год за годинами нової філії: пт 16–18, пн, вт 09–16', async (_l, id, dto) => {
+    const rows = chain();
+    const { svc } = service(rows);
+
+    const res = await svc.updateSlot(ORG, id, dto);
+
+    expect(liveChain(rows)).toEqual(KEPT);
+    expect(rows.filter(r => r.deletedAt === null).every(r => r.liftId === 'lift-b')).toBe(true);
+    expect(res).toMatchObject({ chainDays: 3, chainEndAt: iso(TUE, '16:00') });
+  });
+
+  // guards: BR-CAL-020
+  it('у філію з довшим днем — менше днів: пт 16–18 + пн 09–11 (4 год) → пт 16–20, продовження видалено', async () => {
+    const rows = [
+      fakeSlot({
+        id: 'a',
+        liftId: 'lift-b',
+        startAt: kyiv(FRI, '16:00'),
+        endAt: kyiv(FRI, '18:00'),
+      }),
+      fakeSlot({
+        id: 'a2',
+        liftId: 'lift-b',
+        parentSlotId: 'a',
+        startAt: kyiv(MON, '09:00'),
+        endAt: kyiv(MON, '11:00'),
+      }),
+    ];
+    const { svc } = service(rows);
+
+    await svc.updateSlot(ORG, 'a2', { liftId: 'lift-1' });
+
+    expect(liveChain(rows)).toEqual([['a', null, ...span(FRI, '16:00', '20:00')]]);
+    expect(rows.find(r => r.id === 'a2')!.deletedAt).not.toBeNull();
+  });
+
+  // guards: BR-CAL-020
+  it('підйомник тієї самої філії — межі й частини без змін', async () => {
+    const rows = chain();
+    const before = liveChain(rows);
+    const { svc } = service(rows);
+
+    await svc.updateSlot(ORG, 'a', { liftId: 'lift-2' });
+
+    expect(liveChain(rows)).toEqual(before);
+    expect(rows.filter(r => r.deletedAt === null).every(r => r.liftId === 'lift-2')).toBe(true);
+  });
+
+  // guards: BR-CAL-020
+  it('розпочатий ланцюжок (№97): лише підйомник — початок той самий, кінець за нормогодинами', async () => {
+    vi.setSystemTime(kyiv(SAT, '12:00'));
+    try {
+      const rows = chain();
+      const { svc } = service(rows);
+
+      await svc.updateSlot(ORG, 'a2', { liftId: 'lift-b' });
+
+      expect(liveChain(rows)).toEqual(KEPT);
+    } finally {
+      vi.setSystemTime(BEFORE_ALL);
+    }
+  });
+});

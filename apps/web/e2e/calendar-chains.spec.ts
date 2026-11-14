@@ -155,7 +155,7 @@ test.describe('Ланцюжки записів календаря — BR-CAL-019
         s => s.liftId,
       ),
     );
-    const own = lifts.body.filter(l => !l.name.startsWith('E2E') && !busy.has(l.id));
+    const own = lifts.body.filter(l => !/^(000 )?E2E/.test(l.name) && !busy.has(l.id));
     state.lift = own[0] ?? lifts.body.find(l => !busy.has(l.id));
     expect(state.lift, 'потрібен підйомник, вільний обидва дні').toBeTruthy();
     expect(state.lift!.branchId, 'GET /lifts віддає філію підйомника (BR-CAL-017)').toBeTruthy();

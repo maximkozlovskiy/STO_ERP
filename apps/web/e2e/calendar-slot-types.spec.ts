@@ -164,7 +164,7 @@ test.describe('Тип запису календаря — BR-CAL-003', () => {
     expect(vehicle.status).toBe(201);
     state.vehicleId = vehicle.body.id;
     const lifts = await api<{ id: string; name: string }[]>(page, 'GET', '/lifts');
-    const own = lifts.body.filter(l => !l.name.startsWith('E2E'));
+    const own = lifts.body.filter(l => !/^(000 )?E2E/.test(l.name));
     const pool = own.length > 0 ? own : lifts.body;
     // Підйомник, вільний 14:00–17:00 цього дня (залишки інших прогонів не заважають).
     const taken = await daySlots(page);

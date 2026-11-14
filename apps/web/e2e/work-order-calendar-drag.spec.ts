@@ -230,7 +230,7 @@ test.describe('Запис наряду в календарі — BR-WO-023 / BR-
     expect(vehicle.status).toBe(201);
     state.vehicleId = vehicle.body.id;
     const lifts = await api<{ id: string; name: string }[]>(page, 'GET', '/lifts');
-    const own = lifts.body.filter(l => !l.name.startsWith('E2E'));
+    const own = lifts.body.filter(l => !/^(000 )?E2E/.test(l.name));
     const pool = own.length >= 2 ? own : lifts.body;
     expect(pool.length, 'потрібні два підйомники').toBeGreaterThanOrEqual(2);
     [state.liftA, state.liftB] = pool;
