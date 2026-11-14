@@ -88,14 +88,16 @@ describe('endFromWorkHours — кінець за нормогодинами в �
 
   // guards: BR-WO-040
   it.each([
-    ['пт 10:00', at(FRI, '10:00'), 0.5],
-    ['пт 17:00', at(FRI, '17:00'), 3],
-    ['пт 09:00', at(FRI, '09:00'), 9],
-    ['пт 16:30', at(FRI, '16:30'), 22.75],
-    ['пн 12:00', at(MON, '12:00'), 40],
+    // Години — другим: `%s` у назві підставляє аргументи по порядку, і Date дав би назву, залежну
+    // від часового поясу машини (spec-baseline.py таку назву відкидає).
+    ['пт 10:00', 0.5, at(FRI, '10:00')],
+    ['пт 17:00', 3, at(FRI, '17:00')],
+    ['пт 09:00', 9, at(FRI, '09:00')],
+    ['пт 16:30', 22.75, at(FRI, '16:30')],
+    ['пн 12:00', 40, at(MON, '12:00')],
   ])(
     'взаємна з workHoursBetween: від %s за %s год і назад — ті самі години',
-    (_l, start, hours) => {
+    (_l, hours, start) => {
       for (const wh of [MON_FRI, MON_SAT, DAILY_8_20]) {
         const end = endFromWorkHours(start, hours, wh)!;
         expect(workHoursBetween(start, end, wh)).toBe(hours);

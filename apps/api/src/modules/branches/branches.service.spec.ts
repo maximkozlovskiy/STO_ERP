@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { BranchesService } from './branches.service';
 import { modelMock, type PrismaModelMock } from '../../common/testing/prisma-mock';
 
@@ -20,6 +20,7 @@ describe('BranchesService', () => {
   let prisma: {
     garageBranch: PrismaModelMock;
     branchSettings: PrismaModelMock;
+    zone: PrismaModelMock;
     $transaction: ReturnType<typeof vi.fn>;
   };
   /** Чи йде виклик усередині `$transaction` — налаштування мають писатись разом із філією. */
@@ -52,6 +53,8 @@ describe('BranchesService', () => {
     prisma = {
       garageBranch: modelMock('findMany', 'findFirst', 'create', 'update', 'updateMany'),
       branchSettings: modelMock('create'),
+      // Каскадний сторож видалення: за замовчуванням активних зон немає.
+      zone: modelMock('findFirst'),
       $transaction: vi.fn(async (cb: (tx: unknown) => Promise<unknown>) => {
         inTx = true;
         try {
@@ -191,6 +194,20 @@ describe('BranchesService', () => {
     it('count=0 (чужа org або вже видалено) → 404, кеш НЕ скидається', async () => {
       prisma.garageBranch.updateMany.mockResolvedValue({ count: 0 });
       await expect(svc.remove(ORG, ID)).rejects.toThrow(NotFoundException);
+      expect(cache.del).not.toHaveBeenCalled();
+    });
+
+    // Каскадний сторож (як зона з підйомниками): жива зона у видаленій філії лишала підйомник,
+    // з яким наряд брав видалену філію (BR-WO-040) — «Філію не знайдено» (E2E 2026-11-14).
+    it('у філії є активна зона → 400, філія не видаляється, кеш не скидається', async () => {
+      prisma.zone.findFirst.mockResolvedValue({ id: 'zone-1' });
+      await expect(svc.remove(ORG, ID)).rejects.toThrow(BadRequestException);
+      expect(prisma.zone.findFirst.mock.calls[0][0].where).toEqual({
+        orgId: ORG,
+        branchId: ID,
+        deletedAt: null,
+      });
+      expect(prisma.garageBranch.updateMany).not.toHaveBeenCalled();
       expect(cache.del).not.toHaveBeenCalled();
     });
   });

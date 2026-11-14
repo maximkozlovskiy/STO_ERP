@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { TRANSACTION_TIMEOUT_MS, translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { getLocale } from '../../common/tenant/tenant-context';
@@ -71,6 +71,15 @@ export class BranchesService {
   }
 
   async remove(orgId: string, id: string): Promise<void> {
+    // Cascade guard, як у зони (`err.zone.hasActiveLifts`): не видаляти філію, у якій ще є активні
+    // зони. Інакше зона й її підйомники лишались живими у видаленій філії, а наряд із таким
+    // підйомником брав видалену філію (BR-WO-040) — «Філію не знайдено» при створенні (E2E 2026-11-14).
+    const activeZone = await this.prisma.zone.findFirst({
+      where: { orgId, branchId: id, deletedAt: null },
+      select: { id: true },
+    });
+    if (activeZone)
+      throw new BadRequestException(translateError('err.branch.hasActiveZones', getLocale()));
     // sto-optimize: `findOne + update` 2-RTT → atomic `updateMany` with full
     // compound where (id+orgId+deletedAt:null). One statement, no race window,
     // -1 RTT per delete. Tenant ізоляція збережена через orgId у WHERE.

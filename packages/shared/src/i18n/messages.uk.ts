@@ -240,6 +240,8 @@ export const uk: Record<string, string> = {
   'err.bankAccount.hasReconciledLines':
     'На рахунок рознесено рядки банківської виписки — спершу скасуйте рознесення',
   'err.branch.notFound': 'Філію не знайдено',
+  'err.branch.hasActiveZones':
+    'Неможливо видалити: у філії є активні зони. Спочатку видаліть або перенесіть їх',
 
   // ── Exception-повідомлення: exchange-rates-модуль ──
   'err.exchangeRate.notFound': 'Курс валюти не знайдено',

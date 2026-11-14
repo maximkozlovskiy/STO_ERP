@@ -40,6 +40,13 @@ if (!process.env.CI && !process.env.STO_E2E_SERVER_CHECKED) {
   }
 }
 
+/** Спеки, що створюють тимчасові філії (див. проєкт `chromium-branches`). */
+const BRANCH_CREATING_SPECS = [
+  '**/settings-workdays.spec.ts',
+  '**/work-order-lift-branch.spec.ts',
+  '**/calendar-lift-branch-hours.spec.ts',
+];
+
 export default defineConfig({
   testDir: './e2e',
   testIgnore: ['**/setup-auth.ts'],
@@ -72,6 +79,17 @@ export default defineConfig({
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
+      testIgnore: BRANCH_CREATING_SPECS,
+    },
+    // Спеки, що створюють тимчасові філії, — окремо й ПІСЛЯ решти. Картка наряду сама обирає філію,
+    // лише коли вона одна (і з блоку 3 перечитує довідник щоразу), а ~20 спеків на цей автовибір
+    // покладаються: паралельна тимчасова філія лишала «Філію» порожньою, і «Створити наряд» не
+    // натискалась (повний прогін 2026-11-14: 1 failed + 3 flaky, ×3 — 6 failed).
+    {
+      name: 'chromium-branches',
+      use: { ...devices['Desktop Chrome'] },
+      testMatch: BRANCH_CREATING_SPECS,
+      dependencies: ['chromium'],
     },
   ],
 

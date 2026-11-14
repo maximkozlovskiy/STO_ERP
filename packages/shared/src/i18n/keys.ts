@@ -422,6 +422,7 @@ export const VALIDATION_KEYS = [
   'err.bankAccount.notFound',
   'err.bankAccount.hasReconciledLines',
   'err.branch.notFound',
+  'err.branch.hasActiveZones',
   // Exception-повідомлення: exchange-rates-модуль
   'err.exchangeRate.notFound',
   'err.exchangeRate.dateExists',

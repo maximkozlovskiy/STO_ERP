@@ -236,6 +236,8 @@ export const en: Record<string, string> = {
   'err.bankAccount.hasReconciledLines':
     'Bank statement lines are reconciled to this account — cancel the reconciliation first',
   'err.branch.notFound': 'Branch not found',
+  'err.branch.hasActiveZones':
+    'Cannot delete: the branch has active zones. First delete or move them',
 
   // ── Exception messages: exchange-rates module ──
   'err.exchangeRate.notFound': 'Exchange rate not found',
