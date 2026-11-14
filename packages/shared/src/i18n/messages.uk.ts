@@ -261,6 +261,8 @@ export const uk: Record<string, string> = {
   'err.goodCategory.systemImmutable': 'Системну категорію не можна перейменовувати або переносити',
   'err.goodCategory.ownParent': 'Категорія не може бути власним батьком',
   'err.goodCategory.systemUndeletable': 'Системну категорію не можна видалити',
+  'err.goodCategory.usedByRules':
+    'Категорію не видалити: її використовують правила ціни — {{rules}}. Спершу змініть категорію в правилах',
   'err.goodCategory.moveIntoDescendant':
     'Неможливо перенести категорію у власну підкатегорію (утворився б цикл)',
 
@@ -725,6 +727,8 @@ export const uk: Record<string, string> = {
     'Частину товарів списку не знайдено ({{count}}): оновіть список і збережіть ще раз',
   'err.pricingRule.goodsFileTooLong':
     'У файлі {{count}} рядків, а список правила вміщує не більше {{max}} товарів',
+  'err.pricingRule.categoryTooManyGoods':
+    'У категорії {{count}} товарів, а список правила вміщує не більше {{max}}',
   'err.pricingRule.inactive': 'Правило вимкнене — увімкніть його, щоб застосувати до товарів',
 
   // ── Exception-повідомлення: work-orders-модуль ──
@@ -999,6 +1003,8 @@ export const uk: Record<string, string> = {
   'err.brand.deletedNotFound': 'Видалений бренд не знайдено',
   'err.brand.notFound': 'Бренд не знайдено',
   'err.brand.nameExists': 'Бренд з такою назвою вже існує',
+  'err.brand.nameExistsCaseInsensitive':
+    'Бренд «{{name}}» уже існує — назви брендів не розрізняють великі й малі літери',
   'err.brand.activeNameExists': 'Активний бренд з такою назвою вже існує — відновлення неможливе',
   'err.brand.synonymTaken': 'Синонім «{{synonym}}» уже належить бренду «{{brand}}»',
   'err.brand.synonymIsBrandName': 'Синонім «{{synonym}}» збігається з назвою бренду «{{brand}}»',

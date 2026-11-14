@@ -436,6 +436,7 @@ export const VALIDATION_KEYS = [
   'err.goodCategory.systemImmutable',
   'err.goodCategory.ownParent',
   'err.goodCategory.systemUndeletable',
+  'err.goodCategory.usedByRules',
   'err.goodCategory.moveIntoDescendant',
   // Exception-повідомлення: work-categories-модуль
   'err.workCategory.notFound',
@@ -802,6 +803,7 @@ export const VALIDATION_KEYS = [
   'err.pricingRule.categoryNotFound',
   'err.pricingRule.goodsNotFound',
   'err.pricingRule.goodsFileTooLong',
+  'err.pricingRule.categoryTooManyGoods',
   'err.pricingRule.inactive',
   // Exception-повідомлення: грошові суми (спільне, BR-FIN-MONEYCAP)
   'err.money.lineAmountOverflow',
@@ -1018,6 +1020,7 @@ export const VALIDATION_KEYS = [
   'err.brand.deletedNotFound',
   'err.brand.notFound',
   'err.brand.nameExists',
+  'err.brand.nameExistsCaseInsensitive',
   'err.brand.activeNameExists',
   'err.brand.synonymTaken',
   'err.brand.synonymIsBrandName',

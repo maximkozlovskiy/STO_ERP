@@ -257,6 +257,8 @@ export const en: Record<string, string> = {
   'err.goodCategory.systemImmutable': 'A system category cannot be renamed or moved',
   'err.goodCategory.ownParent': 'A category cannot be its own parent',
   'err.goodCategory.systemUndeletable': 'A system category cannot be deleted',
+  'err.goodCategory.usedByRules':
+    'The category cannot be deleted: pricing rules use it — {{rules}}. Change the category in the rules first',
   'err.goodCategory.moveIntoDescendant':
     'A category cannot be moved into its own subcategory (this would create a cycle)',
 
@@ -735,6 +737,8 @@ export const en: Record<string, string> = {
     'Some goods of the list were not found ({{count}}): refresh the list and save again',
   'err.pricingRule.goodsFileTooLong':
     'The file has {{count}} rows, a rule list holds at most {{max}} goods',
+  'err.pricingRule.categoryTooManyGoods':
+    'The category has {{count}} goods, a rule list holds at most {{max}}',
   'err.pricingRule.inactive': 'The rule is disabled — enable it to apply it to goods',
 
   // ── Exception messages: work-orders module ──
@@ -1015,6 +1019,8 @@ export const en: Record<string, string> = {
   'err.brand.deletedNotFound': 'Deleted brand not found',
   'err.brand.notFound': 'Brand not found',
   'err.brand.nameExists': 'A brand with this name already exists',
+  'err.brand.nameExistsCaseInsensitive':
+    'Brand «{{name}}» already exists — brand names are case-insensitive',
   'err.brand.activeNameExists':
     'An active brand with this name already exists — restore is not possible',
   'err.brand.synonymTaken': 'Synonym "{{synonym}}" already belongs to the brand "{{brand}}"',
