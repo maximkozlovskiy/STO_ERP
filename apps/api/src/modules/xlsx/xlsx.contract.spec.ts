@@ -8,7 +8,7 @@ import { vi, describe, it, expect, beforeAll, afterAll, beforeEach } from 'vites
 import { XlsxController } from './xlsx.controller';
 import { XlsxService } from './xlsx.service';
 import { GoodsService } from '../goods/goods.service';
-import { BrandsService } from '../brands/brands.service';
+import { BrandNameExistsException, BrandsService } from '../brands/brands.service';
 import { UnitsService } from '../units/units.service';
 import { WorksService } from '../works/works.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
@@ -168,7 +168,7 @@ describe('Xlsx — HTTP Contract', () => {
       ]);
       brandsServiceMock.create
         .mockResolvedValueOnce({ id: 'b-new' })
-        .mockRejectedValueOnce(new ConflictException('Бренд з такою назвою вже існує'))
+        .mockRejectedValueOnce(new BrandNameExistsException('Бренд з такою назвою вже існує'))
         .mockRejectedValueOnce(new ConflictException('Назва «БОШ» уже є синонімом бренду «Bosch»'));
 
       const res = await upload();

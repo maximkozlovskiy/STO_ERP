@@ -139,11 +139,12 @@ cd apps/api && npx vitest run src/modules/inventory/<файл>.spec.ts
 | єдина точка запису залишків (статичний сторож коду)   | `inventory.single-writer.spec.ts`     | 4      | BR-INVT-001, 016                    |
 | HTTP-контракт (DTO, статуси, валідація)               | `pricing-rules.contract.spec.ts`      | 48     | BR-GOOD-009, 010                    |
 | вибір правила, формула ціни, «Застосувати до всіх»    | `pricing.service.spec.ts`             | 46     | BR-GOOD-009, 010, 011, 012          |
+| порядок правил: один для списку й для розцінки        | `pricing.rule-order.spec.ts`          | 5      | BR-GOOD-012                         |
 | WRITEOFF→RETURN на справжніх сервісах, Σ-інваріант    | `return-roundtrip.invariants.spec.ts` | 7      | BR-INVT-013, 014, 015               |
 | ролі доступу до залишків (метадані @Roles)            | `stock-items.access.spec.ts`          | 7      | —                                   |
 | HTTP-контракт (DTO, статуси, валідація)               | `stock-items.contract.spec.ts`        | 30     | —                                   |
 
-Разом: **282** кейси (цифри з `vitest --reporter=json`, не з grep).
+Разом: **287** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
 Мітки `// guards: BR-INVT-…` стоять над конкретними `it(`; колонка «Правила» — лише покажчик файла.
 

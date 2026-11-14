@@ -379,8 +379,9 @@ describe('PricingService.getPricingContext', () => {
         tiers: { orderBy: { sortOrder: 'asc' } },
         _count: { select: { goods: true } },
       },
-      // Рівний пріоритет розсуджує старше правило, далі id — порядок не залежить від плану запиту.
-      orderBy: [{ priority: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
+      // Рівний пріоритет розсуджує НОВІШЕ правило (№15, як у списку), далі id — порядок не
+      // залежить від плану запиту.
+      orderBy: [{ priority: 'asc' }, { createdAt: 'desc' }, { id: 'asc' }],
       take: 500,
     });
   });

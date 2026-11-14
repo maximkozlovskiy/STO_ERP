@@ -194,16 +194,28 @@ function makeRestoreMocks() {
     $executeRaw: vi.fn().mockResolvedValue(1),
     brand: {
       findFirst: vi.fn(),
+      // Тезки без урахування регістру (№11) і назви інших брендів (BR-GOOD-007).
+      findMany: vi.fn().mockResolvedValue([]),
       updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       findFirstOrThrow: vi.fn(),
     },
-    brandSynonym: { findMany: vi.fn().mockResolvedValue([]) },
+    brandSynonym: {
+      findMany: vi.fn().mockResolvedValue([]),
+      updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+      createMany: vi.fn().mockResolvedValue({ count: 0 }),
+    },
   };
   return {
     prisma,
     cache: { get: vi.fn().mockResolvedValue(null), set: vi.fn(), del: vi.fn() },
   };
 }
+
+const DELETED_BOSCH = {
+  name: 'Bosch',
+  deletedAt: new Date('2026-11-01T10:00:00.000Z'),
+  synonyms: [],
+};
 
 describe('BrandsService.restore — active-name-duplicate guard (MD-C1 parity)', () => {
   let mocks: ReturnType<typeof makeRestoreMocks>;
@@ -218,10 +230,8 @@ describe('BrandsService.restore — active-name-duplicate guard (MD-C1 parity)',
   });
 
   it('активний дубль назви → ConflictException, updateMany НЕ викликається', async () => {
-    // deleted row з назвою "Bosch"
-    mocks.prisma.brand.findFirst
-      .mockResolvedValueOnce({ name: 'Bosch' }) // deleted lookup
-      .mockResolvedValueOnce({ id: 'active-dup' }); // active duplicate
+    mocks.prisma.brand.findFirst.mockResolvedValueOnce(DELETED_BOSCH); // deleted lookup
+    mocks.prisma.brand.findMany.mockResolvedValueOnce([{ id: 'active-dup', name: 'Bosch' }]);
 
     await expect(service.restore(ORG, BRAND_A)).rejects.toThrow(ConflictException);
     // Проти старого коду (без guard) updateMany викликався б і впав би у P2002 → цей assert падає.
@@ -229,9 +239,7 @@ describe('BrandsService.restore — active-name-duplicate guard (MD-C1 parity)',
   });
 
   it('немає активного дубля → restore проходить (updateMany викликається)', async () => {
-    mocks.prisma.brand.findFirst
-      .mockResolvedValueOnce({ name: 'Bosch' }) // deleted lookup
-      .mockResolvedValueOnce(null); // no active duplicate
+    mocks.prisma.brand.findFirst.mockResolvedValueOnce(DELETED_BOSCH); // deleted lookup
     mocks.prisma.brand.findFirstOrThrow.mockResolvedValueOnce({
       id: BRAND_A,
       orgId: ORG,

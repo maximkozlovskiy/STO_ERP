@@ -77,6 +77,10 @@ const REQUIRED_NAMED_INDEXES: { name: string; why: string }[] = [
     why: 'синонім бренду унікальний без урахування регістру серед активних (BR-GOOD-007)',
   },
   {
+    name: 'brands_orgId_lower_name_active_uq',
+    why: 'назва бренду унікальна без урахування регістру серед активних (BR-GOOD-007)',
+  },
+  {
     name: 'stock_documents_orgId_number_active_uq',
     why: 'унікальність № складського док. серед активних',
   },
@@ -175,6 +179,21 @@ describe('Schema integrity — manual-SQL конструкти живі у БД 
     expect(rows).toHaveLength(1);
     expect(rows[0].def).toMatch(/UNIQUE/);
     expect(rows[0].def).toMatch(/lower\(synonym\)/);
+    expect(rows[0].def).toMatch(/WHERE \("deletedAt" IS NULL\)/);
+  });
+
+  // guards: BR-GOOD-007
+  it('назва бренду: унікальність за lower(name) і лише серед активних (міграція 20261114150000)', async () => {
+    if (!dbAvailable) return;
+    // Міграція за наявних дублів індексу НЕ створює (друкує їх власнику): на dev і в CI дублів
+    // немає, тож зникнення індексу тут — це втрата (db push / rebuild), а не свідомий пропуск.
+    const rows = await raw.$queryRawUnsafe<{ def: string }[]>(
+      `SELECT indexdef AS def FROM pg_indexes
+        WHERE schemaname = 'public' AND indexname = 'brands_orgId_lower_name_active_uq'`,
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].def).toMatch(/UNIQUE/);
+    expect(rows[0].def).toMatch(/lower\(name\)/);
     expect(rows[0].def).toMatch(/WHERE \("deletedAt" IS NULL\)/);
   });
 

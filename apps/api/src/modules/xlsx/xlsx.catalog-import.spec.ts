@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { ConflictException, BadRequestException } from '@nestjs/common';
 import { translateError } from '@sto/shared';
 import { XlsxController } from './xlsx.controller';
+import { BrandNameExistsException } from '../brands/brands.service';
 
 /**
  * Довідникові імпорти з XLSX (товари, бренди, одиниці) — лічильники результату правдиві.
@@ -101,11 +102,27 @@ describe('POST /xlsx/import/brands — наявний бренд', () => {
       brandRows: [{ name: 'Bosch' }, { name: 'Mann' }],
       brandCreate: vi
         .fn()
-        .mockRejectedValueOnce(new ConflictException(uk('err.brand.nameExists')))
+        .mockRejectedValueOnce(new BrandNameExistsException(uk('err.brand.nameExists')))
         .mockResolvedValueOnce({}),
     });
     const result = await controller.importBrands(ORG, req());
     expect(result).toEqual({ created: 1, updated: 0, skipped: 1, errors: [] });
+  });
+
+  // guards: BR-GOOD-007
+  it('та сама назва в іншому регістрі («bosch» при «Bosch») — теж наявний бренд, пропущено', async () => {
+    const { controller } = build({
+      brandRows: [{ name: 'bosch' }],
+      brandCreate: vi
+        .fn()
+        .mockRejectedValueOnce(
+          new BrandNameExistsException(
+            translateError('err.brand.nameExistsCaseInsensitive', 'uk', { name: 'Bosch' }),
+          ),
+        ),
+    });
+    const result = await controller.importBrands(ORG, req());
+    expect(result).toEqual({ created: 0, updated: 0, skipped: 1, errors: [] });
   });
 });
 

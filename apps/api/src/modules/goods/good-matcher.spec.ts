@@ -12,7 +12,10 @@
  *  · прибрати умову `hasOnlyName` → кейс «назва не шукається, коли є артикул» падає;
  *  · прибрати `mode: 'insensitive'` з пошуку коду → кейс про змішаний регістр падає;
  *  · `findGoods` читає одну сторінку (`return page`) → кейс «збігів більше, ніж сторінка» падає;
- *  · ключ мапи назв знову `lower(g.name)` → кейс про назви з різним регістром падає.
+ *  · ключ мапи назв знову `lower(g.name)` → кейс про назви з різним регістром падає;
+ *  · неоднозначний «артикул + бренд» знову повертає `ambiguous` до штрихкоду → кейс №16 про
+ *    однозначний штрихкод падає; кандидати — товари штрихкоду замість «артикул + бренд» → кейс
+ *    «штрихкод кількох товарів» падає (2026-11-14).
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { GoodMatcherService, type GoodMatchRow } from './good-matcher.service';
@@ -272,6 +275,32 @@ describe('GoodMatcherService — пошук товару за рядком фа�
     expect(res).toMatchObject({ status: 'ambiguous', matchedBy: 'articleBrand' });
     expect(res.candidates).toHaveLength(2);
   });
+
+  // guards: BR-GOOD-008
+  it('кілька товарів «артикул + бренд» + однозначний штрихкод → товар за штрихкодом (№16)', async () => {
+    goods.push(good('g1', { sku: 'A1', brandId: BOSCH }));
+    goods.push(good('g2', { sku: 'A1', brandId: BOSCH }));
+    barcodes.push({ orgId: ORG, goodId: 'g2', barcode: '4820000000022' });
+    const res = await match({ article: 'A1', brand: 'Bosch', barcode: '4820000000022' });
+    expect(res).toMatchObject({ status: 'matched', matchedBy: 'barcode', good: { id: 'g2' } });
+  });
+
+  // guards: BR-GOOD-008
+  it.each([
+    ['штрихкод кількох товарів', ['g1', 'other']],
+    ['штрихкод невідомий', []],
+  ])(
+    'кілька товарів «артикул + бренд», %s → вибір із кандидатів «артикул + бренд»',
+    async (_name, barcodeOwners) => {
+      goods.push(good('g1', { sku: 'A1', brandId: BOSCH }));
+      goods.push(good('g2', { sku: 'A1', brandId: BOSCH }));
+      goods.push(good('other', { sku: 'Z9' }));
+      for (const goodId of barcodeOwners) barcodes.push({ orgId: ORG, goodId, barcode: '777' });
+      const res = await match({ article: 'A1', brand: 'Bosch', barcode: '777' });
+      expect(res).toMatchObject({ status: 'ambiguous', matchedBy: 'articleBrand' });
+      expect(res.candidates.map(c => c.id).sort()).toEqual(['g1', 'g2']);
+    },
+  );
 
   // guards: BR-GOOD-008
   it('бренд у файлі розпізнано, а товар з таким артикулом — іншого бренду: не підставляється', async () => {

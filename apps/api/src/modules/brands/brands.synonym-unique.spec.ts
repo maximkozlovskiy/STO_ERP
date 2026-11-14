@@ -90,6 +90,7 @@ function makeWorld(brands: BrandRow[], synonyms: SynRow[]) {
     if (not?.id && not.id === r.id) return false;
     if (not && 'deletedAt' in not && !r.deleted) return false;
     if (typeof where.name === 'string' && where.name !== r.name) return false;
+    if (where.name && typeof where.name === 'object' && !eq(r.name, where.name)) return false;
     const or = where.OR as Array<{ name: unknown }> | undefined;
     if (or && !or.some(c => eq(r.name, c.name))) return false;
     return true;
@@ -121,11 +122,16 @@ function makeWorld(brands: BrandRow[], synonyms: SynRow[]) {
     brand: {
       findFirst: vi.fn(({ where }: { where: Where }) => {
         order.push('read');
-        return Promise.resolve(brands.find(b => brandMatches(b, where)) ?? null);
+        const b = brands.find(x => brandMatches(x, where));
+        return Promise.resolve(b ? { ...b, deletedAt: b.deleted ? NOW : null } : null);
       }),
       findMany: vi.fn(({ where }: { where: Where }) => {
         order.push('read');
-        return Promise.resolve(brands.filter(b => brandMatches(b, where)));
+        return Promise.resolve(
+          brands
+            .filter(b => brandMatches(b, where))
+            .map(b => ({ ...b, deletedAt: b.deleted ? NOW : null })),
+        );
       }),
       findFirstOrThrow: vi.fn(({ where }: { where: Where }) => {
         const b = brands.find(x => x.id === where.id);
