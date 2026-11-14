@@ -183,18 +183,31 @@ describe('Розцінка без правила не змінює ціну (№
       );
     });
 
-    // Новий товар без ціни: правила немає → ціна лишається 0 (раніше ставала собівартістю).
-    it('новий товар без ціни й без правила лишається з ціною 0 — собівартість не підставляється', async () => {
+    // Рішення власника 2026-11-14: новий товар без ціни (0) і без правила — ціна продажу стає
+    // собівартістю (інакше він продавався б за нуль); виставлену вручну ціну прийом не чіпає (вище).
+    it('новий товар без ціни й без правила — ціна продажу стає собівартістю, з історією', async () => {
       prisma = fakePrisma([], [goodRow('g1', { salePrice: 0 })]);
       const { batch } = await build(prisma);
 
       await batch.createFromReceipt(ORG, { ...receipt, costPrice: 100 });
 
+      expect(prisma.good.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: { salePrice: 100 } }),
+      );
+      expect(prisma.priceHistory.create).toHaveBeenCalledTimes(1);
+      expect(prisma.stockBatch.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ salePrice: 100 }) }),
+      );
+    });
+
+    it('безкоштовний прийом (собівартість 0) нового товару без правила — ціна лишається 0', async () => {
+      prisma = fakePrisma([], [goodRow('g1', { salePrice: 0 })]);
+      const { batch } = await build(prisma);
+
+      await batch.createFromReceipt(ORG, { ...receipt, costPrice: 0 });
+
       expect(prisma.good.update).not.toHaveBeenCalled();
       expect(prisma.priceHistory.create).not.toHaveBeenCalled();
-      expect(prisma.stockBatch.create).toHaveBeenCalledWith(
-        expect.objectContaining({ data: expect.objectContaining({ salePrice: 0 }) }),
-      );
     });
 
     it('з правилом — ціна за правилом і запис в історії, як і раніше', async () => {

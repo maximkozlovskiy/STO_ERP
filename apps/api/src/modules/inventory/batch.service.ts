@@ -149,14 +149,19 @@ export class BatchService {
 
     const currentSalePriceForBatch = Number(good.salePrice);
     // `null` — жодне правило товару не підійшло: ціну продажу не чіпаємо й історії не пишемо
-    // (BR-GOOD-011, №17); партія бере поточну ціну товару, як і безкоштовний прийом.
+    // (BR-GOOD-011, №17); партія бере поточну ціну товару, як і безкоштовний прийом. Виняток (рішення
+    // власника 2026-11-14): у товару ще НЕМАЄ ціни продажу (0) — ставимо собівартість, а не лишаємо 0
+    // (інакше новий товар без правила продавався б за нуль); виставлену вручну ціну не чіпаємо.
     const computedSalePrice = this.pricing.computePriceFromRules(pricingCtx, good, dto.costPrice);
+    const noRuleFirstPrice = computedSalePrice == null && currentSalePriceForBatch <= 0;
     // Free receipt (costPrice=0): use current good price to avoid recording a batch with salePrice=0
     // which would break subsequent sales.
     const salePrice =
       dto.costPrice > 0 && computedSalePrice != null && computedSalePrice > 0
         ? computedSalePrice
-        : currentSalePriceForBatch;
+        : dto.costPrice > 0 && noRuleFirstPrice
+          ? dto.costPrice
+          : currentSalePriceForBatch;
 
     const batch = await db.stockBatch.create({
       data: {
