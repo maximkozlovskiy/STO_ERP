@@ -63,9 +63,19 @@ export function changesTimeOrLift(
   change: SlotTimeChange,
 ): boolean {
   return (
-    (change.startAt != null && instant(change.startAt) !== slot.startAt.getTime()) ||
-    (change.endAt != null && instant(change.endAt) !== slot.endAt.getTime()) ||
+    changesTime(slot, change) ||
     (change.liftId !== undefined && (change.liftId ?? null) !== slot.liftId)
+  );
+}
+
+/** Зміна змінює межі запису (порівняно зі збереженими): підйомник не враховується. */
+export function changesTime(
+  slot: { startAt: Date; endAt: Date },
+  change: Pick<SlotTimeChange, 'startAt' | 'endAt'>,
+): boolean {
+  return (
+    (change.startAt != null && instant(change.startAt) !== slot.startAt.getTime()) ||
+    (change.endAt != null && instant(change.endAt) !== slot.endAt.getTime())
   );
 }
 

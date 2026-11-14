@@ -1,12 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import { err } from '../../common/utils/err';
 import { changesTimeOrLift } from '../calendar/calendar-chain';
-import {
-  overflowEnd,
-  splitByWorkHours,
-  type TimeSegment,
-  type WorkHours,
-} from '../../common/utils/work-hours';
+import { overflowEnd, type TimeSegment, type WorkHours } from '../../common/utils/work-hours';
 
 /**
  * BR-WO-024: зміна запису календаря, що належить наряду, — через дати наряду. Функції шляху
@@ -55,6 +50,7 @@ export {
   assertChainStartKept,
   bounds,
   chainBounds,
+  changesTime,
   changesTimeOrLift,
 } from '../calendar/calendar-chain';
 
@@ -88,15 +84,5 @@ export function slotWindow(
   return { startAt, endAt: overflowEnd(startAt, rawEnd, hours) };
 }
 
-/**
- * Робочі години між датами (у межах годин філії, без вихідних філії — BR-WO-019), до сотих —
- * те, що картка наряду показує в «Нормогодин» і перераховує при зміні дат (`calcPlannedHours`
- * у web). Зміна меж запису змінює тривалість наряду, тож і його планові нормогодини (Bug #903).
- */
-export function workHoursBetween(start: Date, end: Date, hours: WorkHours): number {
-  const ms = splitByWorkHours(start, end, hours).reduce(
-    (sum, s) => sum + (s.endAt.getTime() - s.startAt.getTime()),
-    0,
-  );
-  return Math.round((ms / 3_600_000) * 100) / 100;
-}
+// Нормогодини між датами — спільні з календарем (№98), тож живуть у `work-hours.ts`.
+export { workHoursBetween } from '../../common/utils/work-hours';

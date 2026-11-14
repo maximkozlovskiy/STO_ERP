@@ -9,7 +9,12 @@ import { assertFsmTransition } from '../../common/utils/fsm';
 import { assertCounterpartyRole } from '../../common/utils/counterparty-role';
 import { PrismaService } from '../../prisma/prisma.service';
 import { throwIfExclusionConflict } from '../../common/utils/prisma-errors';
-import type { TimeSegment, WorkHours } from '../../common/utils/work-hours';
+import {
+  endFromWorkHours,
+  sameWorkHours,
+  type TimeSegment,
+  type WorkHours,
+} from '../../common/utils/work-hours';
 import { WorkOrderStockEffectsService } from './work-order-stock-effects.service';
 import { WorkOrderTotalsService } from './work-order-totals.service';
 import { lockWorkOrdersForUpdate } from './work-order-stock-requirements';
@@ -83,6 +88,7 @@ import {
   assertChainStartKept,
   bounds,
   chainBounds,
+  changesTime,
   movesWorkOrderSlot,
   nextLift,
   nextMechanic,
@@ -751,7 +757,8 @@ export class WorkOrdersService {
    *
    * BR-WO-027: лише в статусах, де картка змінює планові дати (`EDITABLE_STATUSES`), інакше 400.
    * №97: ланцюжок, чий початок уже минув, не зсувається (400 `err.calendar.chainStarted`);
-   * перенесення на інший підйомник без зсуву — так. Підйомник іншої філії — філія наряду (BR-WO-040).
+   * перенесення на інший підйомник без зсуву — так. Підйомник іншої філії — філія наряду (BR-WO-040),
+   * а завершення — ті самі нормогодини від нового початку за годинами цієї філії (№98).
    */
   async reschedule(
     orgId: string,
@@ -775,17 +782,25 @@ export class WorkOrdersService {
     const stored = bounds(await this.slotChain(orgId, slot, id));
     assertChainStartKept(stored.start, new Date(stored.start.getTime() + shiftMs));
     const base = wo.plannedAt && wo.dueDate ? { start: wo.plannedAt, end: wo.dueDate } : stored;
-    const shifted = (d: Date) => new Date(d.getTime() + shiftMs).toISOString();
+    const plannedAt = new Date(base.start.getTime() + shiftMs);
+    let dueDate = new Date(base.end.getTime() + shiftMs);
+    // №98 (BR-WO-040): рядок підйомника іншої філії — ті самі нормогодини від нового початку за
+    // годинами вже її, а не зсув кінця на ту саму різницю.
+    let branchHours: BranchHours | undefined;
+    if (dto.liftId !== undefined && (dto.liftId ?? null) !== wo.liftId) {
+      branchHours = await this.branchHoursFor(orgId, wo, dto.liftId ?? null);
+      dueDate = (await this.keptHoursDue(orgId, wo, plannedAt, base, branchHours)) ?? dueDate;
+    }
     const { workOrder, mechanicDroppedReason } = await this.applyCalendarUpdate(
       orgId,
       id,
       {
-        plannedAt: shifted(base.start),
-        dueDate: shifted(base.end),
+        plannedAt: plannedAt.toISOString(),
+        dueDate: dueDate.toISOString(),
         ...(dto.liftId !== undefined && { liftId: dto.liftId }),
       },
       userId,
-      { current: wo },
+      { current: wo, ...(branchHours && { branchHours }) },
     );
     return {
       id: workOrder.id,
@@ -940,6 +955,30 @@ export class WorkOrdersService {
     return { branchId, hours: await this.calendar.resolveWorkHours(orgId, branchId) };
   }
 
+  /**
+   * №98 (BR-WO-040): наряд переходить на підйомник філії `to` — завершення за тими самими
+   * нормогодинами від початку `start` за годинами й днями нової філії (`endFromWorkHours`, як
+   * картка). Нормогодини — `plannedHours` наряду, без них — робочі години між старими межами `prev`
+   * за годинами старої філії. `null` — філія та сама, години філій однакові чи нормогодин немає:
+   * межі не перераховуються.
+   */
+  private async keptHoursDue(
+    orgId: string,
+    wo: Pick<WorkOrder, 'branchId' | 'plannedHours'>,
+    start: Date,
+    prev: { start: Date; end: Date },
+    to: BranchHours,
+  ): Promise<Date | null> {
+    if (to.branchId === wo.branchId) return null;
+    const from = await this.calendar.resolveWorkHours(orgId, wo.branchId);
+    if (sameWorkHours(from, to.hours)) return null;
+    const norm =
+      wo.plannedHours != null && wo.plannedHours > 0
+        ? wo.plannedHours
+        : workHoursBetween(prev.start, prev.end, from);
+    return norm > 0 ? endFromWorkHours(start, norm, to.hours) : null;
+  }
+
   /** Запис — частина багатоденного ланцюжка: продовження або якір, що має продовження. */
   private async isSlotChain(
     orgId: string,
@@ -1047,9 +1086,18 @@ export class WorkOrdersService {
     // BR-WO-040: підйомник іншої філії — межі й нормогодини за годинами вже її.
     const branchHours = await this.branchHoursFor(orgId, wo, liftId);
     const { hours } = branchHours;
-    const edges = chainBounds(chain, slot.id, slotWindow(change, slot, hours));
+    // №98: лише новий підйомник іншої філії (час запису той самий) — ті самі нормогодини від
+    // початку ланцюжка за годинами нової філії; нормогодини наряду не змінюються.
+    const stored = bounds(chain);
+    const keptDue =
+      moves && !changesTime(slot, change)
+        ? await this.keptHoursDue(orgId, wo, stored.start, stored, branchHours)
+        : null;
+    const edges = keptDue
+      ? { start: stored.start, end: keptDue }
+      : chainBounds(chain, slot.id, slotWindow(change, slot, hours));
     // №97: розпочатий ланцюжок не переноситься — змінюється лише кінець останнього дня.
-    if (moves) assertChainStartKept(bounds(chain).start, edges.start);
+    if (moves) assertChainStartKept(stored.start, edges.start);
 
     const employeeId = nextMechanic(change, slot);
     const keepsOwnMechanic = employeeId === slot.employeeId;
@@ -1086,7 +1134,7 @@ export class WorkOrdersService {
         ...(!same(wo.plannedAt, edges.start) && { plannedAt: edges.start.toISOString() }),
         ...(!same(wo.dueDate, edges.end) && { dueDate: edges.end.toISOString() }),
         ...(liftId !== wo.liftId && { liftId }),
-        ...(nextHours !== prevHours && { plannedHours: nextHours }),
+        ...(!keptDue && nextHours !== prevHours && { plannedHours: nextHours }),
       },
       userId,
       {
@@ -1601,12 +1649,42 @@ export class WorkOrdersService {
       plannedAt: nextDate(dto.plannedAt, wo.plannedAt),
       dueDate: nextDate(dto.dueDate, wo.dueDate),
     };
+    // №98: зміна наряду змінила лише підйомник на підйомник іншої філії, а дати — ті самі, що
+    // збережені (форма шле їх щоразу), — завершення за тими самими нормогодинами за годинами нової
+    // філії (`keptHoursDue`); нормогодини не змінюються. Явно змінені дати — як задано. Зміни з
+    // календаря рахують завершення самі (`reschedule`, `moveWorkOrderSlot`).
+    let branchKnown = knownHours;
+    let dueKept = false;
+    if (
+      branchChange &&
+      calendar === null &&
+      wo.plannedAt &&
+      wo.dueDate &&
+      sameInstant(next.plannedAt, wo.plannedAt) &&
+      sameInstant(next.dueDate, wo.dueDate)
+    ) {
+      branchKnown = branchKnown ?? (await this.calendar.resolveWorkHours(orgId, branchChange));
+      const plannedHours = dto.plannedHours === undefined ? wo.plannedHours : dto.plannedHours;
+      const due = await this.keptHoursDue(
+        orgId,
+        { branchId: wo.branchId, plannedHours },
+        wo.plannedAt,
+        { start: wo.plannedAt, end: wo.dueDate },
+        { branchId: branchChange, hours: branchKnown },
+      );
+      if (due && !sameInstant(due, wo.dueDate)) {
+        next.dueDate = due;
+        dueKept = true;
+        oldData.dueDate = wo.dueDate;
+        newData.dueDate = due.toISOString();
+      }
+    }
     const hours = await this.assertPlannedDates(
       orgId,
       branchId,
       next,
       wo,
-      knownHours,
+      branchKnown,
       branchChange !== null,
     );
     // BR-WO-020: запис календаря наряду переноситься, коли змінились дати чи підйомник, і
@@ -1649,7 +1727,7 @@ export class WorkOrdersService {
         // Distinguish "field omitted" (undefined → skip) from "field cleared"
         // (null → set NULL). `dto.plannedAt === null` writes NULL.
         plannedAt: dto.plannedAt === undefined ? undefined : next.plannedAt,
-        dueDate: dto.dueDate === undefined ? undefined : next.dueDate,
+        dueDate: dto.dueDate === undefined && !dueKept ? undefined : next.dueDate,
         documentDate: dto.documentDate ? new Date(dto.documentDate) : undefined,
         // Мультивалюта (Фаза 3): totalAmountBase/rateUsed лишаються зі старого курсу до
         // наступного recalcTotals (той самий lazy-патерн, що вже для documentDate вище) —
@@ -1684,7 +1762,7 @@ export class WorkOrdersService {
                   endAt: dueDate!,
                   vehicleId: wo.vehicleId,
                   counterpartyId: wo.counterpartyId,
-                  ...((hours ?? knownHours) && { hours: hours ?? knownHours }),
+                  ...((hours ?? branchKnown) && { hours: hours ?? branchKnown }),
                   ...calendar?.slot,
                 }));
               }

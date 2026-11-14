@@ -36,6 +36,8 @@ export const DEFAULT_BRANCH_HOURS: WorkHours = Object.freeze({
 const DAY_MS = 86_400_000;
 /** Запобіжник `splitByWorkHours` від нескінченного циклу: не більше року днів. */
 const MAX_SPLIT_DAYS = 366;
+/** Запобіжник `endFromWorkHours` на абсурдних нормогодинах — як web `calcEndFromHours`. */
+const MAX_END_DAYS = 3660;
 
 /** "HH:mm" → хвилина доби 0..1439 (хвилин може не бути: "9:" — 09:00); невалідне → `null`. */
 function parseWorkMinute(value: string | null | undefined): number | null {
@@ -245,4 +247,105 @@ export function splitByWorkHours(start: Date, end: Date, hours: WorkHours): Time
     day = nextKyivDay(day);
   }
   return out;
+}
+
+/**
+ * Робочі години між датами (у межах годин філії, без вихідних філії — BR-WO-019), до сотих —
+ * те, що картка наряду показує в «Нормогодин» і перераховує при зміні дат (`calcPlannedHours`
+ * у web). Зміна меж запису змінює тривалість наряду, тож і його планові нормогодини (Bug #903).
+ * Зворотна до `endFromWorkHours`.
+ */
+export function workHoursBetween(start: Date, end: Date, hours: WorkHours): number {
+  const ms = splitByWorkHours(start, end, hours).reduce(
+    (sum, s) => sum + (s.endAt.getTime() - s.startAt.getTime()),
+    0,
+  );
+  return Math.round((ms / 3_600_000) * 100) / 100;
+}
+
+/**
+ * Кінець за початком і нормогодинами в робочих годинах філії (BR-WO-019) — дзеркало web
+ * `calcEndFromHours` (`components/ui/work-order/planned-dates.ts`), тож картка наряду й сервер
+ * рахують однаково: початок до відкриття — від відкриття, о закритті й пізніше чи у вихідний — від
+ * відкриття наступного робочого дня; залишок, що не вміщається до закриття, — на наступні РОБОЧІ
+ * дні (вихідні філії пропускаються). Залишок рівно до закриття — закриття того ж дня, а не
+ * відкриття наступного. Зворотна до `workHoursBetween`. `null` — невалідний ввід (години ≤ 0,
+ * невалідна дата, порожнє вікно).
+ */
+export function endFromWorkHours(start: Date, hours: number, wh: WorkHours): Date | null {
+  if (Number.isNaN(start.getTime()) || !Number.isFinite(hours) || hours <= 0) return null;
+  const open = wh.startHour * 60;
+  const close = wh.endHour * 60;
+  if (close <= open) return null;
+  let day = kyivYmd(start);
+  let cur = Math.max(open, kyivMinuteOfDay(start));
+  if (cur >= close) {
+    day = nextKyivDay(day);
+    cur = open;
+  }
+  if (!isWorkDay(day, wh)) {
+    day = nextWorkDay(day, wh);
+    cur = open;
+  }
+  let remaining = Math.round(hours * 60);
+  for (let i = 0; i < MAX_END_DAYS; i++) {
+    const available = close - cur;
+    if (remaining <= available) return kyivHourOnDay(day, (cur + remaining) / 60);
+    remaining -= available;
+    day = nextWorkDay(day, wh);
+    cur = open;
+  }
+  return null;
+}
+
+/**
+ * Ті самі робочі години й робочі дні (BR-CAL-016/017): запис, що переходить на підйомник такої
+ * філії, нормогодин не перераховує (№98).
+ */
+export function sameWorkHours(a: WorkHours, b: WorkHours): boolean {
+  return (
+    a.startHour === b.startHour &&
+    a.endHour === b.endHour &&
+    effectiveWorkDays(a).join(',') === effectiveWorkDays(b).join(',')
+  );
+}
+
+/**
+ * Закриття дня початку, якщо запис без наряду з цього початку ділиться на дні (робочий день філії
+ * і до закриття, BR-CAL-007); інакше `null` — запис один, «початок + тривалість».
+ */
+function splitCloseOf(start: Date, wh: WorkHours): Date | null {
+  if (wh.endHour <= wh.startHour) return null;
+  const day = kyivYmd(start);
+  const close = kyivHourOnDay(day, wh.endHour);
+  return isWorkDay(day, wh) && start < close ? close : null;
+}
+
+/**
+ * Нормогодини запису без наряду (BR-CAL-007, BR-CAL-020) — дзеркало web `slotHoursBetween`
+ * (`calendar-slot-span.ts`): кінець того ж дня — тривалість; кінець іншого дня з робочого початку —
+ * години першого дня до закриття плюс робочі години після нього. 0 — кінець не пізніше початку.
+ */
+export function slotWorkHours(start: Date, end: Date, wh: WorkHours): number {
+  if (!(end.getTime() > start.getTime())) return 0;
+  const close = splitCloseOf(start, wh);
+  const ms =
+    close && kyivYmd(end) !== kyivYmd(start)
+      ? close.getTime() - start.getTime() + workHoursBetween(close, end, wh) * 3_600_000
+      : end.getTime() - start.getTime();
+  return Math.round((ms / 3_600_000) * 100) / 100;
+}
+
+/**
+ * Кінець запису без наряду за початком і нормогодинами (BR-CAL-007, №72) — дзеркало web
+ * `slotEndFromHours`: «початок + тривалість»; з робочого початку частина за закриттям переходить на
+ * наступні робочі дні від відкриття (`endFromWorkHours`). Зворотна до `slotWorkHours`. `null` —
+ * години ≤ 0 чи невалідна дата.
+ */
+export function slotEndFromWorkHours(start: Date, hours: number, wh: WorkHours): Date | null {
+  if (Number.isNaN(start.getTime()) || !Number.isFinite(hours) || hours <= 0) return null;
+  const total = new Date(start.getTime() + Math.round(hours * 60) * 60_000);
+  const close = splitCloseOf(start, wh);
+  if (!close || total <= close) return total;
+  return endFromWorkHours(close, (total.getTime() - close.getTime()) / 3_600_000, wh) ?? total;
 }

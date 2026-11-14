@@ -17,6 +17,9 @@ import {
   isWorkDay,
   kyivHourOnDay,
   overflowEnd,
+  sameWorkHours,
+  slotEndFromWorkHours,
+  slotWorkHours,
   splitByWorkHours,
   workHoursOf,
   type TimeSegment,
@@ -825,7 +828,8 @@ export class CalendarService {
    * (`manualSlotSegments`, години й дні філії НОВОГО підйомника, BR-CAL-007/016/017): якір —
    * перша частина, наявні продовження — наступні по порядку, бракує — створюються, зайві — soft
    * delete; зайнятість — на всіх частинах без власних. Інакше поля зміни пишуться в усі частини.
-   * Початок ланцюжка, що вже минув, не змінюється (№97, `assertChainStartKept`).
+   * Початок ланцюжка, що вже минув, не змінюється (№97, `assertChainStartKept`). Новий підйомник
+   * філії з іншими годинами при тих самих межах зберігає нормогодини, а не кінець (№98).
    * Відповідь — змінена частина, а якщо її прибрала перебудова — якір.
    */
   private async updateManualChain(
@@ -874,15 +878,26 @@ export class CalendarService {
       liftId,
     );
     const ids = chain.map(p => p.id);
-    const rebuild =
-      start.getTime() !== stored.start.getTime() ||
-      end.getTime() !== stored.end.getTime() ||
-      chain.some(p => p.liftId !== liftId);
+    const boundsKept =
+      start.getTime() === stored.start.getTime() && end.getTime() === stored.end.getTime();
+    const liftMoved = chain.some(p => p.liftId !== liftId);
+    const rebuild = !boundsKept || liftMoved;
 
     try {
       if (rebuild) {
-        const hours = await this.resolveWorkHours(orgId, await this.liftBranchId(orgId, liftId));
-        const segments = manualSlotSegments(start, end, hours);
+        // №98: лише новий підйомник (межі ті самі, що збережені) — ті самі нормогодини: між
+        // збереженими межами за годинами філії старого підйомника, від того ж початку за годинами
+        // нової (`slotEndFromWorkHours`, як форма й перетягування). Явні нові межі — як задано.
+        const keepHours = boundsKept && liftMoved;
+        const [hours, from] = await Promise.all([
+          this.liftWorkHours(orgId, liftId),
+          keepHours ? this.liftWorkHours(orgId, existing.liftId) : null,
+        ]);
+        const nextEnd =
+          from && !sameWorkHours(from, hours)
+            ? (slotEndFromWorkHours(start, slotWorkHours(start, end, from), hours) ?? end)
+            : end;
+        const segments = manualSlotSegments(start, nextEnd, hours);
         const data = {
           liftId,
           employeeId,
@@ -962,6 +977,11 @@ export class CalendarService {
       (chain[0] ? await this.findSlotById(orgId, chain[0].id) : null);
     if (!saved) throw new NotFoundException(err('err.calendar.slotNotFound'));
     return withMechanicDrop(saved, mechanicDroppedReason);
+  }
+
+  /** Робочі години й дні філії підйомника (BR-CAL-016/017); без підйомника чи зони — типові. */
+  private async liftWorkHours(orgId: string, liftId: string | null): Promise<WorkHours> {
+    return this.resolveWorkHours(orgId, await this.liftBranchId(orgId, liftId));
   }
 
   /**
