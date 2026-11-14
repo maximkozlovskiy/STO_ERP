@@ -1,5 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 import { err } from '../../common/utils/err';
+import { changesTimeOrLift } from '../calendar/calendar-chain';
 import {
   overflowEnd,
   splitByWorkHours,
@@ -29,8 +30,6 @@ export interface SlotChange {
   workOrderId?: string | null | undefined;
 }
 
-const instant = (v: string | Date): number => new Date(v).getTime();
-
 /**
  * Зміна змінює час чи підйомник запису наряду. Порівнюється зі збереженим, а не «поле є в
  * запиті»: форма шле час і підйомник щоразу, і зміна лише примітки чи механіка лишається на
@@ -40,11 +39,7 @@ export function movesWorkOrderSlot(slot: SlotState, change: SlotChange): boolean
   if (!slot.workOrderId) return false;
   if (change.workOrderId !== undefined && (change.workOrderId ?? null) !== slot.workOrderId)
     return false;
-  return (
-    (change.startAt != null && instant(change.startAt) !== slot.startAt.getTime()) ||
-    (change.endAt != null && instant(change.endAt) !== slot.endAt.getTime()) ||
-    (change.liftId !== undefined && (change.liftId ?? null) !== slot.liftId)
-  );
+  return changesTimeOrLift(slot, change);
 }
 
 /**
@@ -55,8 +50,13 @@ export function relinksSlot(slot: Pick<SlotState, 'workOrderId'>, change: SlotCh
   return change.workOrderId !== undefined && (change.workOrderId ?? null) !== slot.workOrderId;
 }
 
-// Межі ланцюжка — спільні з ручним записом календаря (BR-CAL-020).
-export { bounds, chainBounds } from '../calendar/calendar-chain';
+// Межі ланцюжка й розпочатий ланцюжок — спільні з ручним записом календаря (BR-CAL-020).
+export {
+  assertChainStartKept,
+  bounds,
+  chainBounds,
+  changesTimeOrLift,
+} from '../calendar/calendar-chain';
 
 /** Підйомник запису після зміни: `liftId` у зміні або збережений. */
 export const nextLift = (

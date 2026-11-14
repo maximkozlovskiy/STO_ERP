@@ -80,6 +80,7 @@ import type {
   CreateCalendarSlotResponseDto,
 } from '../calendar/calendar.dto';
 import {
+  assertChainStartKept,
   bounds,
   chainBounds,
   movesWorkOrderSlot,
@@ -198,12 +199,21 @@ const LOCKED_WO_DATES_SELECT = {
 } as const satisfies Prisma.WorkOrderSelect;
 type LockedWorkOrderDates = Prisma.WorkOrderGetPayload<{ select: typeof LOCKED_WO_DATES_SELECT }>;
 
+/** Робочі години філії (BR-CAL-016/017) разом із філією, для якої їх прочитано. */
+interface BranchHours {
+  branchId: string;
+  hours: WorkHours;
+}
+
 /** Зміна наряду з запису календаря (BR-WO-024) — що ще знає виклик, див. `applyUpdate`. */
 interface CalendarChange {
   /** Наряд, уже прочитаний викликом цілим рядком (sto-optimize: не перечитується). */
   current: WorkOrder;
-  /** Робочі години філії наряду, уже прочитані викликом. */
-  hours?: WorkHours;
+  /**
+   * Робочі години філії наряду після зміни (філія підйомника, BR-WO-040), уже прочитані викликом;
+   * беруться, лише коли філія та сама, що визначить `applyUpdate`.
+   */
+  branchHours?: BranchHours;
   forceSlot?: boolean;
   slot?: { employeeId?: string | null; notes?: string | null };
   inTx?: (tx: Prisma.TransactionClient) => Promise<void>;
@@ -265,6 +275,33 @@ function assertSlotDeletable(status: WorkOrderStatus): void {
     throw new BadRequestException(err('err.calendar.workOrderSlotDeleteLocked'));
 }
 
+/**
+ * BR-WO-040: наряд переходить у філію нового підйомника лише в редагованому статусі й без оплат —
+ * філія визначає касу й ПРРО (BranchSettings); інакше 400. Рахунок перевіряє `assertNoInvoice`.
+ */
+function assertBranchChangeable(wo: Pick<WorkOrder, 'status' | 'paidAmount'>): void {
+  if (!EDITABLE_STATUSES.includes(wo.status) || moneyFromDecimal(wo.paidAmount) > 0)
+    throw new BadRequestException(err('err.workOrder.liftBranchLocked'));
+}
+
+/** BR-WO-040: у наряду, що змінює філію, немає рахунку (крім скасованого) — у транзакції зміни. */
+async function assertNoInvoice(
+  tx: Prisma.TransactionClient,
+  orgId: string,
+  workOrderId: string,
+): Promise<void> {
+  const invoice = await tx.invoice.findFirst({
+    where: {
+      orgId,
+      workOrderId,
+      deletedAt: null,
+      status: { in: [...LIVE_INVOICE_STATUSES, InvoiceStatus.PAID] },
+    },
+    select: { id: true },
+  });
+  if (invoice) throw new BadRequestException(err('err.workOrder.liftBranchLocked'));
+}
+
 /** Планові дати наряду, стерті разом із його записом календаря (BR-WO-026), — для журналу змін. */
 interface DatesReleased {
   old: Record<string, unknown>;
@@ -324,6 +361,9 @@ export class WorkOrdersService {
    * BR-WO-019: 400, якщо змінена планова дата в минулому, на вихідному дні чи поза робочими
    * годинами філії наряду або завершення не пізніше за початок. Години філії читаються лише
    * коли дата змінюється; повертаються, щоб запис календаря (BR-WO-020) не читав їх удруге.
+   *
+   * `branchChanged` — наряд переходить у філію нового підйомника (BR-WO-040): і незмінені дати
+   * перевіряються годинами й днями нової філії (без «у минулому» — їх не змінюють).
    */
   private async assertPlannedDates(
     orgId: string,
@@ -332,11 +372,15 @@ export class WorkOrdersService {
     prev: PlannedDates | null,
     /** Робочі години філії, уже прочитані викликом. */
     known?: WorkHours,
+    branchChanged = false,
   ): Promise<WorkHours | null> {
     const changed = changedPlannedDates(next, prev);
-    if (!changed.start && !changed.end) return null;
+    const recheck = branchChanged && (next.plannedAt !== null || next.dueDate !== null);
+    if (!changed.start && !changed.end && !recheck) return null;
     const hours = known ?? (await this.calendar.resolveWorkHours(orgId, branchId));
-    const invalid = plannedDatesError(next, prev, new Date(), hours);
+    const invalid =
+      plannedDatesError(next, prev, new Date(), hours) ??
+      (recheck ? plannedDatesError(next, null, new Date(0), hours) : null);
     if (invalid) {
       throw new BadRequestException(
         err(invalid.key, 'params' in invalid ? invalid.params : undefined),
@@ -513,7 +557,7 @@ export class WorkOrdersService {
       dto.liftId
         ? this.prisma.lift.findFirst({
             where: { id: dto.liftId, orgId, deletedAt: null },
-            select: { id: true },
+            select: { id: true, zone: { select: { branchId: true } } },
           })
         : Promise.resolve(null),
       dto.contractId
@@ -548,6 +592,8 @@ export class WorkOrdersService {
     if (dto.contractId && !contractResult)
       throw new NotFoundException(err('err.workOrder.contractNotFound'));
     const contractId: string | null = contractResult?.id ?? null;
+    // BR-WO-040: філія наряду — філія його підйомника (новий наряд ще без оплат і рахунку).
+    const branchId = lift?.zone?.branchId ?? dto.branchId;
     // Примітка: outMileage у CreateWorkOrderDto немає (виставляється лише на update/завершенні),
     // тож guard монотонності пробігу потрібен лише в update() — тут перевіряти нічого.
 
@@ -561,7 +607,7 @@ export class WorkOrdersService {
     // Обидві перевірки незалежні й ідуть ДО номера: відмова не спалює номер документа.
     // BR-WO-020: наряд із форми НАЯВНОГО запису забирає сам запис — перевірка до номера.
     const [hours, currencyId, adoptIds] = await Promise.all([
-      this.assertPlannedDates(orgId, dto.branchId, planned, null),
+      this.assertPlannedDates(orgId, branchId, planned, null),
       dto.currencyId ?? this.exchangeRates.requireBaseCurrencyId(orgId),
       dto.calendarSlotId ? this.adoptableSlotChain(orgId, dto, dto.calendarSlotId) : null,
     ]);
@@ -572,7 +618,7 @@ export class WorkOrdersService {
       db.workOrder.create({
         data: {
           orgId,
-          branchId: dto.branchId,
+          branchId,
           vehicleId: dto.vehicleId,
           counterpartyId: dto.counterpartyId,
           contractId,
@@ -626,7 +672,7 @@ export class WorkOrdersService {
             await this.calendar.upsertWorkOrderSlot(tx, {
               orgId,
               workOrderId: created.id,
-              branchId: dto.branchId,
+              branchId,
               liftId: dto.liftId ?? null,
               startAt: plannedAt,
               endAt: dueDate,
@@ -704,6 +750,8 @@ export class WorkOrdersService {
    * ланцюжка перетягнутого запису (якір і його продовження), тож наряд отримує дати запису.
    *
    * BR-WO-027: лише в статусах, де картка змінює планові дати (`EDITABLE_STATUSES`), інакше 400.
+   * №97: ланцюжок, чий початок уже минув, не зсувається (400 `err.calendar.chainStarted`);
+   * перенесення на інший підйомник без зсуву — так. Підйомник іншої філії — філія наряду (BR-WO-040).
    */
   async reschedule(
     orgId: string,
@@ -724,10 +772,9 @@ export class WorkOrdersService {
     assertSlotTimeEditable(wo.status);
 
     const shiftMs = new Date(dto.startAt).getTime() - slot.startAt.getTime();
-    const base =
-      wo.plannedAt && wo.dueDate
-        ? { start: wo.plannedAt, end: wo.dueDate }
-        : bounds(await this.slotChain(orgId, slot, id));
+    const stored = bounds(await this.slotChain(orgId, slot, id));
+    assertChainStartKept(stored.start, new Date(stored.start.getTime() + shiftMs));
+    const base = wo.plannedAt && wo.dueDate ? { start: wo.plannedAt, end: wo.dueDate } : stored;
     const shifted = (d: Date) => new Date(d.getTime() + shiftMs).toISOString();
     const { workOrder, mechanicDroppedReason } = await this.applyCalendarUpdate(
       orgId,
@@ -833,11 +880,13 @@ export class WorkOrdersService {
 
     let datesDto: UpdateWorkOrderDto = {};
     let liftId = wo.liftId;
-    let hours: WorkHours | undefined;
+    let branchHours: BranchHours | undefined;
     if (wo.plannedAt === null || wo.dueDate === null) {
-      hours = await this.calendar.resolveWorkHours(orgId, wo.branchId);
-      const { startAt, endAt } = slotWindow(dto, null, hours);
       liftId = dto.liftId ?? null;
+      // BR-WO-040: підйомник іншої філії — дні й години вже її.
+      branchHours = await this.branchHoursFor(orgId, wo, liftId);
+      const { hours } = branchHours;
+      const { startAt, endAt } = slotWindow(dto, null, hours);
       datesDto = {
         plannedAt: startAt.toISOString(),
         dueDate: endAt.toISOString(),
@@ -851,7 +900,7 @@ export class WorkOrdersService {
     await this.applyCalendarUpdate(orgId, workOrderId, datesDto, userId, {
       forceSlot: true,
       current: wo,
-      ...(hours && { hours }),
+      ...(branchHours && { branchHours }),
       slot: {
         // Механік форми чи збережений на записі наряду; «без механіка» нового запису поля не шле.
         ...(employeeId && { employeeId }),
@@ -872,6 +921,23 @@ export class WorkOrdersService {
     return mechanicDroppedReason
       ? { ...anchor, mechanicDropped: true, mechanicDroppedReason }
       : anchor;
+  }
+
+  /**
+   * BR-WO-040: філія наряду, що отримує підйомник `liftId`, — філія підйомника, якщо він інший і
+   * стоїть у зоні іншої філії; інакше філія наряду. Разом із її робочими годинами — за ними зміна з
+   * календаря рахує межі й нормогодини (BR-WO-020, BR-WO-024). Чи можна змінити філію, вирішує
+   * `applyUpdate`.
+   */
+  private async branchHoursFor(
+    orgId: string,
+    wo: Pick<WorkOrder, 'branchId' | 'liftId'>,
+    liftId: string | null,
+  ): Promise<BranchHours> {
+    const liftBranch =
+      liftId && liftId !== wo.liftId ? await this.calendar.liftBranchId(orgId, liftId) : null;
+    const branchId = liftBranch ?? wo.branchId;
+    return { branchId, hours: await this.calendar.resolveWorkHours(orgId, branchId) };
   }
 
   /** Запис — частина багатоденного ланцюжка: продовження або якір, що має продовження. */
@@ -977,10 +1043,14 @@ export class WorkOrdersService {
     if (!wo) throw new NotFoundException(err('err.workOrder.notFound'));
     if (moves) assertSlotTimeEditable(wo.status);
 
-    const hours = await this.calendar.resolveWorkHours(orgId, wo.branchId);
-    const edges = chainBounds(chain, slot.id, slotWindow(change, slot, hours));
-
     const liftId = nextLift(change, slot);
+    // BR-WO-040: підйомник іншої філії — межі й нормогодини за годинами вже її.
+    const branchHours = await this.branchHoursFor(orgId, wo, liftId);
+    const { hours } = branchHours;
+    const edges = chainBounds(chain, slot.id, slotWindow(change, slot, hours));
+    // №97: розпочатий ланцюжок не переноситься — змінюється лише кінець останнього дня.
+    if (moves) assertChainStartKept(bounds(chain).start, edges.start);
+
     const employeeId = nextMechanic(change, slot);
     const keepsOwnMechanic = employeeId === slot.employeeId;
     if (
@@ -1022,7 +1092,7 @@ export class WorkOrdersService {
       {
         forceSlot: true,
         current: wo,
-        hours,
+        branchHours,
         slot: {
           ...(change.employeeId !== undefined && { employeeId: change.employeeId }),
           ...(change.notes !== undefined && { notes: change.notes }),
@@ -1145,15 +1215,17 @@ export class WorkOrdersService {
     if (previous) assertRelinkable(previous.status);
 
     const hasDates = target.plannedAt !== null && target.dueDate !== null;
+    // Новий наряд без дат бере підйомник запису — його філію (BR-WO-040), з датами — свій.
+    const liftId = hasDates ? target.liftId : nextLift(change, slot);
     // Робочі години нового й попереднього нарядів — разом; та сама філія — одне читання.
-    const [hours, otherBranchHours] = await Promise.all([
-      this.calendar.resolveWorkHours(orgId, target.branchId),
+    const [branchHours, otherBranchHours] = await Promise.all([
+      this.branchHoursFor(orgId, target, liftId),
       previous && previous.branchId !== target.branchId
         ? this.calendar.resolveWorkHours(orgId, previous.branchId)
         : Promise.resolve(null),
     ]);
+    const { hours } = branchHours;
     let datesDto: UpdateWorkOrderDto = {};
-    let liftId = target.liftId;
     if (!hasDates) {
       // BR-CAL-020: форма ручного ланцюжка шле межі ВСЬОГО ланцюжка (`chainSpan`), а не частини,
       // з якої її відкрито — інакше межі ланцюжка з другого дня читались як внутрішні (Bug #1063).
@@ -1162,7 +1234,6 @@ export class WorkOrdersService {
         change.chainSpan && slot.workOrderId === null
           ? { start: window.startAt, end: window.endAt }
           : chainBounds(chain, slot.id, window);
-      liftId = nextLift(change, slot);
       datesDto = {
         plannedAt: edges.start.toISOString(),
         dueDate: edges.end.toISOString(),
@@ -1182,12 +1253,19 @@ export class WorkOrdersService {
       await this.assertSlotMechanic(orgId, employeeId, liftId, nextLift(change, slot));
 
     const chainIds = chain.map(s => s.id);
-    const previousHours = oldWorkOrderId && previous ? (otherBranchHours ?? hours) : null;
+    // Попередній наряд у філії нового до зміни її підйомником (BR-WO-040) — години старої філії.
+    const previousHours =
+      oldWorkOrderId && previous
+        ? (otherBranchHours ??
+          (previous.branchId === branchHours.branchId
+            ? hours
+            : await this.calendar.resolveWorkHours(orgId, previous.branchId)))
+        : null;
     let released: DatesReleased | null = null;
     const applied = await this.applyCalendarUpdate(orgId, newWorkOrderId, datesDto, userId, {
       forceSlot: true,
       current: target,
-      hours,
+      branchHours,
       slot: {
         employeeId,
         ...(change.notes !== undefined && { notes: change.notes }),
@@ -1411,8 +1489,12 @@ export class WorkOrdersService {
    * (BR-WO-022) чи нові дати наряду, що вже в роботі.
    *
    * sto-optimize (зміни з календаря): `current` — наряд, уже прочитаний викликом цілим рядком (не
-   * перечитується), `hours` — робочі години його філії, уже прочитані викликом (ні перевірка дат,
-   * ні перебудова запису не читають їх удруге).
+   * перечитується), `branchHours` — робочі години його філії, уже прочитані викликом (ні перевірка
+   * дат, ні перебудова запису не читають їх удруге).
+   *
+   * BR-WO-040: новий підйомник у зоні іншої філії переводить наряд у цю філію в тому самому записі —
+   * дати перевіряються й запис ділиться вже її годинами. Лише в редагованому статусі, без оплат і
+   * рахунку (`assertBranchChangeable`, `assertNoInvoice`), інакше 400 `err.workOrder.liftBranchLocked`.
    */
   private async applyUpdate<R>(
     orgId: string,
@@ -1434,7 +1516,7 @@ export class WorkOrdersService {
       dto.liftId
         ? this.prisma.lift.findFirst({
             where: { id: dto.liftId, orgId, deletedAt: null },
-            select: { id: true },
+            select: { id: true, zone: { select: { branchId: true } } },
           })
         : Promise.resolve(null),
     ]);
@@ -1443,6 +1525,17 @@ export class WorkOrdersService {
       throw new BadRequestException(err('err.workOrder.cannotEditClosed'));
     }
     if (dto.liftId && !lift) throw new NotFoundException(err('err.lift.notFound'));
+    const nextLiftId = dto.liftId === undefined ? wo.liftId : (dto.liftId ?? null);
+    // BR-WO-040: філія наряду — філія його нового підйомника.
+    const liftBranch = lift?.zone?.branchId ?? null;
+    const branchChange =
+      nextLiftId !== wo.liftId && liftBranch !== null && liftBranch !== wo.branchId
+        ? liftBranch
+        : null;
+    if (branchChange) assertBranchChangeable(wo);
+    const branchId = branchChange ?? wo.branchId;
+    const known = calendar?.branchHours;
+    const knownHours = known && known.branchId === branchId ? known.hours : undefined;
     // BR-WO-015: «сплачено» ведеться у валюті наряду — сплачений наряд валюту не змінює.
     const currencyChanging =
       dto.currencyId !== undefined && (dto.currencyId ?? null) !== wo.currencyId;
@@ -1490,17 +1583,27 @@ export class WorkOrdersService {
         'currencyId',
       ] as const
     ).forEach(trackField);
+    if (branchChange) {
+      oldData.branchId = wo.branchId;
+      newData.branchId = branchChange;
+    }
 
     // BR-WO-019: перевіряються лише планові дати, що змінюються відносно збережених.
     const next: PlannedDates = {
       plannedAt: nextDate(dto.plannedAt, wo.plannedAt),
       dueDate: nextDate(dto.dueDate, wo.dueDate),
     };
-    const hours = await this.assertPlannedDates(orgId, wo.branchId, next, wo, calendar?.hours);
+    const hours = await this.assertPlannedDates(
+      orgId,
+      branchId,
+      next,
+      wo,
+      knownHours,
+      branchChange !== null,
+    );
     // BR-WO-020: запис календаря наряду переноситься, коли змінились дати чи підйомник, і
     // позначається видаленим, коли наряд мав обидві дати, а тепер — ні. Форма шле дати й
     // підйомник щоразу, тож порівнюється зі збереженим, а не «поле є в запиті».
-    const nextLiftId = dto.liftId === undefined ? wo.liftId : (dto.liftId ?? null);
     const datesChanged =
       !sameInstant(next.plannedAt, wo.plannedAt) || !sameInstant(next.dueDate, wo.dueDate);
     const { plannedAt, dueDate } = next;
@@ -1519,9 +1622,14 @@ export class WorkOrdersService {
       where: {
         id,
         orgId,
-        ...(currencyChanging && { paidAmount: 0 }),
+        // BR-WO-040: те саме для зміни філії — оплата між читанням і записом не лишить наряд із
+        // касою іншої філії.
+        ...((currencyChanging || branchChange) && { paidAmount: 0 }),
         // Bug #910: статус — у самій умові запису (рядок блокує скасування, що вже йде).
-        status: editableOnly ? { in: [...EDITABLE_STATUSES] } : { notIn: [...CLOSED_STATUSES] },
+        status:
+          editableOnly || branchChange
+            ? { in: [...EDITABLE_STATUSES] }
+            : { notIn: [...CLOSED_STATUSES] },
       },
       data: {
         description: dto.description,
@@ -1540,6 +1648,7 @@ export class WorkOrdersService {
         // НЕ перераховуємо тут, щоб не дублювати recalc-логіку поза transaction.
         currencyId: dto.currencyId === undefined ? undefined : (dto.currencyId ?? null),
         liftId: dto.liftId === undefined ? undefined : (dto.liftId ?? null),
+        branchId: branchChange ?? undefined,
         plannedHours: dto.plannedHours === undefined ? undefined : (dto.plannedHours ?? null),
         actualHours: dto.actualHours === undefined ? undefined : (dto.actualHours ?? null),
       },
@@ -1548,10 +1657,11 @@ export class WorkOrdersService {
 
     let mechanicDroppedReason: MechanicRejectReason | null = null;
     const persist =
-      slotAction === null && !inTx
+      slotAction === null && !inTx && !branchChange
         ? writeRow(this.prisma, write)
         : this.prisma.$transaction(
             async tx => {
+              if (branchChange) await assertNoInvoice(tx, orgId, id);
               await inTx?.(tx);
               const res = await writeRow(tx, write);
               if (slotAction === 'remove') {
@@ -1560,13 +1670,13 @@ export class WorkOrdersService {
                 ({ mechanicDroppedReason } = await this.calendar.upsertWorkOrderSlot(tx, {
                   orgId,
                   workOrderId: id,
-                  branchId: wo.branchId,
+                  branchId,
                   liftId: nextLiftId,
                   startAt: plannedAt!,
                   endAt: dueDate!,
                   vehicleId: wo.vehicleId,
                   counterpartyId: wo.counterpartyId,
-                  ...((hours ?? calendar?.hours) && { hours: hours ?? calendar?.hours }),
+                  ...((hours ?? knownHours) && { hours: hours ?? knownHours }),
                   ...calendar?.slot,
                 }));
               }
@@ -1579,6 +1689,7 @@ export class WorkOrdersService {
         await this.assertStillUpdatable(orgId, id, editableOnly);
         if (currencyChanging)
           throw new BadRequestException(err('err.workOrder.paidCurrencyLocked'));
+        if (branchChange) throw new BadRequestException(err('err.workOrder.liftBranchLocked'));
       }
       if (slotAction !== null || inTx) throwIfExclusionConflict(e, slotExclusionMessages());
       throw e;

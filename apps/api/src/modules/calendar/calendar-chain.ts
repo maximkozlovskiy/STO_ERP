@@ -34,6 +34,41 @@ export function chainBounds(
   return bounds([...chain.filter(s => s.id !== editedId), edited]);
 }
 
+/**
+ * Розпочатий запис (BR-CAL-020, BR-WO-024; рішення власника 2026-11-14, TECH-DEBT (б) №97): початок
+ * ланцюжка (`storedStart` — початок першої частини), що вже минув, не змінюється — ні перенесенням,
+ * ні ручкою, ні формою; 400 `err.calendar.chainStarted`. Кінець останнього дня змінюється.
+ * `now` — мить перевірки (спеки підміняють час `vi.useFakeTimers`).
+ */
+export function assertChainStartKept(storedStart: Date, nextStart: Date, now = new Date()): void {
+  if (nextStart.getTime() !== storedStart.getTime() && storedStart.getTime() < now.getTime())
+    throw new BadRequestException(err('err.calendar.chainStarted'));
+}
+
+/** Час чи підйомник запису у зміні: межі запису й підйомник. */
+export interface SlotTimeChange {
+  startAt?: string | Date | undefined;
+  endAt?: string | Date | undefined;
+  liftId?: string | null | undefined;
+}
+
+const instant = (v: string | Date): number => new Date(v).getTime();
+
+/**
+ * Зміна змінює час чи підйомник запису. Порівнюється зі збереженим, а не «поле є в запиті»: форма
+ * шле час і підйомник щоразу, і зміна лише примітки чи механіка лишається на записі.
+ */
+export function changesTimeOrLift(
+  slot: { startAt: Date; endAt: Date; liftId: string | null },
+  change: SlotTimeChange,
+): boolean {
+  return (
+    (change.startAt != null && instant(change.startAt) !== slot.startAt.getTime()) ||
+    (change.endAt != null && instant(change.endAt) !== slot.endAt.getTime()) ||
+    (change.liftId !== undefined && (change.liftId ?? null) !== slot.liftId)
+  );
+}
+
 /** Найраніший початок і найпізніше завершення записів (межі ланцюжка). */
 export function bounds(parts: readonly TimeSegment[]): { start: Date; end: Date } {
   return {

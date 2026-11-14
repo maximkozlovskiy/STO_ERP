@@ -36,7 +36,7 @@ import {
   type MechanicRejectReason,
 } from './calendar-mechanic';
 import { assertServiceSlotUnlinked } from './calendar-slot-type';
-import { bounds, chainBounds } from './calendar-chain';
+import { assertChainStartKept, bounds, chainBounds, changesTimeOrLift } from './calendar-chain';
 
 /** Новий запис календаря без наряду (`createSlot`): запис наряду створює наряд (BR-WO-028). */
 export type FreeSlotInput = Omit<CreateCalendarSlotDto, 'workOrderId'> & { workOrderId?: never };
@@ -659,7 +659,9 @@ export class CalendarService {
    * Зміна запису сама по собі. Зміну часу чи підйомника запису НАРЯДУ проводить наряд
    * (`WorkOrdersService.updateCalendarSlot`, BR-WO-024) — сюди вона не доходить: і
    * `PATCH /calendar/slots/:id`, і синхронізація з планшета ідуть через нього. Частина
-   * багатоденного запису без наряду змінюється як ціле (BR-CAL-020, `updateManualChain`).
+   * багатоденного запису без наряду змінюється як ціле (BR-CAL-020, `updateManualChain`); тим самим
+   * шляхом — новий час чи підйомник одноденного запису без наряду (ланцюжок з однієї частини, №96):
+   * поділ створення може зробити з нього кілька днів.
    */
   async updateSlot(
     orgId: string,
@@ -723,7 +725,10 @@ export class CalendarService {
     if (checkVehicle && !vehicle) throw new NotFoundException(err('err.calendar.vehicleNotFound'));
 
     const liftId = dto.liftId !== undefined ? dto.liftId : existing.liftId;
-    if (existing.workOrderId === null && (existing.parentSlotId !== null || continuation))
+    if (
+      existing.workOrderId === null &&
+      (existing.parentSlotId !== null || continuation || changesTimeOrLift(existing, dto))
+    )
       return this.updateManualChain(orgId, existing, dto, liftId ?? null);
 
     const startAt = dto.startAt ? new Date(dto.startAt) : existing.startAt;
@@ -812,13 +817,15 @@ export class CalendarService {
   }
 
   /**
-   * BR-CAL-020 (TECH-DEBT (б) №92): частина багатоденного запису без наряду змінюється як ланцюжок.
+   * BR-CAL-020 (TECH-DEBT (б) №92, №96): частина багатоденного запису без наряду (і одноденний
+   * запис без наряду з новим часом чи підйомником — ланцюжок з однієї частини) змінюється як ланцюжок.
    * З `chainSpan` `startAt` / `endAt` — межі всього ланцюжка (форма, перетягування в «Дні»); без
    * нього — межі частини (ручки в «Дні», планшет): крайня змінює межі ланцюжка, внутрішня — 400
    * (`chainBounds`, як BR-WO-024). Нові межі чи підйомник перебудовують ланцюжок поділом створення
    * (`manualSlotSegments`, години й дні філії НОВОГО підйомника, BR-CAL-007/016/017): якір —
    * перша частина, наявні продовження — наступні по порядку, бракує — створюються, зайві — soft
    * delete; зайнятість — на всіх частинах без власних. Інакше поля зміни пишуться в усі частини.
+   * Початок ланцюжка, що вже минув, не змінюється (№97, `assertChainStartKept`).
    * Відповідь — змінена частина, а якщо її прибрала перебудова — якір.
    */
   private async updateManualChain(
@@ -857,6 +864,8 @@ export class CalendarService {
     const { start, end } = dto.chainSpan
       ? { start: part.startAt, end: part.endAt }
       : chainBounds(chain, existing.id, part);
+    // №97: розпочатий ланцюжок не переноситься — змінюється лише кінець останнього дня.
+    assertChainStartKept(stored.start, start);
 
     const { employeeId, mechanicDroppedReason } = await this.resolveMechanic(
       orgId,
@@ -955,8 +964,11 @@ export class CalendarService {
     return withMechanicDrop(saved, mechanicDroppedReason);
   }
 
-  /** Філія підйомника (години запису, BR-CAL-016/017); `null` — без підйомника чи його немає. */
-  private async liftBranchId(orgId: string, liftId: string | null): Promise<string | null> {
+  /**
+   * Філія підйомника (години запису, BR-CAL-016/017; філія наряду, BR-WO-040); `null` — без
+   * підйомника, без зони чи його немає.
+   */
+  async liftBranchId(orgId: string, liftId: string | null): Promise<string | null> {
     if (!liftId) return null;
     const lift = await this.prisma.lift.findFirst({
       where: { id: liftId, orgId, deletedAt: null },

@@ -10,7 +10,11 @@ import {
   MECHANIC_REJECT_KEY,
 } from '../calendar/calendar-mechanic';
 import { WorkOrdersService } from '../work-orders/work-orders.service';
-import { movesWorkOrderSlot, relinksSlot } from '../work-orders/work-order-slot-move';
+import {
+  changesTimeOrLift,
+  movesWorkOrderSlot,
+  relinksSlot,
+} from '../work-orders/work-order-slot-move';
 import type { CalendarSlotEdit } from '../calendar/calendar.dto';
 import {
   VEHICLE_WRITE_TX_TIMEOUT_MS,
@@ -444,12 +448,14 @@ export class SyncService {
       const state = edit ? slotState(existing) : null;
       // BR-CAL-020: частина багатоденного запису без наряду — тим самим шляхом: крайня межа змінює
       // межі ланцюжка (перебудова), внутрішня — конфлікт із причиною, решта полів — для всіх частин.
+      // Новий час чи підйомник одноденного запису без наряду — теж (поділ на дні, №96).
       if (
         edit &&
         state &&
         (movesWorkOrderSlot(state, edit) ||
           relinksSlot(state, edit) ||
-          (!state.workOrderId && (await this.isManualChainPart(orgId, existing))))
+          (!state.workOrderId &&
+            (changesTimeOrLift(state, edit) || (await this.isManualChainPart(orgId, existing)))))
       ) {
         await this.workOrders.updateCalendarSlot(orgId, rec.id, edit, userId);
         return;
