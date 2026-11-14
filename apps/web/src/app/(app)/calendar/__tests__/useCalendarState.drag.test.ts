@@ -431,3 +431,45 @@ describe('useCalendarState — перетягування частини руч�
     });
   });
 });
+
+// Рішення власника 2026-11-14 (TECH-DEBT (б) №97): ланцюжок, що вже почався, не переноситься.
+// Блок не перетягується (`CalendarDayBlocks`), а сторож у `handleDragEnd` — на випадок, коли
+// «зараз» настав, поки блок тягнули: без запиту, попередження.
+describe('useCalendarState — розпочатий запис не переноситься (BR-CAL-020, BR-WO-024, №97)', () => {
+  const STARTED = 'Запис уже почався — переносити не можна; змінюйте кінець';
+
+  // guards: BR-CAL-020, BR-WO-024
+  it.each([
+    ['ручний', SLOT],
+    ['наряду', WO_SLOT],
+  ])('%s запис, що вже почався, → без запиту, попередження', async (_l, s) => {
+    daySlots = [s];
+    vi.setSystemTime(new Date('2026-10-20T10:30:00+03:00'));
+    const { result } = await renderDay();
+
+    await act(() => result.current.handleDragEnd(dropOn('lift-1', 100)));
+
+    expect(patchCall()).toBeUndefined();
+    expect(toast.warning).toHaveBeenCalledWith(STARTED);
+  });
+
+  // guards: BR-CAL-020
+  it('частина сьогодні, ланцюжок почався вчора (chainStartAt) → без запиту', async () => {
+    daySlots = [
+      {
+        ...SLOT,
+        parentSlotId: 's-anchor',
+        chainDays: 2,
+        chainStartAt: new Date('2026-10-19T16:00:00+03:00').toISOString(),
+        chainEndAt: SLOT.endAt,
+      },
+    ];
+    vi.setSystemTime(new Date('2026-10-20T09:00:00+03:00'));
+    const { result } = await renderDay();
+
+    await act(() => result.current.handleDragEnd(dropOn('lift-2')));
+
+    expect(patchCall()).toBeUndefined();
+    expect(toast.warning).toHaveBeenCalledWith(STARTED);
+  });
+});

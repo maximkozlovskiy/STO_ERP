@@ -166,8 +166,10 @@ describe('SyncService.push calendar_slots — механік за підйомн
     expect(h.lastErrors()).toEqual([expect.objectContaining({ status: 'FAILED', lastError: msg })]);
   });
 
+  // Новий підйомник одноденного запису без наряду — шляхом API (№96: поділ за годинами філії
+  // нового підйомника), і механіка перевіряє `CalendarService.updateSlot` (calendar.mechanic-lift.spec).
   // guards: BR-CAL-012
-  it('зміна підйомника, механік не закріплений за новим → відмова, запис не змінено', async () => {
+  it('зміна підйомника, механік не закріплений за новим → відмова API, запис не змінено', async () => {
     const h = harness({
       id: SLOT_ID,
       syncVersion: 1n,
@@ -176,6 +178,7 @@ describe('SyncService.push calendar_slots — механік за підйомн
       liftId: LIFT_1,
       employeeId: MECH,
     });
+    h.workOrders.updateCalendarSlot.mockRejectedValueOnce(new Error(NOT_ON_LIFT));
     const res = await h.service.push(
       ORG,
       [record({ operation: 'UPDATE', payload: { liftId: LIFT_2 } })],
@@ -187,7 +190,7 @@ describe('SyncService.push calendar_slots — механік за підйомн
   });
 
   // guards: BR-CAL-012
-  it('зміна підйомника, механік закріплений і за новим → прийнято', async () => {
+  it('зміна підйомника одноденного запису → шляхом API з новим підйомником, не прямим update', async () => {
     const h = harness({
       id: SLOT_ID,
       syncVersion: 1n,
@@ -202,7 +205,13 @@ describe('SyncService.push calendar_slots — механік за підйомн
       'ADMIN',
     );
     expect(res).toEqual({ accepted: 1, conflicts: 0 });
-    expect(h.prisma.calendarSlot.update).toHaveBeenCalledTimes(1);
+    expect(h.workOrders.updateCalendarSlot).toHaveBeenCalledWith(
+      ORG,
+      SLOT_ID,
+      expect.objectContaining({ liftId: LIFT_2 }),
+      undefined,
+    );
+    expect(h.prisma.calendarSlot.update).not.toHaveBeenCalled();
   });
 
   // guards: BR-CAL-012
@@ -324,7 +333,8 @@ describe('SyncService.push calendar_slots — скасований наряд (B
 // Частина багатоденного запису без наряду змінюється як ланцюжок (BR-CAL-020): планшет іде тим
 // самим шляхом, що й `PATCH /calendar/slots/:id` (`WorkOrdersService.updateCalendarSlot` →
 // `CalendarService.updateSlot`): крайня межа — перебудова, внутрішня — конфлікт із причиною.
-// Прямий `update` частини розірвав би ланцюжок. Одноденний запис — як раніше, прямим записом.
+// Прямий `update` частини розірвав би ланцюжок. Одноденний запис із новим часом чи підйомником —
+// теж (рішення власника 2026-11-14, №96: поділ на дні й при зміні); інші поля — прямим записом.
 describe('SyncService.push calendar_slots — частина ручного ланцюжка (BR-CAL-020)', () => {
   const slot = (over: Record<string, unknown>) => ({
     id: SLOT_ID,
@@ -363,11 +373,42 @@ describe('SyncService.push calendar_slots — частина ручного ла
   });
 
   // guards: BR-CAL-020
-  it('одноденний запис і якір, чиє продовження видалено, — прямий update, як раніше', async () => {
+  it('одноденний запис (якір, чиє продовження видалено): новий час — шляхом API (№96)', async () => {
     const h = harness(slot({}), [
       { id: 'c', orgId: ORG, parentSlotId: SLOT_ID, deletedAt: new Date() },
     ]);
     const res = await h.service.push(ORG, [record({ operation: 'UPDATE', payload })], 'ADMIN');
+
+    expect(res).toEqual({ accepted: 1, conflicts: 0 });
+    expect(h.workOrders.updateCalendarSlot).toHaveBeenCalledWith(
+      ORG,
+      SLOT_ID,
+      expect.objectContaining(payload),
+      undefined,
+    );
+    expect(h.prisma.calendarSlot.update).not.toHaveBeenCalled();
+  });
+
+  // guards: BR-CAL-020
+  it('одноденний запис: той самий час і підйомник, нова примітка — прямий update', async () => {
+    const h = harness(slot({}), [
+      { id: 'c', orgId: ORG, parentSlotId: SLOT_ID, deletedAt: new Date() },
+    ]);
+    const res = await h.service.push(
+      ORG,
+      [
+        record({
+          operation: 'UPDATE',
+          payload: {
+            startAt: '2026-06-15T07:00:00.000Z',
+            endAt: '2026-06-15T08:00:00.000Z',
+            liftId: LIFT_1,
+            notes: 'Перевірити гальма',
+          },
+        }),
+      ],
+      'ADMIN',
+    );
 
     expect(res).toEqual({ accepted: 1, conflicts: 0 });
     expect(h.workOrders.updateCalendarSlot).not.toHaveBeenCalled();

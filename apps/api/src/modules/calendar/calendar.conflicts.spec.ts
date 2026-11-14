@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
 import { BadRequestException, ConflictException } from '@nestjs/common';
 import { translateError } from '@sto/shared';
 import { CalendarService } from './calendar.service';
@@ -8,6 +8,11 @@ import {
   FAKE_ORG_ID,
   type FakeSlot,
 } from './calendar.spec-fixture';
+
+// №97 (BR-CAL-020): початок запису, що вже минув, не змінюється — «зараз» спеків раніше за
+// всі записи, тож зміна часу перевіряє зайнятість і механіка, а не розпочатий запис.
+beforeAll(() => vi.useFakeTimers({ now: new Date('2026-05-01T00:00:00.000Z'), toFake: ['Date'] }));
+afterAll(() => vi.useRealTimers());
 
 // Аспект «конфлікти слотів»: createSlot / updateSlot не дають двом слотам перетнутись на
 // одному підйомнику чи в одного механіка. Правило — docs/objects/calendar.md, BR-CAL-006.

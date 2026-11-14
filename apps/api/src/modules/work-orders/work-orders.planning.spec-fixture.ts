@@ -24,8 +24,12 @@ export const OTHER_ORG = '11111111-1111-4111-8111-999999999999';
 export const BRANCH = '21111111-1111-4111-8111-111111111111';
 /** Філія без рядка BranchSettings → типові 09:00–18:00. */
 export const BRANCH_NO_SETTINGS = '21111111-1111-4111-8111-222222222222';
+/** Друга філія з налаштуваннями 09:00–18:00 пн–пт (BR-WO-040: філія підйомника LIFT_B2). */
+export const BRANCH_2 = '21111111-1111-4111-8111-333333333333';
 export const LIFT_1 = '31111111-1111-4111-8111-111111111111';
 export const LIFT_2 = '31111111-1111-4111-8111-222222222222';
+/** Підйомник у зоні філії BRANCH_2; LIFT_1 і LIFT_2 — без зони (філія наряду не змінюється). */
+export const LIFT_B2 = '31111111-1111-4111-8111-333333333333';
 export const VEHICLE = '41111111-1111-4111-8111-111111111111';
 export const CLIENT = '51111111-1111-4111-8111-111111111111';
 export const WO_ID = '61111111-1111-4111-8111-111111111111';
@@ -159,6 +163,13 @@ export function planningHarness(
       workEndTime: '18:00',
       workDays: opts.workDays ?? [1, 2, 3, 4, 5, 6, 7],
     },
+    {
+      branchId: BRANCH_2,
+      orgId: ORG,
+      workStartTime: '09:00',
+      workEndTime: '18:00',
+      workDays: [1, 2, 3, 4, 5],
+    },
   ]);
   const employee = {
     findFirst: vi.fn(({ where }: { where: Record<string, unknown> }) =>
@@ -169,12 +180,14 @@ export function planningHarness(
   const garageBranch = exists([
     { id: BRANCH, orgId: ORG, deletedAt: null },
     { id: BRANCH_NO_SETTINGS, orgId: ORG, deletedAt: null },
+    { id: BRANCH_2, orgId: ORG, deletedAt: null },
   ]);
   const vehicle = exists([{ id: VEHICLE, orgId: ORG, deletedAt: null }]);
   const counterparty = exists([{ id: CLIENT, orgId: ORG, deletedAt: null, type: 'CLIENT' }]);
   const lift = exists([
     { id: LIFT_1, orgId: ORG, deletedAt: null, name: 'П1' },
     { id: LIFT_2, orgId: ORG, deletedAt: null, name: 'П2' },
+    { id: LIFT_B2, orgId: ORG, deletedAt: null, name: 'П-Філія2', zone: { branchId: BRANCH_2 } },
   ]);
   const counterpartyContract = exists([]);
   // Переходи наряду (BR-WO-022): чернетки актів скасовуються разом із нарядом.

@@ -180,6 +180,66 @@ describe('Вид «День» — ручки ланцюжка наряду (BR-W
   });
 });
 
+// Рішення власника 2026-11-14 (TECH-DEBT (б) №97): запис, чий ланцюжок уже почався, не
+// переноситься — без перетягування й ручки початку, ручка кінця останнього дня лишається.
+describe('Вид «День» — розпочатий запис (BR-CAL-020, BR-WO-024, №97)', () => {
+  const handles = (el: HTMLElement) =>
+    [...el.querySelectorAll<HTMLElement>('[data-part^="resize-"]')].map(h => h.dataset.part);
+  const HINT = 'Запис уже почався: не переноситься — змінюйте кінець останнього дня';
+
+  // guards: BR-CAL-020, BR-WO-024
+  it.each([
+    ['ручний', { workOrderId: null, workOrderNumber: undefined, workOrderStatus: null }],
+    ['наряду', {}],
+  ])(
+    '%s запис, що почався о 08:00: без перетягування й ручки початку, кінець — є',
+    async (_l, o) => {
+      daySlots = [slot('st', '08:00', { ...o, counterpartyName: 'Розпочатий' })];
+      await renderDay();
+
+      const el = block('Розпочатий');
+      expect(el.dataset.started).toBe('true');
+      expect(handles(el)).toEqual(['resize-end']);
+      expect(el.querySelector('.cursor-grab')).toBeNull();
+      expect(el.querySelector('[data-part="content"]')).toHaveAttribute('role', 'button');
+      expect(el.title).toContain(HINT);
+      expect(el).toHaveTextContent(HINT);
+    },
+  );
+
+  // guards: BR-CAL-020
+  it('частина сьогодні з 10:00 ланцюжка, що почався вчора, — теж (chainStartAt)', async () => {
+    daySlots = [
+      slot('cn', '10:00', {
+        workOrderId: null,
+        workOrderNumber: undefined,
+        workOrderStatus: null,
+        counterpartyName: 'Другий день',
+        parentSlotId: 'x',
+        chainDays: 2,
+        chainStartAt: iso('2026-10-14T16:00'),
+        chainEndAt: iso('2026-10-15T11:00'),
+      }),
+    ];
+    await renderDay();
+
+    expect(handles(block('Другий день'))).toEqual(['resize-end']);
+    expect(block('Другий день').querySelector('.cursor-grab')).toBeNull();
+  });
+
+  // guards: BR-CAL-020
+  it('контроль: запис із 10:00 (ще не почався) — перетягується, обидві ручки', async () => {
+    daySlots = [slot('fu', '10:00', { counterpartyName: 'Майбутній' })];
+    await renderDay();
+
+    const el = block('Майбутній');
+    expect(el.dataset.started).toBeUndefined();
+    expect(handles(el)).toEqual(['resize-start', 'resize-end']);
+    expect(el.querySelector('[data-part="content"]')).toHaveClass('cursor-grab');
+    expect(el.title).not.toContain(HINT);
+  });
+});
+
 // Рішення власника 2026-10-19: запис наряду видаляється лише в редагованому статусі.
 describe('Вид «День» — видалення запису наряду з переліку «Без підйомника» (BR-WO-026)', () => {
   // guards: BR-WO-026

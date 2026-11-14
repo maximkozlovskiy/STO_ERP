@@ -10,6 +10,7 @@ import {
   pastPercent,
   slotDeleteConfirmOptions,
   chainInnerEdge,
+  chainStarted,
 } from '../calendar-day';
 import { chainEnds } from '../calendar-month';
 import type { CalendarSlot } from '../calendar.types';
@@ -269,5 +270,26 @@ describe('chainInnerEdge — внутрішні межі ланцюжка нар
     const last = { workOrderId: null, endAt: nextEnd, chainEndAt: nextEnd, parentSlotId: 'a' };
     expect(chainInnerEdge(last, 'start')).toBe(true);
     expect(chainInnerEdge(last, 'end')).toBe(false);
+  });
+});
+
+describe('chainStarted — розпочатий запис не переноситься (BR-CAL-020, BR-WO-024, №97)', () => {
+  // guards: BR-CAL-020, BR-WO-024
+  it('початок ланцюжка — chainStartAt, а не початок частини дня', () => {
+    // Частина сьогодні з 14:00 (ще не почалась), але ланцюжок почався вчора.
+    const part = { startAt: iso('2026-10-15T14:00'), chainStartAt: iso('2026-10-14T16:00') };
+    expect(chainStarted(part, NOW)).toBe(true);
+    expect(chainStarted({ ...part, chainStartAt: iso('2026-10-15T13:00') }, NOW)).toBe(false);
+  });
+
+  // guards: BR-CAL-020, BR-WO-024
+  it('одноденний запис без chainStartAt — за своїм початком; рівно «зараз» — ще не почався', () => {
+    expect(chainStarted({ startAt: iso('2026-10-15T11:59') }, NOW)).toBe(true);
+    expect(chainStarted({ startAt: iso('2026-10-15T12:00') }, NOW)).toBe(false);
+  });
+
+  // guards: BR-CAL-020
+  it('час ще не відомий (nowMs = 0, до гідратації) — не розпочатий', () => {
+    expect(chainStarted({ startAt: iso('2020-01-01T10:00') }, 0)).toBe(false);
   });
 });

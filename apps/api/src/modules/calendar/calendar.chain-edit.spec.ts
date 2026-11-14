@@ -11,8 +11,12 @@
  * власних частин, тенант і soft delete перевіряються поведінкою, а не формою запиту. Філія
  * підйомника фікстури — 08:00–20:00 щодня; `lift-b` — філія з 09:00–18:00 пн–пт. 22.05.2026 — пт,
  * +03:00.
+ *
+ * Одноденний ручний запис ділиться й при зміні (№96) — тим самим шляхом. Розпочатий запис (№97):
+ * початок першої частини, що вже минув, не змінюється. «Зараз» спеків — 01.05.2026, раніше за всі
+ * записи; сценарії розпочатого запису ставлять свій «зараз» (`vi.setSystemTime`).
  */
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeAll, afterAll, afterEach } from 'vitest';
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { translateError } from '@sto/shared';
 import { CalendarService } from './calendar.service';
@@ -94,6 +98,10 @@ function liveChain(rows: FakeSlot[]) {
 }
 
 const span = (ymd: string, from: string, to: string) => [iso(ymd, from), iso(ymd, to)];
+
+const BEFORE_ALL = new Date('2026-05-01T00:00:00.000Z');
+beforeAll(() => vi.useFakeTimers({ now: BEFORE_ALL, toFake: ['Date'] }));
+afterAll(() => vi.useRealTimers());
 
 async function rejection(promise: Promise<unknown>): Promise<unknown> {
   return promise.then(
@@ -478,5 +486,166 @@ describe('CalendarService.updateSlot — ручний ланцюжок як ці
     // Без перевірки перебудова на два дні лишила б чужу частину пн — «третій день» ланцюжка.
     expect(e).toBeInstanceOf(BadRequestException);
     expect((e as Error).message).toBe(msg('err.calendar.slotConcurrentChange'));
+  });
+});
+
+/** Одноденний ручний запис `a` на `lift-1`: пт 16:00–18:00. */
+const oneDay = (over: Partial<FakeSlot> = {}) => [
+  fakeSlot({
+    id: 'a',
+    liftId: 'lift-1',
+    startAt: kyiv(FRI, '16:00'),
+    endAt: kyiv(FRI, '18:00'),
+    ...over,
+  }),
+];
+
+describe('CalendarService.updateSlot — одноденний ручний запис ділиться й при зміні (BR-CAL-020, №96)', () => {
+  // guards: BR-CAL-020, BR-CAL-007
+  it('новий кінець наступного дня (ручка, без chainSpan) → якір і продовження за годинами філії', async () => {
+    const rows = oneDay();
+    const { svc } = service(rows);
+
+    const res = await svc.updateSlot(ORG, 'a', {
+      startAt: iso(FRI, '16:00'),
+      endAt: iso(SAT, '12:00'),
+    });
+
+    expect(
+      liveChain(rows).map(([id, parent, ...t]) => [id === 'a' ? 'a' : 'new', parent, ...t]),
+    ).toEqual([
+      ['a', null, ...span(FRI, '16:00', '20:00')],
+      ['new', 'a', ...span(SAT, '08:00', '12:00')],
+    ]);
+    expect(res).toMatchObject({ id: 'a', chainDays: 2, chainEndAt: iso(SAT, '12:00') });
+  });
+
+  // guards: BR-CAL-020, BR-CAL-016, BR-CAL-017
+  it('новий підйомник іншої філії — поділ за її годинами й днями (вихідні пропущено)', async () => {
+    const rows = oneDay({ endAt: kyiv(FRI, '19:00') });
+    const { svc } = service(rows);
+
+    await svc.updateSlot(ORG, 'a', { liftId: 'lift-b' });
+
+    expect(
+      liveChain(rows).map(([id, parent, ...t]) => [id === 'a' ? 'a' : 'new', parent, ...t]),
+    ).toEqual([
+      ['a', null, ...span(FRI, '16:00', '18:00')],
+      ['new', 'a', ...span(MON, '09:00', '10:00')],
+    ]);
+    expect(rows.filter(r => r.deletedAt === null).every(r => r.liftId === 'lift-b')).toBe(true);
+  });
+
+  // guards: BR-CAL-020, BR-CAL-007
+  it('запис у вихідний філії — один запис із запитаним часом, продовжень немає', async () => {
+    const rows = oneDay({
+      liftId: 'lift-b',
+      startAt: kyiv(SAT, '10:00'),
+      endAt: kyiv(SAT, '11:00'),
+    });
+    const { prisma, svc } = service(rows);
+
+    await svc.updateSlot(ORG, 'a', { startAt: iso(SAT, '10:00'), endAt: iso(SAT, '20:00') });
+
+    expect(liveChain(rows)).toEqual([['a', null, ...span(SAT, '10:00', '20:00')]]);
+    expect(prisma._create).not.toHaveBeenCalled();
+  });
+
+  // guards: BR-CAL-020, BR-CAL-005
+  it('продовження на зайнятий день → 400 «зайнятий наступного дня», запис без змін', async () => {
+    const rows = [
+      ...oneDay(),
+      fakeSlot({
+        id: 'other',
+        liftId: 'lift-1',
+        startAt: kyiv(SAT, '09:00'),
+        endAt: kyiv(SAT, '10:00'),
+      }),
+    ];
+    const before = structuredClone(rows);
+    const { svc } = service(rows);
+
+    const e = await rejection(
+      svc.updateSlot(ORG, 'a', { startAt: iso(FRI, '16:00'), endAt: iso(SAT, '12:00') }),
+    );
+
+    expect((e as Error).message).toBe(msg('err.calendar.liftBusyNextDay'));
+    expect(rows).toEqual(before);
+  });
+});
+
+describe('CalendarService.updateSlot — розпочатий ручний запис (BR-CAL-020, №97)', () => {
+  // «Зараз» — субота 12:00: ланцюжок пт 16:00 – нд 10:00 уже почався.
+  const startedNow = () => vi.setSystemTime(kyiv(SAT, '12:00'));
+  afterEach(() => vi.setSystemTime(BEFORE_ALL));
+
+  // guards: BR-CAL-020
+  it.each([
+    [
+      'форма з будь-якого дня (chainSpan) зсуває початок',
+      'a2',
+      { startAt: iso(SAT, '16:00'), endAt: iso(MON, '10:00'), chainSpan: true },
+    ],
+    ['ручка початку першого дня', 'a', { startAt: iso(FRI, '18:00'), endAt: iso(FRI, '20:00') }],
+    [
+      'перетягування на інший підйомник зі зсувом',
+      'a',
+      { startAt: iso(SUN, '16:00'), endAt: iso(TUE, '10:00'), chainSpan: true, liftId: 'lift-2' },
+    ],
+  ])('%s → 400 chainStarted, ланцюжок без змін', async (_l, id, dto) => {
+    startedNow();
+    const rows = chain();
+    const before = structuredClone(rows);
+    const { svc } = service(rows);
+
+    const e = await rejection(svc.updateSlot(ORG, id, dto));
+
+    expect(e).toBeInstanceOf(BadRequestException);
+    expect((e as Error).message).toBe(msg('err.calendar.chainStarted'));
+    expect(rows).toEqual(before);
+  });
+
+  // guards: BR-CAL-020
+  it('кінець останнього дня — змінюється (ручка й форма з тим самим початком)', async () => {
+    startedNow();
+    const rows = chain();
+    const { svc } = service(rows);
+
+    await svc.updateSlot(ORG, 'a3', { startAt: iso(SUN, '08:00'), endAt: iso(SUN, '14:00') });
+    expect(liveChain(rows).at(-1)).toEqual(['a3', 'a', ...span(SUN, '08:00', '14:00')]);
+
+    await svc.updateSlot(ORG, 'a2', {
+      startAt: iso(FRI, '16:00'),
+      endAt: iso(MON, '09:00'),
+      chainSpan: true,
+    });
+    expect(liveChain(rows)).toHaveLength(4);
+    expect(liveChain(rows)[0]).toEqual(['a', null, ...span(FRI, '16:00', '20:00')]);
+  });
+
+  // guards: BR-CAL-020
+  it('одноденний запис, що почався: початок — 400, кінець — так', async () => {
+    vi.setSystemTime(kyiv(FRI, '17:00'));
+    const rows = oneDay();
+    const { svc } = service(rows);
+
+    const e = await rejection(
+      svc.updateSlot(ORG, 'a', { startAt: iso(FRI, '17:00'), endAt: iso(FRI, '19:00') }),
+    );
+    expect((e as Error).message).toBe(msg('err.calendar.chainStarted'));
+
+    await svc.updateSlot(ORG, 'a', { startAt: iso(FRI, '16:00'), endAt: iso(FRI, '19:00') });
+    expect(liveChain(rows)).toEqual([['a', null, ...span(FRI, '16:00', '19:00')]]);
+  });
+
+  // guards: BR-CAL-020
+  it('запис, що ще не почався, — початок змінюється (межа «зараз» — початок першої частини)', async () => {
+    vi.setSystemTime(kyiv(FRI, '15:59'));
+    const rows = oneDay();
+    const { svc } = service(rows);
+
+    await svc.updateSlot(ORG, 'a', { startAt: iso(FRI, '17:00'), endAt: iso(FRI, '19:00') });
+
+    expect(liveChain(rows)).toEqual([['a', null, ...span(FRI, '17:00', '19:00')]]);
   });
 });

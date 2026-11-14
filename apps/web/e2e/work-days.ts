@@ -7,7 +7,8 @@
  * наступний (переповнення запису) робочі і при пн–пт, і при пн–сб. Номери в спеків різні — сітка
  * дня перебудовується на чужі записи тієї самої дати, і перетягування влучало в сусідній рядок
  * (work-order-lookups-roles, 2026-11-01):
- *   2–6 work-order-lookups-roles (копії `--repeat-each`) · 7 calendar-owner-decisions ·
+ *   1 calendar-one-day-split · 2–6 work-order-lookups-roles (копії `--repeat-each`) ·
+ *   7 calendar-owner-decisions ·
  *   8 work-order-calendar-record · 9 calendar-slot-types · 10 work-order-calendar-drag ·
  *   11 work-order-calendar-edit · 12 work-order-calendar-lifecycle · 13 work-order-days-off ·
  *   14 calendar-chains · 15 calendar-form-guard · 16 calendar-chain-edit (найближчий пн від нього:

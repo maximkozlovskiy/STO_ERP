@@ -39,6 +39,7 @@ interface HarnessProps {
   editingSlotId?: string | null;
   editingWorkOrder?: { number: string; lockedStatus: string | null } | null;
   editingChain?: Chain | null;
+  startLocked?: boolean;
   formWorkHours?: WorkHoursWindow | null;
   date?: string;
   onSaved?: (o?: { workOrderChanged?: boolean }) => void;
@@ -50,6 +51,7 @@ function Harness({
   editingSlotId = null,
   editingWorkOrder = null,
   editingChain = null,
+  startLocked = false,
   formWorkHours = null,
   date = '2026-10-20',
   onSaved = () => {},
@@ -80,6 +82,7 @@ function Harness({
       isEditingPast={false}
       editingWorkOrder={editingWorkOrder}
       editingChain={editingChain}
+      startLocked={startLocked}
       pendingSlot={null}
       setPendingSlot={() => {}}
       formMounted
@@ -434,9 +437,10 @@ describe('CalendarSlotModal — перевірка зайнятості за т�
       ([, i]) => JSON.parse(i!.body!) as { startAt: string; endAt: string },
     );
 
-  // guards: BR-CAL-007
-  it('зміна ручного запису 17:00–20:00: перевіряється 17:00–20:00 того ж дня, не «завтра до 11:00»', async () => {
-    // Зміну ручного запису сервер не ділить на дні — і конфлікт шукається на тому ж проміжку.
+  // guards: BR-CAL-007, BR-CAL-020
+  it('зміна одноденного ручного запису 17:00–20:00 (№96): перевіряється, як поділить сервер — до 11:00 наступного дня', async () => {
+    // З №96 зміну одноденного ручного запису сервер ділить на дні, як новий (раніше — один запис
+    // 17:00–20:00), — і конфлікт шукається на тих самих днях.
     render(
       <Harness
         initial={{ startAt: '17:00', endAt: '20:00', normoHours: '3' }}
@@ -446,7 +450,7 @@ describe('CalendarSlotModal — перевірка зайнятості за т�
     await waitFor(() => expect(conflictBodies().length).toBeGreaterThan(0));
     expect(conflictBodies().at(-1)).toMatchObject({
       startAt: '2026-10-20T14:00:00.000Z',
-      endAt: '2026-10-20T17:00:00.000Z',
+      endAt: '2026-10-21T08:00:00.000Z',
     });
   });
 
@@ -458,5 +462,68 @@ describe('CalendarSlotModal — перевірка зайнятості за т�
       startAt: '2026-10-20T14:00:00.000Z',
       endAt: '2026-10-21T08:00:00.000Z',
     });
+  });
+});
+
+// Рішення власника 2026-11-14 (TECH-DEBT (б) №96): зміну одноденного ручного запису сервер ділить на
+// дні, як новий запис, — форма показує ту саму підказку «Буде розбито на N днів».
+describe('CalendarSlotModal — одноденний ручний запис ділиться й при зміні (BR-CAL-020, №96)', () => {
+  // guards: BR-CAL-020, BR-CAL-007
+  it('нормогодини за закриття → «Кінець» наступного дня, підказка про 2 дні, PATCH — справжній кінець', async () => {
+    render(
+      <Harness
+        initial={{ startAt: '16:00', endAt: '17:00', normoHours: '1' }}
+        editingSlotId="one"
+      />,
+    );
+    fireEvent.change(screen.getByPlaceholderText('напр. 1,5'), { target: { value: '4' } });
+
+    await waitFor(() => expect(warning()).toContain('Буде розбито на 2 дні'));
+    expect(pickerInput('Кінець')).toHaveValue('21.10.2026 11:00');
+    fireEvent.click(screen.getByRole('button', { name: 'Оновити' }));
+    await waitFor(() => expect(callsTo('/calendar/slots/one', 'PATCH')).toHaveLength(1));
+    const body = JSON.parse(callsTo('/calendar/slots/one', 'PATCH')[0]![1]!.body!) as Record<
+      string,
+      unknown
+    >;
+    expect(body).toMatchObject({
+      startAt: '2026-10-20T13:00:00.000Z',
+      endAt: '2026-10-21T08:00:00.000Z',
+    });
+  });
+});
+
+// Рішення власника 2026-11-14 (TECH-DEBT (б) №97): у запису, що вже почався, «Початок» лише для
+// читання, «Кінець» і нормогодини змінюються.
+describe('CalendarSlotModal — розпочатий запис (BR-CAL-020, BR-WO-024, №97)', () => {
+  // guards: BR-CAL-020, BR-WO-024
+  it('«Початок» недоступний з підказкою, «Кінець» і нормогодини — доступні', () => {
+    render(
+      <Harness
+        initial={{ startAt: '10:00', endAt: '12:00', normoHours: '2' }}
+        editingSlotId="one"
+        startLocked
+      />,
+    );
+
+    expect(pickerInput('Початок')).toBeDisabled();
+    expect(pickerInput('Кінець')).not.toBeDisabled();
+    expect(screen.getByPlaceholderText('напр. 1,5')).not.toBeDisabled();
+    expect(screen.getByTestId('slot-started-hint')).toHaveTextContent(
+      'Запис уже почався — початок не змінюється; змінюйте кінець',
+    );
+  });
+
+  // guards: BR-CAL-020
+  it('контроль: запис, що не почався, — «Початок» доступний, підказки немає', () => {
+    render(
+      <Harness
+        initial={{ startAt: '10:00', endAt: '12:00', normoHours: '2' }}
+        editingSlotId="one"
+      />,
+    );
+
+    expect(pickerInput('Початок')).not.toBeDisabled();
+    expect(screen.queryByTestId('slot-started-hint')).toBeNull();
   });
 });

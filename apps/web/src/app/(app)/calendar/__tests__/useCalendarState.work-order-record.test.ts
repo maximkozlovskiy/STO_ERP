@@ -195,3 +195,21 @@ describe('useCalendarState — форма запису наряду збереж
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['work-orders'] });
   });
 });
+
+// Рішення власника 2026-11-14 (TECH-DEBT (б) №97): у запису, що вже триває, змінюється кінець — ручка
+// кінця не відмовляє «початок у минулому», бо початок не змінюється.
+describe('useCalendarState — кінець запису, що вже триває (BR-CAL-020, №97)', () => {
+  // guards: BR-CAL-020
+  it('сьогодні 10:00–12:00, зараз 11:00: кінець пізніше → PATCH, без попередження про минуле', async () => {
+    vi.setSystemTime(new Date('2026-10-20T11:00:00+03:00'));
+    daySlots = [{ ...PLAIN, endAt: new Date('2026-10-20T12:00:00+03:00').toISOString() }];
+    toast.warning.mockReset();
+    const hook = await renderDay(makeTestQueryClient());
+
+    await dragEnd(hook, 100);
+
+    const body = JSON.parse((patchCall()![1] as { body: string }).body) as { startAt: string };
+    expect(new Date(body.startAt).getTime()).toBe(new Date(PLAIN.startAt).getTime());
+    expect(toast.warning).not.toHaveBeenCalled();
+  });
+});
