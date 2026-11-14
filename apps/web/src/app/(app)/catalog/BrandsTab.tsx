@@ -1,10 +1,9 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Plus, Pencil, Trash2, Tag, Eye, EyeOff, RotateCcw, X } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
-import { getCached, setCache } from '@/lib/ref-cache';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
 import { Input } from '@/components/ui/input';
@@ -13,8 +12,9 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Badge } from '@/components/ui/badge';
 import { XlsxImportButton } from '@/components/ui/xlsx-import-button';
 import { useConfirm } from '@/hooks/useConfirm';
+import { useDeletableRefList } from '@/hooks/useDeletableRefList';
+import { useRemoveRestore } from '@/hooks/useRemoveRestore';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
-import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
 import {
   Table,
@@ -52,54 +52,28 @@ export function withSynonym(list: string[], raw: string): string[] {
 export default function BrandsTab() {
   const { t } = useTranslation('catalog');
   const { confirm, dialogProps } = useConfirm();
-  const [brands, setBrands] = useState<Brand[]>([]);
-  const [loading, setLoading] = useState(true);
   const [showDeleted, setShowDeleted] = useState(false);
   const [modal, setModal] = useState(false);
   const [editBrand, setEditBrand] = useState<Brand | null>(null);
   const [form, setForm] = useState({ name: '', synonyms: [] as string[] });
   const [synonymInput, setSynonymInput] = useState('');
   const [saving, setSaving] = useState(false);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [restoringIds, setRestoringIds] = useState<Set<string>>(new Set());
   const [error, setError] = useState('');
   // Після відновлення: синоніми, яких бренд не отримав назад (BR-GOOD-007) — банер, а не лише тост,
   // щоб перелік не зник за кілька секунд.
   const [skippedNotice, setSkippedNotice] = useState('');
-  // race-guard для swift showDeleted toggles — outdated response відкидається.
-  const loadReqRef = useRef(0);
-
-  const load = useCallback(
-    (opts?: { fromCache?: boolean; withDeleted?: boolean }) => {
-      const fromCache = opts?.fromCache ?? false;
-      const withDeleted = opts?.withDeleted ?? showDeleted;
-      const cached = fromCache && !withDeleted ? getCached<Brand[]>('cache:brands') : null;
-      if (cached) {
-        setBrands(cached);
-        setLoading(false);
-      } else setLoading(true);
-      const url = withDeleted ? '/brands?limit=200&showDeleted=true' : '/brands?limit=200';
-      const reqId = ++loadReqRef.current;
-      apiFetch<{ items: Brand[]; total: number }>(url)
-        .then(r => {
-          if (loadReqRef.current !== reqId) return;
-          setBrands(r.items);
-          if (!withDeleted) setCache('cache:brands', r.items);
-        })
-        .catch((e: unknown) => {
-          if (loadReqRef.current !== reqId) return;
-          if (!cached) setError(e instanceof Error ? e.message : t('common.loadError'));
-        })
-        .finally(() => {
-          if (loadReqRef.current === reqId) setLoading(false);
-        });
-    },
-    [showDeleted, t],
-  );
-
-  useEffect(() => {
-    load({ fromCache: !showDeleted });
-  }, [load, showDeleted]);
+  const {
+    items: brands,
+    loading,
+    reload: load,
+  } = useDeletableRefList<Brand>({
+    url: '/brands?limit=200',
+    urlWithDeleted: '/brands?limit=200&showDeleted=true',
+    cacheKey: 'cache:brands',
+    showDeleted,
+    setError,
+    loadErrorText: t('common.loadError'),
+  });
 
   const openCreate = () => {
     setEditBrand(null);
@@ -166,26 +140,6 @@ export default function BrandsTab() {
     }
   };
 
-  const remove = async (id: string) => {
-    if (
-      !(await confirm({
-        title: t('brands.removeConfirmTitle'),
-        message: t('brands.removeConfirmMessage'),
-        variant: 'destructive',
-      }))
-    )
-      return;
-    setDeletingId(id);
-    try {
-      await apiFetch<void>(`/brands/${id}`, { method: 'DELETE' });
-      load();
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : t('common.deleteError'));
-    } finally {
-      setDeletingId(null);
-    }
-  };
-
   // Відновлення повертає синоніми, яких бренд не отримав назад: їх уже має інший бренд (BR-GOOD-007).
   const noteSkipped = (restored: Brand) =>
     setSkippedNotice(
@@ -197,26 +151,26 @@ export default function BrandsTab() {
         : '',
     );
 
-  const restore = async (id: string) => {
-    // in-flight guard: duplicate POSTs → 2nd+ returns 404 → false-error in UI.
-    // First update sets deletedAt=null; subsequent updateMany return count=0 → NotFoundException.
-    if (restoringIds.has(id)) return;
-    setError('');
-    setRestoringIds(prev => new Set(prev).add(id));
-    try {
-      await apiFetch<Brand>(`/brands/${id}/restore`, { method: 'POST' }).then(noteSkipped);
-      load();
-      toast.success(t('brands.restored'));
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : t('common.restoreError'));
-    } finally {
-      setRestoringIds(prev => {
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
-      });
-    }
-  };
+  const {
+    deletingId,
+    restoringIds,
+    remove: removeItem,
+    restore: restoreItem,
+  } = useRemoveRestore({
+    basePath: '/brands',
+    confirm,
+    afterChange: load,
+    setError,
+    fallbackError: { remove: t('common.deleteError'), restore: t('common.restoreError') },
+  });
+  const remove = (id: string) =>
+    removeItem(id, {
+      title: t('brands.removeConfirmTitle'),
+      message: t('brands.removeConfirmMessage'),
+      variant: 'destructive',
+    });
+  const restore = (id: string) =>
+    restoreItem<Brand>(id, { successToast: t('brands.restored'), onRestored: noteSkipped });
 
   const activeCount = brands.filter(b => !b.deletedAt).length;
   const deletedCount = brands.filter(b => !!b.deletedAt).length;

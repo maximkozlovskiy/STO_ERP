@@ -21,6 +21,7 @@ import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useConfirm } from '@/hooks/useConfirm';
+import { useRemoveRestore } from '@/hooks/useRemoveRestore';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
@@ -123,7 +124,6 @@ export default function WorksTab() {
     isWarranty: false,
   });
   const [saving, setSaving] = useState(false);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [selectedWork, setSelectedWork] = useState<Work | null>(null);
 
@@ -149,8 +149,6 @@ export default function WorksTab() {
   });
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState('');
-  // in-flight set для restore — блокує дублюючі POST.
-  const [restoringIds, setRestoringIds] = useState<Set<string>>(new Set());
 
   const {
     visibleKeys: worksColVisible,
@@ -376,46 +374,26 @@ export default function WorksTab() {
     }
   };
 
-  const remove = async (id: string) => {
-    if (
-      !(await confirm({
-        title: t('works.removeConfirmTitle'),
-        message: t('works.removeConfirmMessage'),
-        variant: 'destructive',
-      }))
-    )
-      return;
-    setDeletingId(id);
-    setError('');
-    try {
-      await apiFetch<void>(`/works/${id}`, { method: 'DELETE' });
-      load();
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : t('common.deleteError'));
-    } finally {
-      setDeletingId(null);
-    }
-  };
-
-  const restore = async (id: string) => {
-    // in-flight guard — blocks duplicate POSTs.
-    if (restoringIds.has(id)) return;
-    setError('');
-    setRestoringIds(prev => new Set(prev).add(id));
-    try {
-      await apiFetch<Work>(`/works/${id}/restore`, { method: 'POST' });
-      load();
-      if (features.toastEnabled) toast.success(t('works.restored'));
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : t('common.restoreError'));
-    } finally {
-      setRestoringIds(prev => {
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
-      });
-    }
-  };
+  const {
+    deletingId,
+    restoringIds,
+    remove: removeItem,
+    restore: restoreItem,
+  } = useRemoveRestore({
+    basePath: '/works',
+    confirm,
+    afterChange: load,
+    setError,
+    fallbackError: { remove: t('common.deleteError'), restore: t('common.restoreError') },
+  });
+  const remove = (id: string) =>
+    removeItem(id, {
+      title: t('works.removeConfirmTitle'),
+      message: t('works.removeConfirmMessage'),
+      variant: 'destructive',
+    });
+  const restore = (id: string) =>
+    restoreItem(id, features.toastEnabled ? { successToast: t('works.restored') } : undefined);
 
   const openEditWork = (w: Work) => {
     setEditWork(w);

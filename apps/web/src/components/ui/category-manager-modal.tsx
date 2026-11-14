@@ -368,6 +368,11 @@ export function CategoryManagerModal({
     },
     [features.toastEnabled, t],
   );
+  // Успішна дія знімає банер попередньої відмови: інакше він висів над деревом, яке вже змінилось.
+  const handleChanged = useCallback(() => {
+    setError('');
+    onChanged();
+  }, [onChanged]);
   const label =
     type === 'work' ? t('categoryManager.workCategories') : t('categoryManager.goodCategories');
 
@@ -381,14 +386,14 @@ export function CategoryManagerModal({
         });
         if (features.toastEnabled)
           toast.success(t(isActive ? 'toast.categoryEnabled' : 'toast.categoryDisabled'));
-        onChanged();
+        handleChanged();
       } catch (e) {
         notifyError(e);
       } finally {
         setSaving(null);
       }
     },
-    [endpoint, features.toastEnabled, notifyError, onChanged, t],
+    [endpoint, features.toastEnabled, notifyError, handleChanged, t],
   );
 
   const handleAddRoot = useCallback(async () => {
@@ -401,13 +406,13 @@ export function CategoryManagerModal({
       });
       if (features.toastEnabled) toast.success(t('toast.categoryCreated'));
       setNewRootName('');
-      onChanged();
+      handleChanged();
     } catch (e) {
       notifyError(e);
     } finally {
       setSaving(null);
     }
-  }, [newRootName, endpoint, features.toastEnabled, notifyError, onChanged, t]);
+  }, [newRootName, endpoint, features.toastEnabled, notifyError, handleChanged, t]);
 
   return (
     <Modal
@@ -475,7 +480,7 @@ export function CategoryManagerModal({
                   node={node}
                   depth={0}
                   type={type}
-                  onChanged={onChanged}
+                  onChanged={handleChanged}
                   onToggleActive={handleToggleActive}
                   saving={saving}
                   setSaving={setSaving}

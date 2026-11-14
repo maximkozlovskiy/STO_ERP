@@ -219,8 +219,10 @@ cd apps/api && npx vitest run src/modules/goods/<файл>.spec.ts
 Web: `apps/web/src/components/ui/__tests__/XlsxImportButton.summary.test.tsx` — підсумок імпорту
 («пропущено» окремо, нульове «оновлено» не показується) і назви кнопок імпорту;
 `apps/web/src/app/(app)/catalog/__tests__/BrandsTab.restore-skipped.test.tsx` — банер пропущених
-синонімів після відновлення бренду (BR-GOOD-007); `apps/web/src/components/ui/__tests__/category-manager-modal.delete-error.test.tsx`
-— відмова видалити категорію з правилами видна і без тостів (BR-GOOD-010). E2E через UI —
+синонімів після відновлення бренду (BR-GOOD-007); `apps/web/src/app/(app)/catalog/__tests__/BrandsTab.deleted-mode-cache.test.tsx`
+— у режимі «Показати видалені» видалення й відновлення бренду оновлюють кеш активних брендів
+(`useDeletableRefList`); `apps/web/src/components/ui/__tests__/category-manager-modal.delete-error.test.tsx`
+— відмова видалити категорію з правилами видна і без тостів, наступна успішна дія знімає банер (BR-GOOD-010). E2E через UI —
 `apps/web/e2e/catalog-brands-categories.spec.ts` (відновлення бренду з синонімами; видалення
 категорії з правилом ціни). Блок 4 (№17, 18, 20, 21):
 `apps/web/src/components/ui/__tests__/GoodPickerModal.bulk-guards.test.tsx` — «Зняти всі показані» понад 20 з

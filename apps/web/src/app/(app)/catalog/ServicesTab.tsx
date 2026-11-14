@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useConfirm } from '@/hooks/useConfirm';
+import { useRemoveRestore } from '@/hooks/useRemoveRestore';
 import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -155,7 +156,6 @@ export default function ServicesTab() {
   const [inlineWorkPickerOpen, setInlineWorkPickerOpen] = useState(false);
   const [inlineGoodPickerOpen, setInlineGoodPickerOpen] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [selectedService, setSelectedService] = useState<Service | null>(null);
 
@@ -174,8 +174,6 @@ export default function ServicesTab() {
     )
       setSelectedService(null);
   }, [selectedService, services?.items, loading]);
-  // in-flight set для restore — блокує дублюючі POST.
-  const [restoringIds, setRestoringIds] = useState<Set<string>>(new Set());
 
   const {
     visibleKeys: servicesColVisible,
@@ -414,47 +412,32 @@ export default function ServicesTab() {
     }
   };
 
-  const remove = async (id: string) => {
-    if (
-      !(await confirm({
+  const {
+    deletingId,
+    restoringIds,
+    remove: removeItem,
+    restore: restoreItem,
+  } = useRemoveRestore({
+    basePath: '/services',
+    confirm,
+    afterChange: load,
+    setError,
+    fallbackError: { remove: t('common.deleteError'), restore: t('common.restoreError') },
+  });
+  const remove = (id: string) =>
+    removeItem(
+      id,
+      {
         title: t('services.removeConfirmTitle'),
         message: t('services.removeConfirmMessage'),
         variant: 'destructive',
-      }))
-    )
-      return;
-    setDeletingId(id);
-    setError('');
-    try {
-      await apiFetch<void>(`/services/${id}`, { method: 'DELETE' });
-      if (selectedService?.id === id) setSelectedService(null);
-      load();
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : t('common.deleteError'));
-    } finally {
-      setDeletingId(null);
-    }
-  };
-
-  const restore = async (id: string) => {
-    // in-flight guard — blocks duplicate POSTs.
-    if (restoringIds.has(id)) return;
-    setError('');
-    setRestoringIds(prev => new Set(prev).add(id));
-    try {
-      await apiFetch<Service>(`/services/${id}/restore`, { method: 'POST' });
-      load();
-      if (features.toastEnabled) toast.success(t('services.restored'));
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : t('common.restoreError'));
-    } finally {
-      setRestoringIds(prev => {
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
-      });
-    }
-  };
+      },
+      () => {
+        if (selectedService?.id === id) setSelectedService(null);
+      },
+    );
+  const restore = (id: string) =>
+    restoreItem(id, features.toastEnabled ? { successToast: t('services.restored') } : undefined);
 
   const totalPages = services ? Math.ceil(services.total / services.limit) : 1;
 

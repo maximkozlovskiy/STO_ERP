@@ -3,9 +3,10 @@
 // вимкнено, банером у вікні. До 2026-11-14 без тостів відмова губилась без жодного сліду.
 //
 // Мутація: у `handleDelete` повернути `if (features.toastEnabled) toast.error(...)` замість
-// `onError(e)` → кейс «тости вимкнено» падає.
+// `onError(e)` → кейс «тости вимкнено» падає; передати вузлам `onChanged` замість `handleChanged`
+// → кейс «успішна дія знімає банер» падає.
 
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { vi, it, expect, describe, beforeEach } from 'vitest';
 
 const apiFetchMock = vi.fn();
@@ -71,5 +72,19 @@ describe('CategoryManagerModal — відмова видалити катего�
 
     await vi.waitFor(() => expect(toastError).toHaveBeenCalledWith(REFUSAL));
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('успішна наступна дія знімає банер попередньої відмови', async () => {
+    features.toastEnabled = false;
+    await deleteCategory();
+    await screen.findByRole('alert');
+
+    // Правила вже змінили — повторне видалення проходить.
+    apiFetchMock.mockReset();
+    apiFetchMock.mockResolvedValue(undefined);
+    fireEvent.click(screen.getByTitle('Видалити'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Так' }));
+
+    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
   });
 });
