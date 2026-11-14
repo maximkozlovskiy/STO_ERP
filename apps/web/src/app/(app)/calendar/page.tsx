@@ -269,6 +269,7 @@ function CalendarPageClient() {
           savedMechanic={cs.savedMechanic}
           editingWorkOrder={cs.editingWorkOrder}
           editingChain={cs.editingChain}
+          startLocked={cs.editingStarted}
           formWorkHours={cs.formWorkHours}
           pendingSlot={cs.pendingSlot}
           setPendingSlot={cs.setPendingSlot}

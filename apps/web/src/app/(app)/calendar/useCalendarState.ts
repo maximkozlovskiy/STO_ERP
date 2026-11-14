@@ -59,6 +59,7 @@ import {
   nowLinePercent,
   pastPercent,
   chainInnerEdge,
+  chainStarted,
   slotDeleteConfirmOptions,
   workOrderDeleteLock,
   workOrderTimeLock,
@@ -1114,7 +1115,13 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
           toast.warning(t('slot.pastSlotLocked'));
           return;
         }
-        if (dateRef.current === todayKyiv && startH < minHourRef.current) {
+        // Лише змінений початок: кінець запису, що вже триває (№97 — розпочатий запис змінює
+        // лише кінець), тягнеться й тоді, коли його початок раніше за поточну годину.
+        if (
+          dateRef.current === todayKyiv &&
+          Math.abs(startH - origStartH) >= 0.01 &&
+          startH < minHourRef.current
+        ) {
           toast.warning(t('slot.pastStartLocked'));
           return;
         }
@@ -1246,6 +1253,12 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
       const slot = slots.find(s => s.id === active.id);
       // BR-WO-027: запис наряду не в редагованому статусі не перетягується (сервер відповів би 400).
       if (!slot || !canManageSlots || workOrderTimeLock(slot)) return;
+      // №97: ланцюжок, що вже почався, не переноситься (блок без перетягування; сторож — на випадок,
+      // коли «зараз» настав, поки блок тягнули) — сервер відповів би 400 `chainStarted`.
+      if (chainStarted(slot, nowMs || Date.now())) {
+        toast.warning(t('slot.chainStartedLocked'));
+        return;
+      }
       const newLiftId: string | null = over?.data?.current?.liftId ?? slot.liftId ?? null;
       const geom = axisGeom();
       if (!geom) return;
@@ -1523,6 +1536,15 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
     [editingSavedSlot],
   );
 
+  /**
+   * №97: запис форми (ручний чи наряду) уже почався — «Початок» лише для читання, кінець і
+   * нормогодини змінюються (сервер на зміну початку відповів би 400 `chainStarted`).
+   */
+  const editingStarted = useMemo(
+    () => (editingSavedSlot ? chainStarted(editingSavedSlot, nowMs) : false),
+    [editingSavedSlot, nowMs],
+  );
+
   const savedMechanic = useMemo<SavedMechanic | null>(
     () =>
       editingSavedSlot
@@ -1763,6 +1785,7 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
     savedMechanic,
     editingWorkOrder,
     editingChain,
+    editingStarted,
     formWorkHours,
     error,
     setError,

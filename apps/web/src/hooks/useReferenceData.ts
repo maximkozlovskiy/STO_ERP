@@ -24,6 +24,8 @@ export interface Branch {
 export interface Lift {
   id: string;
   name: string;
+  /** Філія зони підйомника (`GET /lifts`) — філія наряду з цим підйомником (BR-WO-040). */
+  branchId?: string | null;
 }
 export interface Warehouse {
   id: string;
@@ -126,17 +128,16 @@ export function useReferenceData(role?: string) {
   const contractReqRef = useRef(0);
 
   useEffect(() => {
+    // Кеш вкладки — для миттєвого показу, але перечитується щоразу (як підйомники): підйомник
+    // філії, створеної після заповнення кешу, інакше ставив би в «Філію» відсутній варіант (BR-WO-040).
     const cachedBranches = getCached<Branch[]>('cache:branches');
-    if (cachedBranches) {
-      setBranches(cachedBranches);
-    } else {
-      apiFetch<Branch[]>('/branches')
-        .then(bs => {
-          setBranches(bs);
-          setCache('cache:branches', bs);
-        })
-        .catch(() => {});
-    }
+    if (cachedBranches) setBranches(cachedBranches);
+    apiFetch<Branch[]>('/branches')
+      .then(bs => {
+        setBranches(bs);
+        setCache('cache:branches', bs);
+      })
+      .catch(() => {});
 
     // Кеш вкладки пишуть і сторінки, що не відсіюють «Шинний готель» (наряд, склад) — відсіяти й тут.
     const cachedWarehouses = getCached<Warehouse[]>('cache:warehouses');

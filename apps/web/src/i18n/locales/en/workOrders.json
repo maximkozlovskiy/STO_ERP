@@ -441,6 +441,7 @@
     "descriptionPlaceholder": "Oil change, brake pads...",
     "lift": "Lift",
     "noLift": "— No lift —",
+    "branchFromLift": "Branch changed to the lift’s branch “{{branch}}”",
     "conflict": {
       "lift": "Lift is busy.",
       "employee": "Mechanic is busy.",

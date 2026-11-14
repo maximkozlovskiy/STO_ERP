@@ -16,7 +16,7 @@ import { fmtQty } from '@/lib/format';
 
 import type { BookingSlot, CalendarSlot, GhostSlot, Lift, PendingSlot } from './calendar.types';
 import { decimalHoursToHHMM, fmtTime } from './calendar.utils';
-import { daySlotCategory, liftLoadHours } from './calendar-day';
+import { chainStarted, daySlotCategory, liftLoadHours } from './calendar-day';
 import type { CalendarState } from './useCalendarState';
 import { BookingSlotBlock, DraggableSlot, PendingSlotBlock, axisPos } from './CalendarDayBlocks';
 
@@ -145,6 +145,7 @@ export const LiftLane = memo(function LiftLane({
           category={daySlotCategory(s, p.chainEnds, p.nowMs)}
           isEditing={s.id === p.editingSlotId}
           canManage={p.canManage}
+          started={chainStarted(s, p.nowMs)}
           windowStart={windowStart}
           totalHours={totalHours}
           vertical={vertical}

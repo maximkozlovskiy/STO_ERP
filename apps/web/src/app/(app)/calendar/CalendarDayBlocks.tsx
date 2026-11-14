@@ -70,6 +70,11 @@ interface DraggableSlotProps {
    * меж і курсорів перетягування немає — лише відкриття запису для перегляду.
    */
   canManage: boolean;
+  /**
+   * Початок ланцюжка запису вже минув (№97, `chainStarted`): блок не перетягується, ручки початку
+   * немає — лише кінець останнього дня.
+   */
+  started?: boolean;
   windowStart: number;
   totalHours: number;
   /** Повернута сітка: час — по вертикалі (BR-CAL-014). */
@@ -87,6 +92,7 @@ export const DraggableSlot = memo(function DraggableSlot({
   category,
   isEditing,
   canManage,
+  started = false,
   windowStart,
   totalHours,
   vertical = false,
@@ -114,8 +120,11 @@ export const DraggableSlot = memo(function DraggableSlot({
   // BR-WO-024 / BR-CAL-020 (№66, №92): внутрішні межі ланцюжка — наряду чи ручного — не тягнуться:
   // ручки лише в початку першого дня й кінці останнього; блок перетягується з усім ланцюжком
   // (BR-WO-023, BR-CAL-020).
-  const startHandle = movable && !chainInnerEdge(slot, 'start');
+  // №97: розпочатий запис не переноситься й початку не змінює — лише кінець останнього дня.
+  const draggable = movable && !started;
+  const startHandle = draggable && !chainInnerEdge(slot, 'start');
   const endHandle = movable && !chainInnerEdge(slot, 'end');
+  const startedHint = canManage && !lockedStatus && started ? t('day.chainStarted') : null;
   // Скасований наряд: час і підйомник так само заблоковані, але запис видаляється (BR-WO-026).
   const lockedHint = (status: string) =>
     t(isCancelledWorkOrderSlot(status) ? 'day.woTimeLockedCancelled' : 'day.woTimeLocked', {
@@ -124,7 +133,7 @@ export const DraggableSlot = memo(function DraggableSlot({
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: slot.id,
     data: { slot },
-    disabled: !movable,
+    disabled: !draggable,
   });
   // Тіло блоку — кнопка для клавіатури в обох ролях: Enter і пробіл відкривають запис. Сенсор
   // перетягування лише вказівний (`PointerSensor`), тож `listeners` клавіш не обробляють — без
@@ -135,7 +144,7 @@ export const DraggableSlot = memo(function DraggableSlot({
     e.preventDefault();
     onEdit(slot);
   };
-  const contentProps = movable
+  const contentProps = draggable
     ? { ...listeners, ...attributes, onKeyDown }
     : { role: 'button', tabIndex: 0, onKeyDown };
   const style: CSSProperties = {
@@ -171,6 +180,7 @@ export const DraggableSlot = memo(function DraggableSlot({
     service ? (slot.notes ?? null) : null,
     `${typeLabel} · ${categoryLabel}`,
     canManage && lockedStatus ? lockedHint(lockedStatus) : null,
+    startedHint,
   ]
     .filter(Boolean)
     .join('\n');
@@ -182,6 +192,7 @@ export const DraggableSlot = memo(function DraggableSlot({
       data-calendar-slot
       data-category={category}
       data-time-locked={lockedStatus ? true : undefined}
+      data-started={started || undefined}
       data-editing={isEditing || undefined}
       // Світлий фон і смуга категорії, темний текст (BR-CAL-011). Блок, що редагується, —
       // бурштинова рамка: amber-600 — 3,2:1 до білого, 5,6:1 до темного фону (WCAG 1.4.11).
@@ -203,7 +214,7 @@ export const DraggableSlot = memo(function DraggableSlot({
       )}
 
       <div
-        className={`@container flex-1 flex flex-col px-3 min-w-0 py-1 relative ${movable ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'}`}
+        className={`@container flex-1 flex flex-col px-3 min-w-0 py-1 relative ${draggable ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'}`}
         data-part="content"
         {...contentProps}
         onClick={() => onEdit(slot)}
@@ -235,6 +246,7 @@ export const DraggableSlot = memo(function DraggableSlot({
         {canManage && lockedStatus && (
           <span className="sr-only">{`${lockedHint(lockedStatus)}. `}</span>
         )}
+        {startedHint && <span className="sr-only">{`${startedHint}. `}</span>}
         {/* Main info — centered */}
         <div className="flex-1 flex flex-col justify-center gap-0.5 min-w-0">
           {service && (

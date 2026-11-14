@@ -2,7 +2,7 @@
 
 import dynamic from 'next/dynamic';
 import type { ApiSchema } from '@sto/shared';
-import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo, useId } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ChangeEvent } from 'react';
 import { useForm, useFieldArray, Controller } from 'react-hook-form';
@@ -493,6 +493,9 @@ export function CreateWorkOrderModal({
 
   // BR-WO-019: робочі години філії наряду (пікер планових дат, автокінець).
   const workHours = useBranchWorkHours(form.branchId);
+  // BR-WO-040: філія наряду — філія його підйомника (сервер ставить її сам при збереженні); картка
+  // показує її одразу з підказкою, години картки — вже нової філії.
+  const [branchFromLift, setBranchFromLift] = useState<string | null>(null);
   const workHoursRef = useRef(workHours);
   workHoursRef.current = workHours;
   // Планові дати й підйомник збереженого наряду на момент завантаження: запис календаря наряду
@@ -789,6 +792,7 @@ export function CreateWorkOrderModal({
     setCurrentStatus('DRAFT');
     setPayState(null);
     setPayOpen(false);
+    setBranchFromLift(null);
     // A fresh modal session starts without a prior partial create.
     createdWoRef.current = null;
     // Запис календаря, який наряд забере (BR-WO-020), — той, з якого картку відкрито.
@@ -1193,6 +1197,28 @@ export function CreateWorkOrderModal({
   // ── BR-WO-030: виконавець нової роботи ─────────────────────────────────────────
   const calendarMechanicId = isEditMode ? linkedSlotMechanicId : (prefill?.employeeId ?? null);
   const liftMechanics = useLiftMechanics(form.liftId);
+
+  // ── BR-WO-040: філія наряду — філія підйомника ─────────────────────────────────
+  const branchHintId = useId();
+  const liftBranchOf = useCallback(
+    (liftId: string) => (liftId ? (liftsById.get(liftId)?.branchId ?? null) : null),
+    [liftsById],
+  );
+  const pickLift = (liftId: string) => {
+    const branch = liftBranchOf(liftId);
+    const prevBranch = getValues('branchId') ?? '';
+    setForm(f => ({ ...f, liftId, ...(branch && branch !== f.branchId && { branchId: branch }) }));
+    if (branch && branch !== prevBranch) setBranchFromLift(branch);
+  };
+  // Новий наряд із підйомником (картку відкрито з календаря): підйомники довантажились — філія
+  // з підйомника; програмна зміна, не дія користувача (`shouldDirty: false`, як автовибір філії).
+  const prefillLiftBranch = !isEditMode && open ? liftBranchOf(form.liftId) : null;
+  useEffect(() => {
+    if (!prefillLiftBranch || prefillLiftBranch === getValues('branchId')) return;
+    setValue('branchId', prefillLiftBranch, { shouldDirty: false });
+    setBranchFromLift(prefillLiftBranch);
+  }, [prefillLiftBranch, getValues, setValue]);
+  const showBranchFromLift = branchFromLift !== null && branchFromLift === form.branchId;
   const activeMechanicIds = useMemo(() => employees.map(e => e.id), [employees]);
   // Свіжі входи правила для «+ Послуга»: категорії її робіт приходять після await.
   const executorInputsRef = useRef({
@@ -2580,8 +2606,9 @@ export function CreateWorkOrderModal({
                           <Select
                             label={t('card.lift')}
                             value={form.liftId}
-                            onChange={e => setForm(f => ({ ...f, liftId: e.target.value }))}
+                            onChange={e => pickLift(e.target.value)}
                             disabled={!canEdit}
+                            aria-describedby={showBranchFromLift ? branchHintId : undefined}
                           >
                             <option value="">{t('card.noLift')}</option>
                             {lifts.map(l => (
@@ -2590,6 +2617,17 @@ export function CreateWorkOrderModal({
                               </option>
                             ))}
                           </Select>
+                          {showBranchFromLift && (
+                            <p
+                              id={branchHintId}
+                              className="mt-1 text-[12px] text-muted-foreground"
+                              data-testid="wo-branch-from-lift"
+                            >
+                              {t('card.branchFromLift', {
+                                branch: branchesById.get(form.branchId)?.name ?? '',
+                              })}
+                            </p>
+                          )}
                         </div>
                         <PlannedActualMetrics
                           canEdit={canEdit}

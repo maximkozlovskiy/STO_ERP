@@ -54,6 +54,19 @@ export function chainInnerEdge(
 }
 
 /**
+ * BR-CAL-020 / BR-WO-024 (TECH-DEBT (б) №97): запис (ручний чи наряду), чий ПОЧАТОК ланцюжка
+ * (`chainStartAt` — початок першої частини; одноденний — свій початок) уже минув. Такий запис не
+ * переноситься й не має ручки початку — сервер відповів би 400 `err.calendar.chainStarted`; кінець
+ * останнього дня змінюється. `nowMs` = 0 — час ще не відомий (до гідратації): не розпочатий.
+ */
+export function chainStarted(
+  slot: Pick<CalendarSlot, 'startAt' | 'chainStartAt'>,
+  nowMs: number,
+): boolean {
+  return nowMs > 0 && new Date(slot.chainStartAt ?? slot.startAt).getTime() < nowMs;
+}
+
+/**
  * BR-WO-026: видалення запису наряду заблоковане там само, де час і підйомник (`timeLock` —
  * результат `workOrderTimeLock`), крім скасованого наряду (рішення власника 2026-10-19): його
  * запис — залишок старих даних, видаляється без зміни дат закритого наряду. Повертає статус, що

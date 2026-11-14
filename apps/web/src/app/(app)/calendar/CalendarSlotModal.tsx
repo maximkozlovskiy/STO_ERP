@@ -67,8 +67,8 @@ import {
 } from './calendar-slot-span';
 
 /**
- * «Години» без робочих днів: зміну ручного запису сервер не ділить на дні, тож його нормогодини —
- * просто тривалість (`slotHoursBetween` з цими годинами жодного дня не вважає робочим).
+ * «Години» без робочих днів: запис, який сервер не ділить на дні (запис наряду, який форма
+ * відкріплює), — нормогодини просто тривалість (`slotHoursBetween` жодного дня не вважає робочим).
  */
 const NO_SPLIT: WorkHoursWindow = Object.freeze({ startHour: 0, endHour: 0 });
 
@@ -147,6 +147,11 @@ interface CalendarSlotModalProps {
     isFirst: boolean;
     isLast: boolean;
   } | null;
+  /**
+   * Запис, що редагується, уже почався (№97, BR-CAL-020 / BR-WO-024): «Початок» лише для читання,
+   * «Кінець» і нормогодини — редаговані.
+   */
+  startLocked?: boolean;
   pendingSlot: PendingSlot | null;
   setPendingSlot: Dispatch<SetStateAction<PendingSlot | null>>;
 
@@ -200,6 +205,7 @@ export function CalendarSlotModal({
   savedMechanic = null,
   editingWorkOrder = null,
   editingChain = null,
+  startLocked = false,
   pendingSlot,
   setPendingSlot,
   formMounted,
@@ -522,9 +528,9 @@ export function CalendarSlotModal({
   const woChain = editingChain !== null && editingWorkOrder !== null ? editingChain : null;
   const manualChain = editingChain !== null && editingWorkOrder === null ? editingChain : null;
   const isChain = woChain !== null;
-  // Сервер ділить на дні новий запис, запис наряду й ручний ланцюжок; зміна одноденного ручного
-  // запису — один запис.
-  const splits = !editingSlotId || !!form.workOrderId || manualChain !== null;
+  // Сервер ділить на дні новий запис, запис наряду, ручний ланцюжок і — з №96 — зміну одноденного
+  // ручного запису (BR-CAL-020). Не ділиться лише запис наряду, який форма відкріплює (його видалять).
+  const splits = !editingSlotId || !!form.workOrderId || editingWorkOrder === null;
   // День «Початку»: ручний ланцюжок — день першої частини (форму відкрито з будь-якого дня), інакше
   // день сторінки. День «Кінця», поки нормогодини його не дають, — день останньої частини.
   const chainLocal = (iso: string | undefined) =>
@@ -535,9 +541,9 @@ export function CalendarSlotModal({
   const unlinking = !!editingSlotId && editingWorkOrder !== null && !form.workOrderId;
 
   /**
-   * Кінець запису («YYYY-MM-DDTHH:mm») за початком «HH:mm» дня `date` і нормогодинами: новий запис
-   * і запис наряду — у робочих годинах філії на скільки завгодно днів (BR-CAL-007, №72); зміна
-   * ручного запису — «початок + тривалість» на тому ж дні (сервер його не ділить). '' — немає.
+   * Кінець запису («YYYY-MM-DDTHH:mm») за початком «HH:mm» дня `date` і нормогодинами: у робочих
+   * годинах філії на скільки завгодно днів (BR-CAL-007, №72; зміна ручного запису — теж, №96);
+   * запис наряду, який форма відкріплює, — «початок + тривалість» на тому ж дні. '' — немає.
    */
   const endFor = useCallback(
     (startHHmm: string, normoHours: string): string => {
@@ -661,8 +667,7 @@ export function CalendarSlotModal({
     }
     const startIso = form.startAt ? kyivDateTimeToISO(startDay, form.startAt) : null;
     // Кінець — справжній (на дні завершення), як у збереженні: багатоденний запис перевіряється
-    // на всіх днях, а не на «кінці» першого дня. Зміну ручного запису сервер не ділить (`splits`)
-    // — 17:00–20:00 лишається 17:00–20:00, а не «завтра до 11:00».
+    // на всіх днях, а не на «кінці» першого дня (і зміна одноденного ручного запису, №96).
     const realEnd =
       startLocal && endLocal ? slotRealEnd(startLocal, endLocal, splits ? wh : NO_SPLIT) : '';
     const endIso = realEnd ? kyivDateTimeToISO(realEnd.slice(0, 10), realEnd.slice(11, 16)) : null;
@@ -1127,8 +1132,8 @@ export function CalendarSlotModal({
                 value={startLocal}
                 minHour={startMinHour}
                 maxHour={wh.endHour - 1}
-                // BR-WO-024: початок продовження — внутрішня межа ланцюжка.
-                disabled={fieldsLocked || (woChain !== null && !woChain.isFirst)}
+                // BR-WO-024: початок продовження — внутрішня межа ланцюжка; №97 — розпочатий запис.
+                disabled={fieldsLocked || startLocked || (woChain !== null && !woChain.isFirst)}
                 inputClassName="h-8 text-[13px]"
                 onChange={val => {
                   const start = val ? val.slice(11, 16) : '';
@@ -1221,6 +1226,12 @@ export function CalendarSlotModal({
               />
             </div>
           </div>
+
+          {startLocked && !fieldsLocked && (
+            <p className="text-[12px] text-muted-foreground" data-testid="slot-started-hint">
+              {t('slot.chainStartedStart')}
+            </p>
+          )}
 
           {woChain && !fieldsLocked && (
             <p className="text-[12px] text-muted-foreground" data-testid="slot-chain-hint">
