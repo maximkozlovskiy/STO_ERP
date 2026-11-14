@@ -1181,6 +1181,8 @@ export class WorkOrdersService {
    * - Новий наряд має планові дати → ланцюжок запису стає на його дати й підйомник.
    * - Дат немає → межі ланцюжка запису після зміни (як `moveWorkOrderSlot`) і підйомник запису
    *   стають плановими датами й підйомником нового наряду (BR-WO-019, нормогодини — Bug #903).
+   * - Запис, чий початок уже минув, перев'язка не зсуває (№97): інший початок — 400
+   *   `err.calendar.chainStarted`.
    *
    * Перевірки — шляхом збереження наряду (`applyUpdate`: BR-WO-019, BR-WO-020). Механік запису, не
    * закріплений за підйомником нового наряду, знімається з причиною у відповіді, як при
@@ -1226,6 +1228,8 @@ export class WorkOrdersService {
     ]);
     const { hours } = branchHours;
     let datesDto: UpdateWorkOrderDto = {};
+    // Початок ланцюжка після перев'язки: наряд із датами — його плановий початок, без дат — межа форми.
+    let nextStart = hasDates ? target.plannedAt : null;
     if (!hasDates) {
       // BR-CAL-020: форма ручного ланцюжка шле межі ВСЬОГО ланцюжка (`chainSpan`), а не частини,
       // з якої її відкрито — інакше межі ланцюжка з другого дня читались як внутрішні (Bug #1063).
@@ -1234,6 +1238,7 @@ export class WorkOrdersService {
         change.chainSpan && slot.workOrderId === null
           ? { start: window.startAt, end: window.endAt }
           : chainBounds(chain, slot.id, window);
+      nextStart = edges.start;
       datesDto = {
         plannedAt: edges.start.toISOString(),
         dueDate: edges.end.toISOString(),
@@ -1241,6 +1246,9 @@ export class WorkOrdersService {
         ...(liftId !== target.liftId && { liftId }),
       };
     }
+    // №97 (BR-CAL-020, BR-WO-028): розпочатий запис не переноситься й перев'язкою — ні на дати
+    // наряду, ні новим початком форми; перев'язка без зсуву початку — так.
+    if (nextStart) assertChainStartKept(bounds(chain).start, nextStart);
 
     // Механік (BR-CAL-012, рішення власника 2026-10-19). Свій механік запису, не закріплений за
     // підйомником нового наряду з датами, знімається (`upsertWorkOrderSlot`, причина — у

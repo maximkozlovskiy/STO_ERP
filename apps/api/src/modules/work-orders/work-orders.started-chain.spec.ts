@@ -4,7 +4,8 @@
  * перетягуванням (`reschedule`), ні ручкою чи формою запису (`PATCH /calendar/slots/:id`) — 400
  * `err.calendar.chainStarted`, ні наряд, ні записи не змінюються. Кінець останнього дня
  * змінюється (нові планові завершення й нормогодини), перенесення на інший підйомник без зсуву —
- * теж.
+ * теж. Перев'язка розпочатого запису на наряд (BR-WO-028) не зсуває його початку — ні на дати
+ * наряду, ні формою; на наряд із тим самим початком — так.
  *
  * Справжні WorkOrdersService + CalendarService над таблицями в пам'яті
  * (`work-orders.planning.spec-fixture.ts`). «Зараз» — 20.05.2026 09:00 Києва; філія 08:00–18:00
@@ -53,6 +54,16 @@ function started() {
         startAt: kyiv(D2, '08:00'),
         endAt: kyiv(D2, '12:00'),
       }),
+    ],
+  });
+}
+
+/** Ручний запис 20.05 08:00–12:00 на LIFT_1, що вже почався (зараз 09:00); наряд — `over`. */
+function startedFreeSlot(over: Record<string, unknown>) {
+  return planningHarness({
+    workOrders: [woRow({ status: 'APPROVED', liftId: LIFT_1, ...over })],
+    slots: [
+      slotRow('free', { workOrderId: null, startAt: kyiv(D, '08:00'), endAt: kyiv(D, '12:00') }),
     ],
   });
 }
@@ -126,6 +137,45 @@ describe('BR-WO-024 — розпочатий ланцюжок наряду (№9
     expect(t(wo(h).plannedAt)).toBe(t(kyiv(D, '08:00')));
     expect(t(wo(h).dueDate)).toBe(t(kyiv(D2, '14:00')));
     expect(wo(h).plannedHours).toBe(16);
+  });
+
+  // guards: BR-WO-028
+  it('перев’язка розпочатого ручного запису на наряд з іншими датами → 400 chainStarted, без змін', async () => {
+    const h = startedFreeSlot({
+      plannedAt: kyiv('2026-05-22', '10:00'),
+      dueDate: kyiv('2026-05-22', '12:00'),
+    });
+
+    const e = await rejected(h, h.service.updateCalendarSlot(ORG, 'free', { workOrderId: WO_ID }));
+
+    expect(e.message).toBe(STARTED);
+  });
+
+  // guards: BR-WO-028
+  it('перев’язка розпочатого ручного запису на наряд без дат зі зсувом початку → 400 chainStarted', async () => {
+    const h = startedFreeSlot({ plannedAt: null, dueDate: null });
+
+    const e = await rejected(
+      h,
+      h.service.updateCalendarSlot(ORG, 'free', {
+        workOrderId: WO_ID,
+        startAt: iso(D, '10:00'),
+        endAt: iso(D, '12:00'),
+      }),
+    );
+
+    expect(e.message).toBe(STARTED);
+  });
+
+  // guards: BR-WO-028
+  it('контроль: перев’язка розпочатого запису на наряд із тим самим початком — запис наряду', async () => {
+    const h = startedFreeSlot({ plannedAt: kyiv(D, '08:00'), dueDate: kyiv(D, '12:00') });
+
+    await h.service.updateCalendarSlot(ORG, 'free', { workOrderId: WO_ID });
+
+    const free = h.calendarSlot.rows.find(r => r.id === 'free')!;
+    expect(free.workOrderId).toBe(WO_ID);
+    expect(t(free.startAt)).toBe(t(kyiv(D, '08:00')));
   });
 
   // guards: BR-WO-024

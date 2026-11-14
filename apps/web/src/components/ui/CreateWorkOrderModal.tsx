@@ -1219,6 +1219,9 @@ export function CreateWorkOrderModal({
     setBranchFromLift(prefillLiftBranch);
   }, [prefillLiftBranch, getValues, setValue]);
   const showBranchFromLift = branchFromLift !== null && branchFromLift === form.branchId;
+  // Підйомник у зоні філії — «Філія» не вибирається: значення — філія підйомника (сервер, BR-WO-040,
+  // збереже саме її). Без підйомника чи підйомник без зони — поле вільне.
+  const branchLockedByLift = liftBranchOf(form.liftId) !== null;
   const activeMechanicIds = useMemo(() => employees.map(e => e.id), [employees]);
   // Свіжі входи правила для «+ Послуга»: категорії її робіт приходять після await.
   const executorInputsRef = useRef({
@@ -2526,7 +2529,11 @@ export function CreateWorkOrderModal({
                           required
                           value={form.branchId}
                           onChange={e => setForm(f => ({ ...f, branchId: e.target.value }))}
-                          disabled={!canEdit || isEditMode || branches.length === 1}
+                          // BR-WO-040: підйомник із філією — філія його (сервер усе одно бере її).
+                          disabled={
+                            !canEdit || isEditMode || branches.length === 1 || branchLockedByLift
+                          }
+                          aria-describedby={showBranchFromLift ? branchHintId : undefined}
                         >
                           {branches.length !== 1 && <option value="">{t('addLine.choose')}</option>}
                           {branches.map(b => (

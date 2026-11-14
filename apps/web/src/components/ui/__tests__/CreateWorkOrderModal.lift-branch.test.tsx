@@ -3,6 +3,8 @@
  * Картка наряду при виборі підйомника іншої філії ставить її в поле «Філія» з підказкою «Філію
  * змінено на філію підйомника», і нового наряду з підйомником, відкритого з календаря, — теж;
  * сервер робить те саме при збереженні. Підйомник тієї самої філії чи без філії — без підказки.
+ * Поки обрано підйомник із філією, «Філія» заблокована (значення — філія підйомника); без
+ * підйомника чи з підйомником без зони — вільна.
  */
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -139,6 +141,26 @@ describe('CreateWorkOrderModal — філія з підйомника (BR-WO-040
     await userEvent.selectOptions(liftSelect(), LIFT_NO_ZONE);
     expect(branchSelect().value).toBe(MAIN);
     expect(screen.queryByTestId('wo-branch-from-lift')).toBeNull();
+  });
+
+  // guards: BR-WO-040
+  it('підйомник із філією → «Філія» заблокована з філією підйомника; без підйомника чи без зони — вільна', async () => {
+    await open();
+    expect(branchSelect()).not.toBeDisabled();
+
+    await userEvent.selectOptions(liftSelect(), LIFT_SECOND);
+    expect(branchSelect()).toBeDisabled();
+    expect(branchSelect().value).toBe(SECOND);
+    expect(branchSelect()).toHaveAccessibleDescription(HINT);
+
+    await userEvent.selectOptions(liftSelect(), LIFT_MAIN);
+    expect(branchSelect()).toBeDisabled();
+    expect(branchSelect().value).toBe(MAIN);
+
+    await userEvent.selectOptions(liftSelect(), LIFT_NO_ZONE);
+    expect(branchSelect()).not.toBeDisabled();
+    await userEvent.selectOptions(liftSelect(), '');
+    expect(branchSelect()).not.toBeDisabled();
   });
 
   // guards: BR-WO-040
