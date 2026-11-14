@@ -2,7 +2,7 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PRICING_RULE_MAX_GOODS, translateError } from '@sto/shared';
 import { Prisma } from '@prisma/client';
 import { getLocale } from '../../common/tenant/tenant-context';
-import { PricingService } from './pricing.service';
+import { PRICING_RULE_ORDER, PricingService } from './pricing.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { findAllInPages } from '../../common/utils/pagination';
 import { AuditService } from '../audit/audit.service';
@@ -102,13 +102,13 @@ export class PricingRulesService {
       ...(supplierId ? { supplierId } : {}),
     };
     // Сторінка правил показує всі правила одним списком: `take: 200` мовчки ховав решту, хоча
-    // вони діяли в розцінці. id — другий ключ, щоб курсор сторінок мав стабільний порядок.
+    // вони діяли в розцінці. Порядок — той самий, яким розцінка обирає переможця (№15).
     const rules = await findAllInPages(page =>
       this.prisma.pricingRule.findMany({
         ...page,
         where,
         include: PRICING_RULE_INCLUDE,
-        orderBy: [{ priority: 'asc' }, { createdAt: 'desc' }, { id: 'asc' }],
+        orderBy: PRICING_RULE_ORDER,
       }),
     );
     const deadLists = await this.listsOfDeletedGoods(this.prisma, orgId, rules);

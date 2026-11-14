@@ -48,4 +48,10 @@ export class BrandResponseDto {
   @ApiPropertyOptional({ type: String, nullable: true }) deletedAt?: string | null;
   @ApiProperty() createdAt!: string;
   @ApiProperty() updatedAt!: string;
+  @ApiPropertyOptional({
+    type: [String],
+    description:
+      'Лише у відповіді відновлення: зняті разом із брендом синоніми, що не повернулися (зайняті)',
+  })
+  skippedSynonyms?: string[];
 }

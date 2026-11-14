@@ -263,6 +263,7 @@ export const uk: Record<string, string> = {
   'err.goodCategory.systemUndeletable': 'Системну категорію не можна видалити',
   'err.goodCategory.usedByRules':
     'Категорію не видалити: її використовують правила ціни — {{rules}}. Спершу змініть категорію в правилах',
+  'err.goodCategory.usedByRulesMore': 'і ще {{count}}',
   'err.goodCategory.moveIntoDescendant':
     'Неможливо перенести категорію у власну підкатегорію (утворився б цикл)',
 

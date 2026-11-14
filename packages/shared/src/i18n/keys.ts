@@ -437,6 +437,7 @@ export const VALIDATION_KEYS = [
   'err.goodCategory.ownParent',
   'err.goodCategory.systemUndeletable',
   'err.goodCategory.usedByRules',
+  'err.goodCategory.usedByRulesMore',
   'err.goodCategory.moveIntoDescendant',
   // Exception-повідомлення: work-categories-модуль
   'err.workCategory.notFound',

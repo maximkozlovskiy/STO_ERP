@@ -6227,6 +6227,7 @@
     },
     "/api/v1/brands/{id}/restore": {
       "post": {
+        "description": "Повертає синоніми, видалені разом із брендом, якщо написання вільне; зайняті — у skippedSynonyms",
         "operationId": "BrandsController_restore_v1",
         "parameters": [
           {
@@ -25848,6 +25849,13 @@
           },
           "updatedAt": {
             "type": "string"
+          },
+          "skippedSynonyms": {
+            "description": "Лише у відповіді відновлення: зняті разом із брендом синоніми, що не повернулися (зайняті)",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         },
         "required": [

@@ -11,6 +11,8 @@ import {
 
 const TTL = 300;
 const cacheKey = (orgId: string) => `ref:good-categories:${orgId}`;
+/** Скільки назв правил ціни показати у відмові видалення категорії; решта — «і ще N». */
+const RULES_IN_MESSAGE = 5;
 
 @Injectable()
 export class GoodCategoriesService {
@@ -131,6 +133,7 @@ export class GoodCategoriesService {
 
     const descendants = await this.getDescendantIds(orgId, id);
     const allIds = [id, ...descendants];
+    await this.assertNotUsedByRules(orgId, allIds);
 
     // Перенести товари цих категорій в null (без категорії)
     // sto-review: interactive $transaction із явним timeout — для категорій з великою
@@ -150,6 +153,36 @@ export class GoodCategoriesService {
     );
 
     await this.cache.del(cacheKey(orgId));
+  }
+
+  /**
+   * BR-GOOD-010 (№14): категорію, на яку чи на чиїх нащадків посилаються живі (невидалені, зокрема
+   * вимкнені) правила ціни, не видалити — правило мовчки втратило б область і стало б «на весь
+   * асортимент». 400 з назвами правил; перевірка — до будь-якого запису.
+   */
+  private async assertNotUsedByRules(orgId: string, categoryIds: string[]): Promise<void> {
+    const where = { orgId, deletedAt: null, goodCategoryId: { in: categoryIds } };
+    const [rules, total] = await Promise.all([
+      this.prisma.pricingRule.findMany({
+        where,
+        select: { name: true },
+        orderBy: [{ name: 'asc' }, { id: 'asc' }],
+        take: RULES_IN_MESSAGE,
+      }),
+      this.prisma.pricingRule.count({ where }),
+    ]);
+    if (total === 0) return;
+    const locale = getLocale();
+    const names = rules.map(r => `«${r.name}»`).join(', ');
+    const rest = total - rules.length;
+    throw new BadRequestException(
+      translateError('err.goodCategory.usedByRules', locale, {
+        rules:
+          rest > 0
+            ? `${names} ${translateError('err.goodCategory.usedByRulesMore', locale, { count: rest })}`
+            : names,
+      }),
+    );
   }
 
   async toggleActive(

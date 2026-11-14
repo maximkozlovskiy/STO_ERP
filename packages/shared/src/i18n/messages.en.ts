@@ -259,6 +259,7 @@ export const en: Record<string, string> = {
   'err.goodCategory.systemUndeletable': 'A system category cannot be deleted',
   'err.goodCategory.usedByRules':
     'The category cannot be deleted: pricing rules use it — {{rules}}. Change the category in the rules first',
+  'err.goodCategory.usedByRulesMore': 'and {{count}} more',
   'err.goodCategory.moveIntoDescendant':
     'A category cannot be moved into its own subcategory (this would create a cycle)',
 

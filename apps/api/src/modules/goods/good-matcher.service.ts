@@ -74,6 +74,9 @@ function push<K, V>(map: Map<K, V[]>, key: K, value: V): void {
  *  4. артикул без бренду;
  *  5. точна назва — лише коли рядок не має ні коду, ні артикула, ні штрихкоду.
  *
+ * Виняток — крок 2: кілька товарів «артикул + бренд» не зупиняють каскад, далі штрихкод; один
+ * товар за штрихкодом → він, інакше `ambiguous` з кандидатами «артикул + бренд» (№16).
+ *
  * Кілька товарів на одному кроці → `ambiguous` з кандидатами, а не «який трапився першим»:
  * раніше `lookupGoodsBulk` клав товари в мапу за ключем, і з двох товарів з однаковим артикулом
  * мовчки перемагав останній.
@@ -116,19 +119,17 @@ export class GoodMatcherService {
       const sameArticle = article ? (byArticle.get(article) ?? []) : [];
       const rawBrand = clean(row.brand);
       const brandId = rawBrand ? (brandIdByRaw.get(lower(rawBrand)) ?? null) : null;
-      if (sameArticle.length > 0 && brandId) {
-        const res = this.decide(
-          sameArticle.filter(g => g.brandId === brandId),
-          'articleBrand',
-        );
-        if (res) return res;
-      }
+      const byArticleBrand =
+        sameArticle.length > 0 && brandId ? sameArticle.filter(g => g.brandId === brandId) : [];
+      if (byArticleBrand.length === 1) return this.matched(byArticleBrand[0], 'articleBrand');
 
       const barcode = clean(row.barcode);
-      if (barcode) {
-        const res = this.decide(byBarcode.get(barcode) ?? [], 'barcode');
-        if (res) return res;
-      }
+      const byBarcodeHits = barcode ? (byBarcode.get(barcode) ?? []) : [];
+      if (byBarcodeHits.length === 1) return this.matched(byBarcodeHits[0], 'barcode');
+      // №16: кілька товарів «артикул + бренд» не зупиняють каскад — однозначний штрихкод вище
+      // розв'язав би рядок; інакше вибір лишається між ними, а не між товарами штрихкоду.
+      if (byArticleBrand.length > 1) return this.ambiguous(byArticleBrand, 'articleBrand');
+      if (byBarcodeHits.length > 1) return this.ambiguous(byBarcodeHits, 'barcode');
 
       if (sameArticle.length > 0) {
         // Бренд у файлі розпізнано, але товару з таким артикулом і цим брендом немає. Товар без

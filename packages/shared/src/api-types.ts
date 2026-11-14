@@ -1772,7 +1772,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Відновити видалений бренд */
+        /**
+         * Відновити видалений бренд
+         * @description Повертає синоніми, видалені разом із брендом, якщо написання вільне; зайняті — у skippedSynonyms
+         */
         post: operations["BrandsController_restore_v1"];
         delete?: never;
         options?: never;
@@ -7873,6 +7876,8 @@ export interface components {
             deletedAt?: string | null;
             createdAt: string;
             updatedAt: string;
+            /** @description Лише у відповіді відновлення: зняті разом із брендом синоніми, що не повернулися (зайняті) */
+            skippedSynonyms?: string[];
         };
         CreateBrandDto: {
             /** @example BMW */

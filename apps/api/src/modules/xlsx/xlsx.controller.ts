@@ -38,7 +38,7 @@ import { XlsxService, ImportResult, type ImportMapping } from './xlsx.service';
 import type { ImportDocType } from './document-line-import.adapter';
 import { ApplyImportDto, ResolveGoodsFileResponseDto } from './import.dto';
 import { GoodsService } from '../goods/goods.service';
-import { BrandsService } from '../brands/brands.service';
+import { BrandNameExistsException, BrandsService } from '../brands/brands.service';
 import { UnitsService } from '../units/units.service';
 import { WorksService } from '../works/works.service';
 
@@ -187,15 +187,11 @@ export class XlsxController {
         await this.brandsService.create(orgId, { name: row.name });
         result.created++;
       } catch (e: unknown) {
-        // Бренд із такою назвою вже є — рядок пропущено без помилки. Раніше це впізнавалось за
-        // словом «уже» в тексті: «…вже існує» його не містить, тож наявні бренди йшли в помилки,
-        // а відмова BR-GOOD-007 («Назва … уже є синонімом бренду …») рахувалась як «оновлено».
-        // Тепер відмова правила — рядок у `errors` із назвою й поясненням; решта файла імпортується.
-        const message = rowErrorText(e);
-        const alreadyExists =
-          e instanceof ConflictException && message === err('err.brand.nameExists');
-        if (alreadyExists) result.skipped = (result.skipped ?? 0) + 1;
-        else result.errors.push(`${row.name}: ${message}`);
+        // Бренд із такою назвою вже є (зокрема в іншому регістрі, BR-GOOD-007) — рядок пропущено
+        // без помилки; впізнається за типом винятку, а не за текстом. Відмова правила написань
+        // («Назва … уже є синонімом бренду …») — рядок у `errors`; решта файла імпортується.
+        if (e instanceof BrandNameExistsException) result.skipped = (result.skipped ?? 0) + 1;
+        else result.errors.push(`${row.name}: ${rowErrorText(e)}`);
       }
     }
 

@@ -43,7 +43,11 @@ export class BrandsController {
 
   @Post(':id/restore')
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
-  @ApiOperation({ summary: 'Відновити видалений бренд' })
+  @ApiOperation({
+    summary: 'Відновити видалений бренд',
+    description:
+      'Повертає синоніми, видалені разом із брендом, якщо написання вільне; зайняті — у skippedSynonyms',
+  })
   @ApiResponse({ status: 200, type: BrandResponseDto })
   restore(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.restore(orgId, id);
