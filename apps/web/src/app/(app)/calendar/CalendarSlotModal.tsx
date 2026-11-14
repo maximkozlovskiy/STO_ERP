@@ -666,16 +666,23 @@ export function CalendarSlotModal({
     const savedEnd = isoToKyivLocalDateTime(new Date(manualChain.endAt));
     const { startAt, endAt, normoHours, liftId } = formRef.current;
     if (startAt === savedStart.slice(11, 16) && endAt === savedEnd.slice(11, 16)) {
+      // Години філії нового підйомника ще не прочитано (`formWorkHours` — null, форма рахує за
+      // запасними годинами основної) — кінець не перераховується: інакше форма тримала б кінець за
+      // чужими годинами, і вже від нього, як від зміненого, рахувала б далі (Bug #1067).
       const moved =
         keyChanged &&
         !fieldsLocked &&
+        formWorkHours !== null &&
         savedWorkHours !== null &&
         savedLiftId !== null &&
         liftId !== savedLiftId &&
         !sameWorkHoursWindow(savedWorkHours, wh);
       const kept = moved ? slotHoursBetween(savedStart, savedEnd, savedWorkHours) : '';
       const keptEnd = kept ? endFor(startAt, kept) : '';
-      if (keptEnd) {
+      // Кінець за нормогодинами, що вже минув (розпочатий запис у філію з довшим днем), — збережені
+      // межі, як на сервері: інакше запис пішов би в минуле (Bug #1066).
+      const nowLocal = isoToKyivLocalDateTime(new Date(nowMs || Date.now()));
+      if (keptEnd && keptEnd >= nowLocal) {
         if (kept !== normoHours || keptEnd.slice(11, 16) !== endAt)
           adjustForm(f => ({ ...f, normoHours: kept, endAt: keptEnd.slice(11, 16) }));
         return;
@@ -687,7 +694,13 @@ export function CalendarSlotModal({
     }
     if (!keyChanged || fieldsLocked) return;
     const end = endFor(startAt, normoHours);
-    if (end && end.slice(11, 16) !== endAt) adjustForm(f => ({ ...f, endAt: end.slice(11, 16) }));
+    // Похідний кінець, що вже минув (розпочатий запис), не ставиться — як і на збережених межах.
+    if (
+      end &&
+      end >= isoToKyivLocalDateTime(new Date(nowMs || Date.now())) &&
+      end.slice(11, 16) !== endAt
+    )
+      adjustForm(f => ({ ...f, endAt: end.slice(11, 16) }));
   }, [
     chainHoursKey,
     open,
@@ -699,6 +712,8 @@ export function CalendarSlotModal({
     adjustForm,
     savedWorkHours,
     savedLiftId,
+    nowMs,
+    formWorkHours,
   ]);
 
   // Conflict check when liftId / employeeId / times change

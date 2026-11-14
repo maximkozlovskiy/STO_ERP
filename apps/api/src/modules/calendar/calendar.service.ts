@@ -893,10 +893,14 @@ export class CalendarService {
           this.liftWorkHours(orgId, liftId),
           keepHours ? this.liftWorkHours(orgId, existing.liftId) : null,
         ]);
-        const nextEnd =
+        const keptEnd =
           from && !sameWorkHours(from, hours)
-            ? (slotEndFromWorkHours(start, slotWorkHours(start, end, from), hours) ?? end)
-            : end;
+            ? slotEndFromWorkHours(start, slotWorkHours(start, end, from), hours)
+            : null;
+        // Кінець за нормогодинами, що вже минув (розпочатий ланцюжок у філію з довшим днем), — межі
+        // ті самі, як у наряду (`keptHoursDue`): інакше весь запис пішов би в минуле, а день, коли
+        // авто стоїть на підйомнику, лишився б вільним (Bug #1066).
+        const nextEnd = keptEnd && keptEnd.getTime() >= Date.now() ? keptEnd : end;
         const segments = manualSlotSegments(start, nextEnd, hours);
         const data = {
           liftId,

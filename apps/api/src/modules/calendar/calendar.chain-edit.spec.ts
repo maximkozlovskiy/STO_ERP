@@ -739,4 +739,37 @@ describe('CalendarService.updateSlot — підйомник іншої філі�
       vi.setSystemTime(BEFORE_ALL);
     }
   });
+
+  // guards: BR-CAL-020
+  it('розпочатий ланцюжок, кінець за нормогодинами вже минув — межі ті самі, запис і далі покриває «зараз» (Bug #1066)', async () => {
+    // пт 16–18 + пн 09–11 на `lift-b` (4 год), «зараз» — пн 10:00 (авто на підйомнику). У філії
+    // 08–20 щодня ті самі 4 год закінчились би пт 20:00 — увесь запис пішов би в минуле, а
+    // понеділок (робота, що триває) лишився б порожнім на обох підйомниках.
+    vi.setSystemTime(kyiv(MON, '10:00'));
+    try {
+      const rows = [
+        fakeSlot({
+          id: 'a',
+          liftId: 'lift-b',
+          startAt: kyiv(FRI, '16:00'),
+          endAt: kyiv(FRI, '18:00'),
+        }),
+        fakeSlot({
+          id: 'a2',
+          liftId: 'lift-b',
+          parentSlotId: 'a',
+          startAt: kyiv(MON, '09:00'),
+          endAt: kyiv(MON, '11:00'),
+        }),
+      ];
+      const { svc } = service(rows);
+
+      const res = await svc.updateSlot(ORG, 'a2', { liftId: 'lift-1' });
+
+      expect(res).toMatchObject({ chainStartAt: iso(FRI, '16:00'), chainEndAt: iso(MON, '11:00') });
+      expect(liveChain(rows).at(-1)?.slice(2)).toEqual(span(MON, '08:00', '11:00'));
+    } finally {
+      vi.setSystemTime(BEFORE_ALL);
+    }
+  });
 });

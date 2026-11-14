@@ -46,6 +46,10 @@ interface HarnessProps {
   savedWorkHours?: WorkHoursWindow | null;
   savedLiftId?: string;
   lifts?: { id: string; name: string }[];
+  /** «Зараз» форми; типово — 15.10.2026 12:00, раніше за всі записи спеків. */
+  nowMs?: number;
+  /** Години основної філії (сітка дня й запасні години форми); типово 09–18 пн–пт. */
+  windowWorkDays?: number[];
   date?: string;
   onSaved?: (o?: { workOrderChanged?: boolean }) => void;
   onDeleted?: () => void;
@@ -62,6 +66,8 @@ function Harness({
   savedWorkHours = null,
   savedLiftId,
   lifts = [{ id: L1, name: 'П1' }],
+  nowMs = new Date('2026-10-15T12:00:00+03:00').getTime(),
+  windowWorkDays = [1, 2, 3, 4, 5],
   date = '2026-10-20',
   onSaved = () => {},
   onDeleted = () => {},
@@ -101,13 +107,13 @@ function Harness({
       minHour={9}
       windowStart={9}
       windowEnd={18}
-      windowWorkDays={[1, 2, 3, 4, 5]}
+      windowWorkDays={windowWorkDays}
       formWorkHours={hoursByLift ? (hoursByLift[form.liftId] ?? null) : formWorkHours}
       savedWorkHours={savedWorkHours}
       savedMechanic={
         savedLiftId ? { liftId: savedLiftId, employeeId: '', employeeName: null } : null
       }
-      nowMs={new Date('2026-10-15T12:00:00+03:00').getTime()}
+      nowMs={nowMs}
       error=""
       setError={() => {}}
       saving={false}
@@ -554,7 +560,7 @@ describe('CalendarSlotModal — підйомник іншої філії збе�
     isFirst: true,
     isLast: false,
   };
-  const openChain = () =>
+  const openChain = (over: Partial<HarnessProps> = {}) =>
     render(
       <Harness
         date="2026-10-23"
@@ -569,6 +575,7 @@ describe('CalendarSlotModal — підйомник іншої філії збе�
         hoursByLift={{ [L1]: MON_FRI, [L2]: MON_SAT, [L3]: { ...MON_FRI } }}
         savedWorkHours={MON_FRI}
         savedLiftId={L1}
+        {...over}
       />,
     );
   const normo = () => screen.getByPlaceholderText('напр. 1,5');
@@ -609,5 +616,87 @@ describe('CalendarSlotModal — підйомник іншої філії збе�
     fireEvent.change(lift(), { target: { value: L3 } });
     expect(screen.getByDisplayValue('26.10.2026 12:00')).toBeInTheDocument();
     expect(normo()).toHaveValue(4);
+  });
+
+  // guards: BR-CAL-020
+  it('розпочатий запис, кінець за нормогодинами вже минув — збережений кінець, як сервер (Bug #1066)', async () => {
+    // «Зараз» — пн 26.10 10:00: запис іде. Ті самі 4 год на П2 (пн–сб) закінчились би сб 24.10
+    // 12:00 — у минулому; форма лишає збережений кінець, сервер — теж.
+    openChain({ startLocked: true, nowMs: new Date('2026-10-26T10:00:00+02:00').getTime() });
+    await waitFor(() => expect(normo()).toHaveValue(4));
+
+    fireEvent.change(lift(), { target: { value: L2 } });
+
+    await waitFor(() => expect(normo()).toHaveValue(13));
+    expect(screen.getByDisplayValue('26.10.2026 12:00')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Оновити' }));
+    await waitFor(() => expect(callsTo('/calendar/slots/a', 'PATCH')).toHaveLength(1));
+    expect(JSON.parse(callsTo('/calendar/slots/a', 'PATCH')[0]![1]!.body!)).toMatchObject({
+      liftId: L2,
+      startAt: '2026-10-23T14:00:00.000Z',
+      endAt: '2026-10-26T10:00:00.000Z',
+    });
+  });
+
+  // guards: BR-CAL-020
+  it('години нової філії ще читаються — кінець не рахується за годинами основної (Bug #1067)', async () => {
+    // Основна філія пн–сб; П2 — 08–21 щодня, години ще не прочитано. «Зараз» — сб 24.10 10:00.
+    // Запасні години дали б сб 12:00 (ще не минуло) — і далі, коли години П2 прийшли, від цього
+    // «зміненого» кінця форма рахувала пт 21:00 (у минулому). Сервер для тих самих меж — пн 12:00.
+    const DAILY_8_21: WorkHoursWindow = {
+      startHour: 8,
+      endHour: 21,
+      workDays: [1, 2, 3, 4, 5, 6, 7],
+    };
+    const props = {
+      startLocked: true,
+      nowMs: new Date('2026-10-24T10:00:00+03:00').getTime(),
+      windowWorkDays: [1, 2, 3, 4, 5, 6],
+    };
+    const { rerender } = openChain({ ...props, hoursByLift: { [L1]: MON_FRI } });
+    await waitFor(() => expect(normo()).toHaveValue(4));
+
+    fireEvent.change(lift(), { target: { value: L2 } });
+    await waitFor(() => expect(lift()).toHaveValue(L2));
+    expect(screen.getByDisplayValue('26.10.2026 12:00')).toBeInTheDocument();
+
+    rerender(
+      <Harness
+        date="2026-10-23"
+        initial={{ startAt: '17:00', endAt: '12:00', normoHours: '' }}
+        editingSlotId="a"
+        editingChain={FRI_MON}
+        lifts={[
+          { id: L1, name: 'П1' },
+          { id: L2, name: 'П2' },
+        ]}
+        hoursByLift={{ [L1]: MON_FRI, [L2]: DAILY_8_21 }}
+        savedWorkHours={MON_FRI}
+        savedLiftId={L1}
+        {...props}
+      />,
+    );
+    await waitFor(() => expect(normo()).toHaveValue(34));
+    expect(screen.getByDisplayValue('26.10.2026 12:00')).toBeInTheDocument();
+  });
+
+  // guards: BR-CAL-020
+  it('розпочатий запис зі зміненими нормогодинами — новий підйомник не ставить кінець у минуле (Bug #1066)', async () => {
+    // «Зараз» — пн 26.10 10:00; 7 год від пт 17:00 на П1 — пн 15:00. На П2 (08–21 щодня) ті самі
+    // 7 год закінчились би сб 11:00 — у минулому: «Кінець» лишається пн 15:00.
+    const daily: WorkHoursWindow = { startHour: 8, endHour: 21, workDays: [1, 2, 3, 4, 5, 6, 7] };
+    openChain({
+      startLocked: true,
+      nowMs: new Date('2026-10-26T10:00:00+02:00').getTime(),
+      hoursByLift: { [L1]: MON_FRI, [L2]: daily },
+    });
+    await waitFor(() => expect(normo()).toHaveValue(4));
+    fireEvent.change(normo(), { target: { value: '7' } });
+    await waitFor(() => expect(screen.getByDisplayValue('26.10.2026 15:00')).toBeInTheDocument());
+
+    fireEvent.change(lift(), { target: { value: L2 } });
+
+    await waitFor(() => expect(lift()).toHaveValue(L2));
+    expect(screen.getByDisplayValue('26.10.2026 15:00')).toBeInTheDocument();
   });
 });
