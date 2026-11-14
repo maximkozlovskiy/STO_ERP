@@ -32,6 +32,8 @@ interface Brand {
   name: string;
   synonyms: string[];
   deletedAt?: string | null;
+  /** Лише у відповіді `POST /brands/:id/restore`: синоніми, що не повернулися (зайняті). */
+  skippedSynonyms?: string[];
 }
 
 // ─── Brands Tab ───────────────────────────────────────────────────────────────
@@ -61,6 +63,9 @@ export default function BrandsTab() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [restoringIds, setRestoringIds] = useState<Set<string>>(new Set());
   const [error, setError] = useState('');
+  // Після відновлення: синоніми, яких бренд не отримав назад (BR-GOOD-007) — банер, а не лише тост,
+  // щоб перелік не зник за кілька секунд.
+  const [skippedNotice, setSkippedNotice] = useState('');
   // race-guard для swift showDeleted toggles — outdated response відкидається.
   const loadReqRef = useRef(0);
 
@@ -181,6 +186,17 @@ export default function BrandsTab() {
     }
   };
 
+  // Відновлення повертає синоніми, яких бренд не отримав назад: їх уже має інший бренд (BR-GOOD-007).
+  const noteSkipped = (restored: Brand) =>
+    setSkippedNotice(
+      restored.skippedSynonyms?.length
+        ? t('brands.restoredSkippedSynonyms', {
+            name: restored.name,
+            synonyms: restored.skippedSynonyms.join(', '),
+          })
+        : '',
+    );
+
   const restore = async (id: string) => {
     // in-flight guard: duplicate POSTs → 2nd+ returns 404 → false-error in UI.
     // First update sets deletedAt=null; subsequent updateMany return count=0 → NotFoundException.
@@ -188,7 +204,7 @@ export default function BrandsTab() {
     setError('');
     setRestoringIds(prev => new Set(prev).add(id));
     try {
-      await apiFetch<Brand>(`/brands/${id}/restore`, { method: 'POST' });
+      await apiFetch<Brand>(`/brands/${id}/restore`, { method: 'POST' }).then(noteSkipped);
       load();
       toast.success(t('brands.restored'));
     } catch (e: unknown) {
@@ -210,6 +226,22 @@ export default function BrandsTab() {
       {!modal && error && (
         <div className="mb-4 text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2.5">
           {error}
+        </div>
+      )}
+      {skippedNotice && (
+        <div
+          role="status"
+          className="flex items-start justify-between gap-2 text-[13px] text-warning-text bg-warning-subtle border border-warning/20 rounded-lg px-4 py-2.5"
+        >
+          <span>{skippedNotice}</span>
+          <button
+            type="button"
+            onClick={() => setSkippedNotice('')}
+            aria-label={t('common:close')}
+            className="shrink-0 hover:opacity-70"
+          >
+            <X className="h-4 w-4" />
+          </button>
         </div>
       )}
       <div className="flex items-center justify-between gap-3 shrink-0">

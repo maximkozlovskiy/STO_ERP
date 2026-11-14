@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ChevronRight, ChevronDown, Plus, Pencil, Trash2 } from 'lucide-react';
+import { ChevronRight, ChevronDown, Plus, Pencil, Trash2, X } from 'lucide-react';
 import { Modal } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -44,6 +44,7 @@ function ManagerNode({
   saving,
   setSaving,
   confirm,
+  onError,
   parentActive = true,
 }: {
   node: CategoryNode;
@@ -54,6 +55,8 @@ function ManagerNode({
   saving: string | null;
   setSaving: (id: string | null) => void;
   confirm: ConfirmFn;
+  /** Помилка дії з деревом — тостом або банером вікна (коли тости вимкнено). */
+  onError: (e: unknown) => void;
   parentActive?: boolean;
 }) {
   const { t } = useTranslation('catalog');
@@ -106,14 +109,23 @@ function ManagerNode({
       if (features.toastEnabled) toast.success(t('toast.categoryRenamed'));
       onChanged();
     } catch (e) {
-      if (features.toastEnabled)
-        toast.error(e instanceof Error ? e.message : t('common.genericError'));
+      onError(e);
       setEditName(node.name);
     } finally {
       setSaving(null);
       setEditMode(false);
     }
-  }, [editName, node.id, node.name, endpoint, features.toastEnabled, onChanged, setSaving, t]);
+  }, [
+    editName,
+    node.id,
+    node.name,
+    endpoint,
+    features.toastEnabled,
+    onChanged,
+    onError,
+    setSaving,
+    t,
+  ]);
 
   const handleAddChild = useCallback(async () => {
     if (!newName.trim()) {
@@ -132,12 +144,11 @@ function ManagerNode({
       setExpanded(true);
       onChanged();
     } catch (e) {
-      if (features.toastEnabled)
-        toast.error(e instanceof Error ? e.message : t('common.genericError'));
+      onError(e);
     } finally {
       setSaving(null);
     }
-  }, [newName, node.id, endpoint, features.toastEnabled, onChanged, setSaving, t]);
+  }, [newName, node.id, endpoint, features.toastEnabled, onChanged, onError, setSaving, t]);
 
   const handleDelete = useCallback(async () => {
     if (
@@ -154,11 +165,21 @@ function ManagerNode({
       if (features.toastEnabled) toast.success(t('toast.categoryDeleted'));
       onChanged();
     } catch (e) {
-      if (features.toastEnabled)
-        toast.error(e instanceof Error ? e.message : t('common.genericError'));
+      // Відмову сервера (системна категорія, категорія правил ціни — BR-GOOD-010) видно завжди.
+      onError(e);
       setSaving(null);
     }
-  }, [node.id, node.name, endpoint, features.toastEnabled, onChanged, setSaving, confirm, t]);
+  }, [
+    node.id,
+    node.name,
+    endpoint,
+    features.toastEnabled,
+    onChanged,
+    onError,
+    setSaving,
+    confirm,
+    t,
+  ]);
 
   const isSavingThis =
     saving === node.id || saving === node.id + '-add' || saving === node.id + '-del';
@@ -311,6 +332,7 @@ function ManagerNode({
               saving={saving}
               setSaving={setSaving}
               confirm={confirm}
+              onError={onError}
               parentActive={parentActive && localActive}
             />
           ))}
@@ -334,7 +356,18 @@ export function CategoryManagerModal({
   const { confirm, dialogProps } = useConfirm();
   const [newRootName, setNewRootName] = useState('');
   const [saving, setSaving] = useState<string | null>(null);
+  // Банер помилки — коли тости вимкнено: інакше відмова сервера (напр. «категорію використовують
+  // правила ціни») губилась би без жодного сліду.
+  const [error, setError] = useState('');
   const endpoint = type === 'work' ? '/work-categories' : '/good-categories';
+  const notifyError = useCallback(
+    (e: unknown) => {
+      const message = e instanceof Error ? e.message : t('common.genericError');
+      if (features.toastEnabled) toast.error(message);
+      else setError(message);
+    },
+    [features.toastEnabled, t],
+  );
   const label =
     type === 'work' ? t('categoryManager.workCategories') : t('categoryManager.goodCategories');
 
@@ -350,13 +383,12 @@ export function CategoryManagerModal({
           toast.success(t(isActive ? 'toast.categoryEnabled' : 'toast.categoryDisabled'));
         onChanged();
       } catch (e) {
-        if (features.toastEnabled)
-          toast.error(e instanceof Error ? e.message : t('common.genericError'));
+        notifyError(e);
       } finally {
         setSaving(null);
       }
     },
-    [endpoint, features.toastEnabled, onChanged, t],
+    [endpoint, features.toastEnabled, notifyError, onChanged, t],
   );
 
   const handleAddRoot = useCallback(async () => {
@@ -371,16 +403,39 @@ export function CategoryManagerModal({
       setNewRootName('');
       onChanged();
     } catch (e) {
-      if (features.toastEnabled)
-        toast.error(e instanceof Error ? e.message : t('common.genericError'));
+      notifyError(e);
     } finally {
       setSaving(null);
     }
-  }, [newRootName, endpoint, features.toastEnabled, onChanged, t]);
+  }, [newRootName, endpoint, features.toastEnabled, notifyError, onChanged, t]);
 
   return (
-    <Modal open={open} onClose={onClose} title={t('categoryManager.title', { label })} size="lg">
+    <Modal
+      open={open}
+      onClose={() => {
+        setError('');
+        onClose();
+      }}
+      title={t('categoryManager.title', { label })}
+      size="lg"
+    >
       <div className="flex flex-col gap-4">
+        {error && (
+          <div
+            role="alert"
+            className="flex items-start justify-between gap-2 text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2.5"
+          >
+            <span>{error}</span>
+            <button
+              type="button"
+              onClick={() => setError('')}
+              aria-label={t('common:close')}
+              className="shrink-0 text-destructive-text hover:opacity-70"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        )}
         {/* Add root category */}
         <div className="flex items-center gap-2">
           <Input
@@ -425,6 +480,7 @@ export function CategoryManagerModal({
                   saving={saving}
                   setSaving={setSaving}
                   confirm={confirm}
+                  onError={notifyError}
                 />
               ))}
             </ul>

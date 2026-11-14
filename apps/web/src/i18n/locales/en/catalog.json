@@ -219,6 +219,7 @@
     "removeConfirmTitle": "Mark brand for deletion?",
     "removeConfirmMessage": "Goods with this brand will not be deleted. Can be restored.",
     "restored": "Brand restored",
+    "restoredSkippedSynonyms": "Brand «{{name}}» restored without the synonyms another brand already has: {{synonyms}}",
     "nameRequired": "Name is required",
     "editTitle": "Edit brand",
     "createTitle": "New brand",

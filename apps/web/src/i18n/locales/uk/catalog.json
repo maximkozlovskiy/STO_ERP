@@ -219,6 +219,7 @@
     "removeConfirmTitle": "Помітити бренд на видалення?",
     "removeConfirmMessage": "Товари з цим брендом не будуть видалені. Можна відновити.",
     "restored": "Бренд відновлено",
+    "restoredSkippedSynonyms": "Бренд «{{name}}» відновлено без синонімів, які вже має інший бренд: {{synonyms}}",
     "nameRequired": "Назва є обов'язковою",
     "editTitle": "Редагувати бренд",
     "createTitle": "Новий бренд",

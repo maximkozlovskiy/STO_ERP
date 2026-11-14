@@ -248,7 +248,7 @@
             "term": "6. Whole range",
             "text": "a rule without a scope"
           },
-          "Within one level — the lower “Priority” number."
+          "Within one level — the lower “Priority” number; on a tie — the newer rule, i.e. the one higher in the list."
         ]
       },
       {
