@@ -959,8 +959,10 @@ export class WorkOrdersService {
    * №98 (BR-WO-040): наряд переходить на підйомник філії `to` — завершення за тими самими
    * нормогодинами від початку `start` за годинами й днями нової філії (`endFromWorkHours`, як
    * картка). Нормогодини — `plannedHours` наряду, без них — робочі години між старими межами `prev`
-   * за годинами старої філії. `null` — філія та сама, години філій однакові чи нормогодин немає:
-   * межі не перераховуються.
+   * за годинами старої філії. `null` — філія та сама, години філій однакові, нормогодин немає чи
+   * таке завершення вже минуло: межі не перераховуються. Минуле завершення — не дата користувача,
+   * а похідна: інакше наряд, що мав іти вчора, на зміні лише підйомника отримав би 400
+   * `plannedInPast` (BR-WO-019) там, де до №98 зміна проходила.
    */
   private async keptHoursDue(
     orgId: string,
@@ -976,7 +978,8 @@ export class WorkOrdersService {
       wo.plannedHours != null && wo.plannedHours > 0
         ? wo.plannedHours
         : workHoursBetween(prev.start, prev.end, from);
-    return norm > 0 ? endFromWorkHours(start, norm, to.hours) : null;
+    const due = norm > 0 ? endFromWorkHours(start, norm, to.hours) : null;
+    return due && due.getTime() >= Date.now() ? due : null;
   }
 
   /** Запис — частина багатоденного ланцюжка: продовження або якір, що має продовження. */

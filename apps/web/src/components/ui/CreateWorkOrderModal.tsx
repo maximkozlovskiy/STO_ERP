@@ -1213,10 +1213,14 @@ export function CreateWorkOrderModal({
   // й днями нової філії (`calcEndFromHours`, як сервер); нормогодини не змінюються. Нормогодин у
   // полі немає — робочі години між датами за годинами філії, з якої наряд іде. Години нової філії
   // ще не прочитано чи запит упав — дати лишаються, і завершення так само рахує сервер (дати ті
-  // самі, що збережені). Години філій однакові — дати теж лишаються (як на сервері).
+  // самі, що збережені). Години філій однакові чи таке завершення вже минуло — дати теж лишаються
+  // (як на сервері: інакше 400 «у минулому» на дію, де дат не міняли). Години прийшли пізно, а
+  // користувач тим часом сам змінив дати чи нормогодини, — його значення не перезаписуються.
   const [keepHours, setKeepHours] = useState<{
     branch: string;
     start: string;
+    end: string;
+    hoursField: string;
     hours: number;
     from: WorkHoursWindow;
   } | null>(null);
@@ -1225,14 +1229,15 @@ export function CreateWorkOrderModal({
     if (!keepHours || !keepHoursTo) return;
     setKeepHours(null);
     if (sameWorkHoursWindow(keepHours.from, keepHoursTo)) return;
+    const end = calcEndFromHours(keepHours.start, keepHours.hours, keepHoursTo);
+    if (!end || end < isoToKyivLocalDateTime(new Date())) return;
     setForm(f =>
-      f.branchId !== keepHours.branch || f.plannedStartAt !== keepHours.start
+      f.branchId !== keepHours.branch ||
+      f.plannedStartAt !== keepHours.start ||
+      (f.plannedEndAt ?? '') !== keepHours.end ||
+      (f.plannedHours ?? '') !== keepHours.hoursField
         ? f
-        : {
-            ...f,
-            plannedEndAt:
-              calcEndFromHours(keepHours.start, keepHours.hours, keepHoursTo) || f.plannedEndAt,
-          },
+        : { ...f, plannedEndAt: end },
     );
   }, [keepHours, keepHoursTo, setForm]);
   const pickLift = (liftId: string) => {
@@ -1243,11 +1248,12 @@ export function CreateWorkOrderModal({
     if (!branch || branch === prevBranch) return;
     setBranchFromLift(branch);
     const start = (prev.plannedStartAt as string) ?? '';
-    const typed = Number(((prev.plannedHours as string | undefined) ?? '').replace(',', '.'));
+    const end = (prev.plannedEndAt as string | undefined) ?? '';
+    const hoursField = (prev.plannedHours as string | undefined) ?? '';
+    const typed = Number(hoursField.replace(',', '.'));
     const from = workHoursRef.current;
-    const hours =
-      typed > 0 ? typed : Number(calcPlannedHours(start, prev.plannedEndAt as string, from));
-    setKeepHours(start && hours > 0 ? { branch, start, hours, from } : null);
+    const hours = typed > 0 ? typed : Number(calcPlannedHours(start, end, from));
+    setKeepHours(start && hours > 0 ? { branch, start, end, hoursField, hours, from } : null);
   };
   // Новий наряд із підйомником (картку відкрито з календаря): підйомники довантажились — філія
   // з підйомника; програмна зміна, не дія користувача (`shouldDirty: false`, як автовибір філії).

@@ -125,6 +125,13 @@ describe('slotWorkHours / slotEndFromWorkHours — нормогодини зап
     ['ланцюжок через робочу суботу', at(FRI, '16:00'), at(SUN, '10:00'), DAILY_8_20, 18],
     ['початок у вихідний — тривалість', at(SAT, '10:00'), at(MON, '12:00'), MON_FRI, 50],
     ['кінець не пізніше початку — 0', at(FRI, '12:00'), at(FRI, '12:00'), MON_FRI, 0],
+    [
+      'години після закриття — цілими хвилинами, як форма (1 хв, а не 0,02 год = 1,2 хв)',
+      at(FRI, '17:59'),
+      at(MON, '09:01'),
+      MON_FRI,
+      0.03,
+    ],
   ])('%s', (_l, start, end, wh, hours) => {
     expect(slotWorkHours(start, end, wh)).toBe(hours);
   });

@@ -243,4 +243,48 @@ describe('CreateWorkOrderModal — підйомник іншої філії зб
     await new Promise(r => setTimeout(r, 50));
     expect(endInput().value).toBe('24.05.2027 11:00');
   });
+
+  // guards: BR-WO-040, BR-WO-019
+  it('контроль: завершення за нормогодинами вже минуло → без змін (сервер дав би 400 «у минулому»)', async () => {
+    // Пт 22.05.2026 17:00 + 3 год на пн–сб — сб 23.05.2026 11:00, давно минуло.
+    await open({
+      ...BASE,
+      plannedStartAt: '2026-05-22T17:00',
+      plannedEndAt: '2026-05-25T11:00',
+      plannedHours: '3',
+    });
+    await waitFor(() => expect(endInput().value).toBe('25.05.2026 11:00'));
+
+    await userEvent.selectOptions(liftSelect(), LIFT_SECOND);
+
+    expect(branchSelect().value).toBe(SECOND);
+    await new Promise(r => setTimeout(r, 50));
+    expect(endInput().value).toBe('25.05.2026 11:00');
+  });
+
+  // guards: BR-WO-040
+  it('години нової філії прийшли пізно, а нормогодини вже змінено вручну → не перезаписуються', async () => {
+    let release: (v: unknown) => void = () => {};
+    apiFetchMock.mockImplementation((path: string, init?: { method?: string }) =>
+      path === `/settings/work-hours?branchId=${SECOND}`
+        ? new Promise(r => {
+            release = r;
+          })
+        : defaultImpl(path, init),
+    );
+    await open({ ...PLAN, plannedHours: '3' });
+    await waitFor(() => expect(endInput().value).toBe('24.05.2027 11:00'));
+
+    await userEvent.selectOptions(liftSelect(), LIFT_SECOND);
+    const hoursInput = plan().getByLabelText(/^Нормогодин/) as HTMLInputElement;
+    await userEvent.clear(hoursInput);
+    await userEvent.type(hoursInput, '4');
+    // Поки годин другої філії немає — типові пн–пт: пт 17:00 + 4 год → пн 12:00.
+    await waitFor(() => expect(endInput().value).toBe('24.05.2027 12:00'));
+
+    release(secondHours);
+    await new Promise(r => setTimeout(r, 50));
+    expect(endInput().value).toBe('24.05.2027 12:00');
+    expect(hoursInput.value).toBe('4');
+  });
 });

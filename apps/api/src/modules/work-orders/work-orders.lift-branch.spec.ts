@@ -30,6 +30,7 @@ import {
   woRow,
 } from './work-orders.planning.spec-fixture';
 
+const THU = '2026-05-21';
 const FRI = '2026-05-22';
 const SAT = '2026-05-23';
 const MON = '2026-05-25';
@@ -401,6 +402,39 @@ describe('BR-WO-040 — підйомник іншої філії зберіга�
 
     expect(wo(h)).toMatchObject({ branchId: BRANCH_2, plannedHours: 3 });
     expect(t(wo(h).dueDate)).toBe(t(kyiv(FRI, '12:00')));
+  });
+
+  // guards: BR-WO-040, BR-WO-019
+  it('завершення за нормогодинами вже минуло → межі без змін, а не 400 plannedInPast', async () => {
+    // Чт 17:00 + 3 год: BRANCH (08–18) — пт 10:00, BRANCH_2 (09–18) — пт 11:00; «зараз» — пт 12:00.
+    vi.setSystemTime(kyiv(FRI, '12:00'));
+    const h = planningHarness({
+      workOrders: [
+        woRow({
+          liftId: LIFT_1,
+          plannedAt: kyiv(THU, '17:00'),
+          dueDate: kyiv(FRI, '10:00'),
+          plannedHours: 3,
+        }),
+      ],
+      slots: [
+        slotRow('anchor', { startAt: kyiv(THU, '17:00'), endAt: kyiv(THU, '18:00') }),
+        slotRow('cont', {
+          parentSlotId: 'anchor',
+          startAt: kyiv(FRI, '08:00'),
+          endAt: kyiv(FRI, '10:00'),
+        }),
+      ],
+    });
+
+    await h.service.update(ORG, WO_ID, {
+      liftId: LIFT_B2,
+      plannedAt: iso(THU, '17:00'),
+      dueDate: iso(FRI, '10:00'),
+    });
+
+    expect(wo(h)).toMatchObject({ branchId: BRANCH_2, liftId: LIFT_B2, plannedHours: 3 });
+    expect(t(wo(h).dueDate)).toBe(t(kyiv(FRI, '10:00')));
   });
 
   // guards: BR-WO-040

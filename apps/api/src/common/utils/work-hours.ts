@@ -331,7 +331,11 @@ export function slotWorkHours(start: Date, end: Date, wh: WorkHours): number {
   const close = splitCloseOf(start, wh);
   const ms =
     close && kyivYmd(end) !== kyivYmd(start)
-      ? close.getTime() - start.getTime() + workHoursBetween(close, end, wh) * 3_600_000
+      ? close.getTime() -
+        start.getTime() +
+        // Години після закриття — цілими хвилинами, як форма (`Math.round(after * 60)`): інакше
+        // сотні години (0,02 год = 1,2 хв) зсувають підсумок на соту (пт 17:59 → пн 09:01).
+        Math.round(workHoursBetween(close, end, wh) * 60) * 60_000
       : end.getTime() - start.getTime();
   return Math.round((ms / 3_600_000) * 100) / 100;
 }
