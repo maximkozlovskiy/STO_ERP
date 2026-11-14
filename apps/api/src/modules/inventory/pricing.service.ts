@@ -75,14 +75,21 @@ export const PRICING_RULE_ORDER = [
   { id: 'asc' },
 ] satisfies Prisma.PricingRuleOrderByWithRelationInput[];
 
-/** Нова ціна товару і правило, що її дало (null — жодне не підійшло, ціна = собівартість). */
+/** Нова ціна товару і правило, що її дало. Товар без жодного правила сюди не потрапляє (№17). */
 type PriceUpdate = {
   goodId: string;
   oldPrice: number;
   newPrice: number;
   costPrice: number;
-  rule: RuleEntry | null;
+  rule: RuleEntry;
 };
+
+/** Підсумок «Застосувати до всіх»: перераховані товари й ті, яким не підійшло жодне правило. */
+export interface ApplyRuleResult {
+  updated: number;
+  /** Товари області без жодного правила — ціну не змінено, історії немає (BR-GOOD-011, №17). */
+  noRule: number;
+}
 
 @Injectable()
 export class PricingService {
@@ -161,6 +168,11 @@ export class PricingService {
     return new Map(categories.map(c => [c.id, c.parentId]));
   }
 
+  /** Категорія та всі її підкатегорії будь-якої глибини (BR-GOOD-010) — живі категорії org. */
+  async categoryWithDescendants(orgId: string, rootId: string): Promise<string[]> {
+    return this.withDescendants(await this.loadCategoryParents(orgId, true), rootId);
+  }
+
   /** Категорія та всі її підкатегорії (BR-GOOD-010). */
   private withDescendants(categoryParent: Map<string, string | null>, rootId: string): string[] {
     const children = new Map<string, string[]>();
@@ -187,13 +199,15 @@ export class PricingService {
    * «Застосувати до всіх» (BR-GOOD-011): перераховує ціни ВСІХ товарів області правила —
    * сторінками, без стелі. Кожен товар розцінюється правилом-переможцем (`pickRule`), тож у
    * історію цін іде те правило, яке дало ціну, а не обов'язково застосоване. Вимкнене правило → 400.
+   * Товар, якому не підійшло жодне правило (застосовано правило постачальника, а без постачальника
+   * воно не діє), ціну НЕ змінює — він лише рахується в `noRule` (BR-GOOD-011, №17).
    */
-  async applyRuleToGoods(orgId: string, ruleId: string): Promise<number> {
+  async applyRuleToGoods(orgId: string, ruleId: string): Promise<ApplyRuleResult> {
     const rule = await this.prisma.pricingRule.findFirst({
       where: { id: ruleId, orgId, deletedAt: null },
       include: { _count: { select: { goods: true } } },
     });
-    if (!rule) return 0;
+    if (!rule) return { updated: 0, noRule: 0 };
     // Вимкнене правило в розцінці не бере участі (контекст — лише активні): «застосувати» його
     // означало б розцінити товари області ІНШИМИ правилами під його назвою.
     if (!rule.isActive)
@@ -208,8 +222,9 @@ export class PricingService {
     } else if (rule.brandId) {
       scope = { brandId: rule.brandId };
     } else if (rule.goodCategoryId) {
-      const parents = await this.loadCategoryParents(orgId, true);
-      scope = { goodCategoryId: { in: this.withDescendants(parents, rule.goodCategoryId) } };
+      scope = {
+        goodCategoryId: { in: await this.categoryWithDescendants(orgId, rule.goodCategoryId) },
+      };
     } else if (rule.goodCategory) {
       scope = { category: rule.goodCategory };
     } else if (rule.goodType) {
@@ -224,6 +239,7 @@ export class PricingService {
     // Товари області — сторінками за курсором `id`: колишня стеля `take: 5000` мовчки лишала
     // решту товарів зі старою ціною, а відповідь звітувала «перераховано» без попередження.
     let updated = 0;
+    let noRule = 0;
     let cursor: string | undefined;
     for (;;) {
       const goods = await this.prisma.good.findMany({
@@ -250,31 +266,41 @@ export class PricingService {
           goods.map(g => g.id),
         ),
       };
-      updated += await this.writePrices(orgId, this.planPrices(ctx, goods));
+      const plan = this.planPrices(ctx, goods);
+      noRule += plan.noRule;
+      updated += await this.writePrices(orgId, plan.updates);
       if (goods.length < APPLY_PAGE) break;
       cursor = goods[goods.length - 1].id;
     }
-    return updated;
+    return { updated, noRule };
   }
 
-  /** Нові ціни сторінки товарів: лише ті, що змінились, з правилом-переможцем для історії. */
+  /**
+   * Нові ціни сторінки товарів: лише ті, що змінились, з правилом-переможцем для історії.
+   * Товар без жодного правила лишається з тією ціною, що була (`noRule`), — №17.
+   */
   private planPrices(
     ctx: PricingContext,
     goods: Array<PricingGood & { purchasePrice: unknown; salePrice: unknown }>,
-  ): PriceUpdate[] {
+  ): { updates: PriceUpdate[]; noRule: number } {
     const updates: PriceUpdate[] = [];
+    let noRule = 0;
     for (const good of goods) {
       const costPrice = Number(good.purchasePrice ?? good.salePrice);
       // Те саме, що computePriceFromRules, але з правилом-переможцем: ціну товару могло дати
       // точніше правило (список, бренд, ближча категорія), і в історії має стояти саме воно.
       const winner = this.pickRule(ctx, good);
-      const newPrice = winner ? this._applyRule(winner, costPrice) : costPrice;
+      if (!winner) {
+        noRule++;
+        continue;
+      }
+      const newPrice = this._applyRule(winner, costPrice);
       const oldPrice = Number(good.salePrice);
       if (Math.abs(newPrice - oldPrice) > 0.001) {
         updates.push({ goodId: good.id, oldPrice, newPrice, costPrice, rule: winner });
       }
     }
-    return updates;
+    return { updates, noRule };
   }
 
   private async writePrices(orgId: string, updates: PriceUpdate[]): Promise<number> {
@@ -307,10 +333,8 @@ export class PricingService {
               oldPrice: u.oldPrice,
               newPrice: u.newPrice,
               costPrice: u.costPrice,
-              // Жодне правило не підійшло (застосоване — правило постачальника, без
-              // постачальника воно не діє) → ціна = собівартість, правила в історії немає.
-              reason: u.rule ? `PricingRule: ${u.rule.name}` : 'PricingRule: no matching rule',
-              pricingRuleId: u.rule?.id ?? null,
+              reason: `PricingRule: ${u.rule.name}`,
+              pricingRuleId: u.rule.id,
             })),
           });
         },
@@ -342,6 +366,7 @@ export class PricingService {
     supplierId?: string,
   ): { price: number; ruleName: string | null } {
     const rule = this.pickRule(ctx, good, supplierId);
+    // `ruleName: null` — правила немає; ціна тут лише заглушка, писати її не можна (№17).
     if (!rule) return { price: costPrice, ruleName: null };
     return { price: this._applyRule(rule, costPrice), ruleName: rule.name };
   }
@@ -420,13 +445,19 @@ export class PricingService {
     return chain;
   }
 
+  /**
+   * Ціна за правилами; `null` — жодне правило товару не підійшло. Тоді ціну продажу НЕ чіпають і
+   * історію не пишуть («Розцінити список», прийом партії — BR-GOOD-011, №17): колишнє «ціна =
+   * собівартість» мовчки знімало націнку з товару, на який просто немає правила.
+   */
   computePriceFromRules(
     ctx: PricingContext,
     good: PricingGood,
     costPrice: number,
     supplierId?: string,
-  ): number {
-    return this.resolveRule(ctx, good, costPrice, supplierId).price;
+  ): number | null {
+    const rule = this.pickRule(ctx, good, supplierId);
+    return rule ? this._applyRule(rule, costPrice) : null;
   }
 
   private _applyRule(

@@ -5545,6 +5545,42 @@
         ]
       }
     },
+    "/api/v1/pricing-rules/category-goods": {
+      "get": {
+        "operationId": "PricingRulesController_findCategoryGoods_v1",
+        "parameters": [
+          {
+            "name": "goodCategoryId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PricingRuleGoodsDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Усі товари категорії з підкатегоріями — для списку правила",
+        "tags": [
+          "Pricing Rules"
+        ]
+      }
+    },
     "/api/v1/pricing-rules/{id}/goods": {
       "get": {
         "operationId": "PricingRulesController_findGoods_v1",
@@ -25558,6 +25594,10 @@
             "type": "number",
             "description": "Кількість перерахованих товарів"
           },
+          "noRule": {
+            "type": "number",
+            "description": "Товари області без жодного правила: ціну не змінено, історії немає (№17)"
+          },
           "message": {
             "type": "string",
             "description": "Повідомлення для користувача (українською)"
@@ -25565,6 +25605,7 @@
         },
         "required": [
           "updated",
+          "noRule",
           "message"
         ]
       },
@@ -29828,6 +29869,10 @@
           },
           "newSalePrice": {
             "type": "number"
+          },
+          "noRule": {
+            "type": "boolean",
+            "description": "Жодне правило не підійшло: ціну не змінено (№17)"
           }
         },
         "required": [
@@ -29835,7 +29880,8 @@
           "goodName",
           "costPrice",
           "oldSalePrice",
-          "newSalePrice"
+          "newSalePrice",
+          "noRule"
         ]
       },
       "ApplyPricingResponseDto": {
@@ -29844,6 +29890,10 @@
           "updated": {
             "type": "number",
             "description": "Скільки товарів розцінено"
+          },
+          "noRule": {
+            "type": "number",
+            "description": "Рядки без жодного правила — ціну не змінено (№17)"
           },
           "details": {
             "type": "array",
@@ -29854,6 +29904,7 @@
         },
         "required": [
           "updated",
+          "noRule",
           "details"
         ]
       },

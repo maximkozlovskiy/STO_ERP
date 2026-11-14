@@ -55,6 +55,19 @@ export class PricingRulesController {
     return this.service.findAll(orgId, supplierId);
   }
 
+  // «Додати всю категорію» у пікері товарів правила (BR-GOOD-009, №21). Статичний сегмент —
+  // ПЕРЕД маршрутами з `:id`.
+  @Get('category-goods')
+  @Roles(UserRole.OWNER, UserRole.ADMIN)
+  @ApiOperation({ summary: 'Усі товари категорії з підкатегоріями — для списку правила' })
+  @ApiOkResponse({ type: PricingRuleGoodsDto })
+  async findCategoryGoods(
+    @OrgContext() orgId: string,
+    @Query('goodCategoryId', ParseUUIDPipe) goodCategoryId: string,
+  ): Promise<PricingRuleGoodsDto> {
+    return this.service.findCategoryGoods(orgId, goodCategoryId);
+  }
+
   // Суброут ПЕРЕД `:id` (Fastify матчить у порядку оголошення).
   @Get(':id/goods')
   @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.STOREKEEPER)

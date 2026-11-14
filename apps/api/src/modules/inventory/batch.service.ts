@@ -148,11 +148,15 @@ export class BatchService {
     const resolvedUnitOfMeasureId = dto.unitOfMeasureId ?? good.unitId ?? null;
 
     const currentSalePriceForBatch = Number(good.salePrice);
+    // `null` — жодне правило товару не підійшло: ціну продажу не чіпаємо й історії не пишемо
+    // (BR-GOOD-011, №17); партія бере поточну ціну товару, як і безкоштовний прийом.
     const computedSalePrice = this.pricing.computePriceFromRules(pricingCtx, good, dto.costPrice);
     // Free receipt (costPrice=0): use current good price to avoid recording a batch with salePrice=0
     // which would break subsequent sales.
     const salePrice =
-      dto.costPrice > 0 && computedSalePrice > 0 ? computedSalePrice : currentSalePriceForBatch;
+      dto.costPrice > 0 && computedSalePrice != null && computedSalePrice > 0
+        ? computedSalePrice
+        : currentSalePriceForBatch;
 
     const batch = await db.stockBatch.create({
       data: {

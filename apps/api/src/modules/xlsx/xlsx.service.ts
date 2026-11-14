@@ -951,6 +951,7 @@ export class XlsxService {
   ): Promise<{
     found: number;
     updated: number;
+    noRule: number;
     notFound: string[];
     details: {
       goodId: string;
@@ -959,6 +960,7 @@ export class XlsxService {
       costPrice: number;
       oldSalePrice: number;
       newSalePrice: number;
+      noRule: boolean;
     }[];
   }> {
     // Читання файла й пошук товару — спільні з рештою завантажень (BR-GOOD-008): колонки
@@ -978,6 +980,7 @@ export class XlsxService {
       costPrice: number;
       oldSalePrice: number;
       newSalePrice: number;
+      noRule: boolean;
     }[] = [];
 
     // Назва в цьому файлі довідкова: розцінка за збігом назви була б надто небезпечною.
@@ -1045,7 +1048,11 @@ export class XlsxService {
 
       const costPrice = Number(good.purchasePrice);
       const oldSalePrice = Number(good.salePrice);
-      const newSalePrice = this.pricingService.computePriceFromRules(pricingCtx, good, costPrice);
+      const ruled = this.pricingService.computePriceFromRules(pricingCtx, good, costPrice);
+      // №17 (BR-GOOD-011): жодне правило не підійшло → ціна лишається як була, історії немає,
+      // у звіті рядок «без правила». Раніше ціна ставала = собівартості, і націнка мовчки зникала.
+      const noRule = ruled == null;
+      const newSalePrice = noRule ? oldSalePrice : ruled;
 
       details.push({
         goodId: good.id,
@@ -1054,6 +1061,7 @@ export class XlsxService {
         costPrice,
         oldSalePrice,
         newSalePrice,
+        noRule,
       });
 
       if (Math.abs(newSalePrice - oldSalePrice) < 0.001) continue;
@@ -1110,6 +1118,7 @@ export class XlsxService {
     return {
       found: details.length,
       updated: details.filter(d => Math.abs(d.oldSalePrice - d.newSalePrice) >= 0.001).length,
+      noRule: details.filter(d => d.noRule).length,
       notFound,
       details,
     };

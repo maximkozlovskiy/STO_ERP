@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PRICING_RULE_MAX_GOODS, translateError } from '@sto/shared';
 import { Prisma } from '@prisma/client';
 import { getLocale } from '../../common/tenant/tenant-context';
@@ -352,8 +352,47 @@ export class PricingRulesService {
     });
     if (!existing)
       throw new NotFoundException(translateError('err.pricingRule.notFound', getLocale()));
-    const updated = await this.pricingService.applyRuleToGoods(orgId, id);
-    return { updated, message: `Перераховано ${updated} товарів` };
+    const { updated, noRule } = await this.pricingService.applyRuleToGoods(orgId, id);
+    const tail = noRule > 0 ? `; без правила — ${noRule} (ціну не змінено)` : '';
+    return { updated, noRule, message: `Перераховано ${updated} товарів${tail}` };
+  }
+
+  /**
+   * «Додати всю категорію» у пікері товарів правила (BR-GOOD-009, №21): УСІ живі товари категорії
+   * з усіма нащадками — без ліміту сторінки пошуку (50). Список нічого не пише: форма додає товари
+   * у свій список, і вони зберігаються разом із правилом, як і решта (саме тому однаково працює
+   * і для нового, ще не збереженого правила). Понад `PRICING_RULE_MAX_GOODS` — 400 з лімітом.
+   */
+  async findCategoryGoods(orgId: string, goodCategoryId: string): Promise<PricingRuleGoodsDto> {
+    const category = await this.prisma.goodCategory.findFirst({
+      where: { id: goodCategoryId, orgId, deletedAt: null },
+      select: { id: true },
+    });
+    const locale = getLocale();
+    if (!category)
+      throw new NotFoundException(translateError('err.pricingRule.categoryNotFound', locale));
+    const categoryIds = await this.pricingService.categoryWithDescendants(orgId, goodCategoryId);
+    const where: Prisma.GoodWhereInput = {
+      orgId,
+      deletedAt: null,
+      goodCategoryId: { in: categoryIds },
+    };
+    const count = await this.prisma.good.count({ where });
+    if (count > PRICING_RULE_MAX_GOODS)
+      throw new BadRequestException(
+        translateError('err.pricingRule.categoryTooManyGoods', locale, {
+          count,
+          max: PRICING_RULE_MAX_GOODS,
+        }),
+      );
+    const goods = await this.prisma.good.findMany({
+      where,
+      orderBy: [{ name: 'asc' }, { id: 'asc' }],
+      take: PRICING_RULE_MAX_GOODS,
+      select: RULE_GOOD_SELECT,
+    });
+    const items = goods.map(g => this.toGoodRef(g));
+    return { items, total: items.length };
   }
 
   /**

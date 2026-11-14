@@ -351,9 +351,13 @@ export class ApplyPricingDetailDto {
   @ApiProperty() costPrice!: number;
   @ApiProperty() oldSalePrice!: number;
   @ApiProperty() newSalePrice!: number;
+  @ApiProperty({ description: 'Жодне правило не підійшло: ціну не змінено (№17)' })
+  noRule!: boolean;
 }
 
 export class ApplyPricingResponseDto {
   @ApiProperty({ description: 'Скільки товарів розцінено' }) updated!: number;
+  @ApiProperty({ description: 'Рядки без жодного правила — ціну не змінено (№17)' })
+  noRule!: number;
   @ApiProperty({ type: [ApplyPricingDetailDto] }) details!: ApplyPricingDetailDto[];
 }

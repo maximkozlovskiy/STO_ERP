@@ -329,5 +329,9 @@ export class PaginatedPricingRulesDto {
 
 export class ApplyPricingRuleResultDto {
   @ApiProperty({ description: 'Кількість перерахованих товарів' }) updated!: number;
+  @ApiProperty({
+    description: 'Товари області без жодного правила: ціну не змінено, історії немає (№17)',
+  })
+  noRule!: number;
   @ApiProperty({ description: 'Повідомлення для користувача (українською)' }) message!: string;
 }

@@ -1070,12 +1070,14 @@ export class PurchaseOrdersService {
     ruleId?: string,
   ): Promise<{
     updated: number;
+    noRule: number;
     details: {
       goodId: string;
       goodName: string;
       costPrice: number;
       oldSalePrice: number;
       newSalePrice: number;
+      noRule: boolean;
     }[];
   }> {
     // Perf: select narrow projection for pricing — Brand record entirely unused (only brandId
@@ -1130,9 +1132,12 @@ export class PurchaseOrdersService {
       costPrice: number;
       oldSalePrice: number;
       newSalePrice: number;
-      ruleName: string | null;
+      ruleName: string;
     };
     const plan: Plan[] = [];
+    // Звіт у порядку рядків: розцінені і «без правила» (позначка `noRule`).
+    const details: Array<Omit<Plan, 'lineId' | 'ruleName'> & { noRule: boolean }> = [];
+    let noRule = 0;
 
     for (const line of po.lines) {
       if (!line.good) continue;
@@ -1148,18 +1153,26 @@ export class PurchaseOrdersService {
       // списку правила, інший бренд чи категорія; правило вимкнене) лишається як був — інакше
       // «немає правила → ціна = собівартість» мовчки знімало б націнку з решти товарів закупівлі.
       if (ruleId && ruleName === null) continue;
-      plan.push({
-        lineId: line.id,
-        goodId: line.goodId,
-        goodName: line.good.name,
-        costPrice,
-        oldSalePrice,
-        newSalePrice,
-        ruleName,
-      });
+      // №17 (BR-GOOD-011): і без обраного правила товар, якому не підійшло жодне, лишається як був —
+      // ні ціни, ні історії, ні рядка; у звіті він «без правила».
+      if (ruleName === null) {
+        noRule++;
+        details.push({
+          goodId: line.goodId,
+          goodName: line.good.name,
+          costPrice,
+          oldSalePrice,
+          newSalePrice: oldSalePrice,
+          noRule: true,
+        });
+        continue;
+      }
+      const priced = { goodId: line.goodId, goodName: line.good.name, costPrice, oldSalePrice };
+      plan.push({ ...priced, lineId: line.id, newSalePrice, ruleName });
+      details.push({ ...priced, newSalePrice, noRule: false });
     }
 
-    if (plan.length === 0) return { updated: 0, details: [] };
+    if (plan.length === 0) return { updated: 0, noRule, details };
 
     // Deduplicate by goodId for Good.salePrice update (last-write-wins for duplicate goodId rows).
     const dedupedPlan = deduplicateBy(
@@ -1220,7 +1233,7 @@ export class PurchaseOrdersService {
       data: { pricedAt: new Date() },
     });
 
-    return { updated: plan.filter(u => u.ruleName !== null).length, details: plan };
+    return { updated: plan.length, noRule, details };
   }
 
   private toDto(po: {

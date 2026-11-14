@@ -1585,6 +1585,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/pricing-rules/category-goods": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Усі товари категорії з підкатегоріями — для списку правила */
+        get: operations["PricingRulesController_findCategoryGoods_v1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/pricing-rules/{id}/goods": {
         parameters: {
             query?: never;
@@ -7790,6 +7807,8 @@ export interface components {
         ApplyPricingRuleResultDto: {
             /** @description Кількість перерахованих товарів */
             updated: number;
+            /** @description Товари області без жодного правила: ціну не змінено, історії немає (№17) */
+            noRule: number;
             /** @description Повідомлення для користувача (українською) */
             message: string;
         };
@@ -9037,10 +9056,14 @@ export interface components {
             costPrice: number;
             oldSalePrice: number;
             newSalePrice: number;
+            /** @description Жодне правило не підійшло: ціну не змінено (№17) */
+            noRule: boolean;
         };
         ApplyPricingResponseDto: {
             /** @description Скільки товарів розцінено */
             updated: number;
+            /** @description Рядки без жодного правила — ціну не змінено (№17) */
+            noRule: number;
             details: components["schemas"]["ApplyPricingDetailDto"][];
         };
         VerifyDeliveryDto: {
@@ -14511,6 +14534,27 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PricingRuleResponseDto"];
+                };
+            };
+        };
+    };
+    PricingRulesController_findCategoryGoods_v1: {
+        parameters: {
+            query: {
+                goodCategoryId: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PricingRuleGoodsDto"];
                 };
             };
         };
