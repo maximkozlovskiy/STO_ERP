@@ -759,6 +759,8 @@ export const uk: Record<string, string> = {
   'err.workOrder.calendarSlotOtherClient': 'Запис календаря належить іншому клієнту чи автомобілю',
   'err.workOrder.calendarSlotNeedsDates':
     'Наряд для запису календаря потребує планових початку й завершення',
+  'err.workOrder.liftBranchLocked':
+    'Підйомник іншої філії: філію наряду змінити не можна — наряд уже має оплату чи рахунок або не в редагованому статусі',
   'err.workOrder.cannotEditClosed': 'Не можна редагувати закритий наряд',
   'err.workOrder.outMileageLessThanIn': 'Вихідний пробіг не може бути меншим за вхідний',
   'err.workOrder.onlyDraftOrCancelledDeletable':
@@ -804,6 +806,8 @@ export const uk: Record<string, string> = {
   'err.calendar.employeeBusyNextDay': 'Співробітник вже зайнятий в один із наступних днів запису',
   'err.calendar.chainInnerEdge':
     'Внутрішню межу багатоденного запису змінити не можна — змініть початок першого дня чи кінець останнього',
+  'err.calendar.chainStarted':
+    'Запис уже почався — його початок не змінюється; змінюйте кінець останнього дня',
   'err.calendar.slotConcurrentChange':
     'Запис календаря змінено паралельною операцією — оновіть календар і повторіть',
   'err.calendar.slotNotFound': 'Слот не знайдено',

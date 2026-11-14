@@ -772,6 +772,8 @@ export const en: Record<string, string> = {
     'The calendar record belongs to another client or vehicle',
   'err.workOrder.calendarSlotNeedsDates':
     'A work order for a calendar record needs a planned start and end',
+  'err.workOrder.liftBranchLocked':
+    'A lift of another branch: the work order branch cannot change — it already has a payment or invoice, or is not editable',
   'err.workOrder.cannotEditClosed': 'A closed work order cannot be edited',
   'err.workOrder.outMileageLessThanIn': 'Outgoing mileage cannot be less than the incoming one',
   'err.workOrder.onlyDraftOrCancelledDeletable':
@@ -822,6 +824,8 @@ export const en: Record<string, string> = {
     'The employee is already busy on one of the following days of the booking',
   'err.calendar.chainInnerEdge':
     'An inner edge of a multi-day booking cannot be changed — change the start of the first day or the end of the last one',
+  'err.calendar.chainStarted':
+    'The booking has already started — its start cannot change; change the end of the last day',
   'err.calendar.slotConcurrentChange':
     'The calendar booking was changed by a concurrent operation — refresh the calendar and try again',
   'err.calendar.slotNotFound': 'Slot not found',
