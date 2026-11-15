@@ -1984,6 +1984,24 @@
    "BranchesService update — guard, запис, інвалідація guard читає у своїй org; update пише з orgId у where; кеш скидається",
    "BranchesService update — guard, запис, інвалідація неіснуюча/чужа філія → 404, update не викликається, кеш не чіпається"
   ],
+  "apps/api/src/modules/brands/brands.restore-and-name.spec.ts": [
+   "BrandsService — назва бренду унікальна без урахування регістру (№11) create «BOSCH» при ВИДАЛЕНОМУ «Bosch» — воскресає той самий рядок з новим написанням",
+   "BrandsService — назва бренду унікальна без урахування регістру (№11) create «NGK»: бренд іншої організації не заважає",
+   "BrandsService — назва бренду унікальна без урахування регістру (№11) create «bosch» при активному «Bosch» → 409 з назвою наявного, нічого не записано",
+   "BrandsService — назва бренду унікальна без урахування регістру (№11) create з ТОЧНОЮ назвою активного → 409 з давнім текстом (теж «наявний бренд»)",
+   "BrandsService — назва бренду унікальна без урахування регістру (№11) restore «bosch», поки активний «Bosch» → 409 з назвою наявного, бренд лишається видаленим",
+   "BrandsService — назва бренду унікальна без урахування регістру (№11) update: зміна регістру власної назви («ASAM» → «Asam») проходить",
+   "BrandsService — назва бренду унікальна без урахування регістру (№11) update: назва ВИДАЛЕНОГО бренду (точне написання) → 409 «відновіть його», без P2002 (Bug #1068)",
+   "BrandsService — назва бренду унікальна без урахування регістру (№11) update: перейменувати «ASAM» на «BOSCH» → 409 з назвою «Bosch»",
+   "BrandsService — назва бренду унікальна без урахування регістру (№11) кілька видалених тезок — воскресає рядок із точним написанням (інакше P2002 на назві)",
+   "BrandsService.restore — синоніми, зняті разом із брендом (№10) remove(): бренд і синоніми отримують ОДИН момент видалення, в одній транзакції",
+   "BrandsService.restore — синоніми, зняті разом із брендом (№10) видалити й відновити: синоніми на місці, пропущених немає",
+   "BrandsService.restore — синоніми, зняті разом із брендом (№10) зайнятий НАЗВОЮ іншого активного бренду — пропускається",
+   "BrandsService.restore — синоніми, зняті разом із брендом (№10) зайнятий синонімом іншого бренду (інший регістр) — пропускається й названий у відповіді",
+   "BrandsService.restore — синоніми, зняті разом із брендом (№10) написання видаленого бренду чи іншої організації вільне — синонім повертається",
+   "BrandsService.restore — синоніми, зняті разом із брендом (№10) синонім, знятий окремо РАНІШЕ за бренд, не повертається",
+   "BrandsService.restore — синоніми, зняті разом із брендом (№10) старе видалення (синоніми на мілісекунди пізніші за бренд) — синоніми теж повертаються"
+  ],
   "apps/api/src/modules/brands/brands.service.spec.ts": [
    "BrandsService.resolveByNameOrSynonym ані назва, ані синонім не збіглись → null",
    "BrandsService.resolveByNameOrSynonym кирилична назва резолвиться за точним написанням без урахування регістру",
@@ -3467,6 +3485,16 @@
    "GoodCategories — HTTP Contract POST /good-categories повертає 400 коли name відсутнє",
    "GoodCategories — HTTP Contract POST /good-categories повертає 400 при невалідному parentId UUID"
   ],
+  "apps/api/src/modules/good-categories/good-categories.rules-guard.spec.ts": [
+   "GoodCategoriesService.remove — категорію з правилами ціни не видалити (№14) видалене правило не заважає — категорія видаляється",
+   "GoodCategoriesService.remove — категорію з правилами ціни не видалити (№14) вимкнене правило теж тримає категорію — воно лишається з цією областю",
+   "GoodCategoriesService.remove — категорію з правилами ціни не видалити (№14) понад 5 правил — п’ять назв і «і ще N»",
+   "GoodCategoriesService.remove — категорію з правилами ціни не видалити (№14) правило без категорії не заважає — категорія видаляється",
+   "GoodCategoriesService.remove — категорію з правилами ціни не видалити (№14) правило на нащадку будь-якої глибини → 400",
+   "GoodCategoriesService.remove — категорію з правилами ціни не видалити (№14) правило на самій категорії → 400 з назвою правила, нічого не записано",
+   "GoodCategoriesService.remove — категорію з правилами ціни не видалити (№14) правило іншої гілки дерева не заважає — категорія видаляється",
+   "GoodCategoriesService.remove — категорію з правилами ціни не видалити (№14) правило іншої організації не заважає — категорія видаляється"
+  ],
   "apps/api/src/modules/good-categories/good-categories.service.spec.ts": [
    "GoodCategoriesService — business rules create — tenant FK validation for parentId встановлює isSystem=false для новостворених через API (системні створює тільки seed-catalog)",
    "GoodCategoriesService — business rules create — tenant FK validation for parentId кидає NotFoundException якщо parentId з чужої org",
@@ -3510,6 +3538,10 @@
    "GoodMatcherService — пошук товару за рядком файла (BR-GOOD-008) збігів більше, ніж сторінка читання: дочитує до кінця, а не обрізає вибірку",
    "GoodMatcherService — пошук товару за рядком файла (BR-GOOD-008) код зі змішаним регістром у базі («Тов-0001») знаходиться за будь-яким написанням у файлі",
    "GoodMatcherService — пошук товару за рядком файла (BR-GOOD-008) код: знаходить товар без урахування регістру й пробілів по краях",
+   "GoodMatcherService — пошук товару за рядком файла (BR-GOOD-008) кілька товарів «артикул + бренд» + однозначний штрихкод → товар за штрихкодом (№16)",
+   "GoodMatcherService — пошук товару за рядком файла (BR-GOOD-008) кілька товарів «артикул + бренд», штрихкод двох кандидатів → вибір із кандидатів «артикул + бренд»",
+   "GoodMatcherService — пошук товару за рядком файла (BR-GOOD-008) кілька товарів «артикул + бренд», штрихкод невідомий → вибір із кандидатів «артикул + бренд»",
+   "GoodMatcherService — пошук товару за рядком файла (BR-GOOD-008) кілька товарів «артикул + бренд», штрихкод товару ІНШОГО артикула → вибір із кандидатів «артикул + бренд»",
    "GoodMatcherService — пошук товару за рядком файла (BR-GOOD-008) назва: шукається лише коли в рядку немає коду, артикула і штрихкоду",
    "GoodMatcherService — пошук товару за рядком файла (BR-GOOD-008) назви, що різняться лише регістром, — різні товари: кожен рядок знаходить свій",
    "GoodMatcherService — пошук товару за рядком файла (BR-GOOD-008) невідомий код не зупиняє каскад: далі шукаємо за артикулом",
@@ -3518,6 +3550,7 @@
    "GoodMatcherService — пошук товару за рядком файла (BR-GOOD-008) порядок: артикул + бренд сильніший за штрихкод",
    "GoodMatcherService — пошук товару за рядком файла (BR-GOOD-008) порядок: код сильніший за артикул + бренд і за штрихкод",
    "GoodMatcherService — пошук товару за рядком файла (BR-GOOD-008) порядок: штрихкод сильніший за артикул без бренду",
+   "GoodMatcherService — пошук товару за рядком файла (BR-GOOD-008) штрихкод спільний із товаром іншого артикула — обирає того, хто серед кандидатів (№16)",
    "GoodMatcherService — пошук товару за рядком файла (BR-GOOD-008) штрихкод: і з таблиці штрихкодів, і зі старого поля картки"
   ],
   "apps/api/src/modules/goods/goods-query.dto.spec.ts": [
@@ -3834,6 +3867,16 @@
    "Inventory — єдина точка запису залишків (статичний сторож) немає сирого SQL, що пише у складські таблиці (UPDATE / INSERT / DELETE)",
    "Inventory — єдина точка запису залишків (статичний сторож) поза переліком дозволених немає жодного Prisma-запису у stockItem/stockMovement/stockBatch/batchConsumption"
   ],
+  "apps/api/src/modules/inventory/pricing-rules.category-goods.spec.ts": [
+   "GET /pricing-rules/category-goods — усі товари категорії (№21) HTTP 200 зі списком товарів; маршрут не перехоплюють маршрути з `:id`",
+   "GET /pricing-rules/category-goods — усі товари категорії (№21) HTTP goodCategoryId не UUID або відсутній → 400 до запиту в базу",
+   "GET /pricing-rules/category-goods — усі товари категорії (№21) видалені товари й товари чужої організації не потрапляють",
+   "GET /pricing-rules/category-goods — усі товари категорії (№21) категорія чужої організації → 404, товари не читаються",
+   "GET /pricing-rules/category-goods — усі товари категорії (№21) понад 50 товарів (сторінка пошуку) — віддаються всі",
+   "GET /pricing-rules/category-goods — усі товари категорії (№21) понад ліміт списку правила → 400 з кількістю й лімітом, товари не читаються",
+   "GET /pricing-rules/category-goods — усі товари категорії (№21) рівно ліміт списку правила — ще дозволено",
+   "GET /pricing-rules/category-goods — усі товари категорії (№21) товари категорії й усіх нащадків; інша категорія — ні"
+  ],
   "apps/api/src/modules/inventory/pricing-rules.contract.spec.ts": [
    "PricingRules — HTTP Contract C1b audit: record() аргументи CREATE → record(orgId, PricingRule, id, CREATE, userId) ПІСЛЯ inline-write",
    "PricingRules — HTTP Contract C1b audit: record() аргументи DELETE (404, count=0) → record() НЕ викликається (аудит лише за реального write)",
@@ -3861,7 +3904,7 @@
    "PricingRules — HTTP Contract POST /pricing-rules повертає 400 коли type не з enum",
    "PricingRules — HTTP Contract POST /pricing-rules повертає 400 коли у goodIds є не UUID",
    "PricingRules — HTTP Contract POST /pricing-rules повертає 400 на застаріле поле goodId (його замінив список goodIds)",
-   "PricingRules — HTTP Contract POST /pricing-rules/:id/apply-all повертає 200 + { updated, message }",
+   "PricingRules — HTTP Contract POST /pricing-rules/:id/apply-all повертає 200 + { updated, noRule, message } — «без правила» названо в повідомленні",
    "PricingRules — HTTP Contract POST /pricing-rules/:id/apply-all повертає 404 для неіснуючого правила",
    "PricingRules — HTTP Contract список товарів і категорія правила GET :id/goods для чужого правила → 404, список не читається",
    "PricingRules — HTTP Contract список товарів і категорія правила GET :id/goods — повний список товарів правила, лише живі товари",
@@ -3883,6 +3926,20 @@
    "PricingRules — HTTP Contract список товарів і категорія правила POST: понад 5000 товарів у списку → 400",
    "PricingRules — HTTP Contract список товарів і категорія правила POST: список товарів очищає бренд, категорію й тип — область має один вимір",
    "PricingRules — HTTP Contract список товарів і категорія правила POST: товар чужої організації або видалений у списку → 404, правило не створено"
+  ],
+  "apps/api/src/modules/inventory/pricing.no-rule.spec.ts": [
+   "Розцінка без правила не змінює ціну (№17) «Застосувати до всіх» товар без жодного правила лишає ціну, історії немає; у підсумку — «без правила»",
+   "Розцінка без правила не змінює ціну (№17) прийом партії без правила: ціна товару та сама, історії немає, партія — з поточною ціною товару",
+   "Розцінка без правила не змінює ціну (№17) прийом партії безкоштовний прийом (собівартість 0) нового товару без правила — ціна лишається 0",
+   "Розцінка без правила не змінює ціну (№17) прийом партії з правилом — ціна за правилом і запис в історії, як і раніше",
+   "Розцінка без правила не змінює ціну (№17) прийом партії новий товар без ціни й без правила — ціна продажу стає собівартістю, з історією"
+  ],
+  "apps/api/src/modules/inventory/pricing.rule-order.spec.ts": [
+   "Порядок правил ціни — один для списку й для розцінки (№15) вимкнене новіше правило у списку вище, але ціни не дає — переможець наступний активний",
+   "Порядок правил ціни — один для списку й для розцінки (№15) менше число priority перемагає незалежно від дати створення",
+   "Порядок правил ціни — один для списку й для розцінки (№15) обидва запити беруть той самий порядок: priority ↑, createdAt ↓, id ↑",
+   "Порядок правил ціни — один для списку й для розцінки (№15) рівний priority: перше в списку — новіше правило, і саме воно дає ціну",
+   "Порядок правил ціни — один для списку й для розцінки (№15) рівні priority і момент створення — id розсуджує однаково в обох місцях"
   ],
   "apps/api/src/modules/inventory/pricing.service.spec.ts": [
    "PricingService.applyRuleToGoods Bug #178: правило з брендом і категорією відбирає товари за брендом, без AND категорії",
@@ -3910,7 +3967,7 @@
    "PricingService.computePriceFromRules — формула ціни PERCENT: cost * (1 + p/100)",
    "PricingService.computePriceFromRules — формула ціни roundTo: округлення до найближчого кратного",
    "PricingService.computePriceFromRules — формула ціни захист від від'ємної ціни — Math.max(0, result)",
-   "PricingService.computePriceFromRules — формула ціни правил немає → повертає costPrice",
+   "PricingService.computePriceFromRules — формула ціни правил немає → null: ціну не чіпати (№17), а не «ціна = собівартість»",
    "PricingService.getPricingContext onlyRuleId: правило шукається за id у базі, а не серед перших 200 за пріоритетом",
    "PricingService.getPricingContext дерево категорій читається, коли хоч одне правило має категорію з довідника",
    "PricingService.getPricingContext жодне правило не має списку й категорії → зайвих запитів немає",
@@ -6022,12 +6079,13 @@
    "PurchaseOrdersService.applyPricing Bug #200 status guard: DRAFT → BadRequestException + не пише ні good ні priceHistory",
    "PurchaseOrdersService.applyPricing Bug #200 status guard: PARTIAL → дозволено, applyPricing виконується",
    "PurchaseOrdersService.applyPricing Bug #489: дублікати по goodId у lines → updateMany викликається ОДИН раз (last-wins у БД)",
-   "PurchaseOrdersService.applyPricing Bug #832: без ruleId рядок без правила розцінюється як раніше (ціна = собівартість)",
    "PurchaseOrdersService.applyPricing Bug #832: з ruleId рядок поза областю правила не чіпається — ні товар, ні історія, ні рядок",
    "PurchaseOrdersService.applyPricing Bug #832: з ruleId, яке не покрило жоден рядок (вимкнене / чуже) → нічого не пишеться",
    "PurchaseOrdersService.applyPricing Bug #835: ApplyPricingDto відхиляє ruleId, що не є UUID; порожній рядок — «без правила»",
-   "PurchaseOrdersService.applyPricing PO без lines → { updated: 0, details: [] } без жодного writeу",
+   "PurchaseOrdersService.applyPricing PO без lines → { updated: 0, noRule: 0, details: [] } без жодного writeу",
    "PurchaseOrdersService.applyPricing mixed lines (одна змінилась, інша ні) → updated=1, тільки один write",
+   "PurchaseOrdersService.applyPricing без ruleId рядок без правила: ні ціни, ні історії, ні рядка — у звіті «без правила»",
+   "PurchaseOrdersService.applyPricing без ruleId: звіт у порядку рядків — розцінені й «без правила»; пишеться лише розцінений",
    "PurchaseOrdersService.applyPricing кидає NotFoundException коли PO не знайдено",
    "PurchaseOrdersService.applyPricing пропускає line.good=null (soft-deleted Good) без TypeError",
    "PurchaseOrdersService.applyPricing ціна змінилась → виклик $transaction([good.updateMany, priceHistory.createMany])",
@@ -9198,6 +9256,7 @@
   ],
   "apps/api/src/modules/xlsx/xlsx.catalog-import.spec.ts": [
    "POST /xlsx/import/brands — наявний бренд «назва вже є» — пропущено, а не «оновлено»",
+   "POST /xlsx/import/brands — наявний бренд та сама назва в іншому регістрі («bosch» при «Bosch») — теж наявний бренд, пропущено",
    "POST /xlsx/import/goods — лічильники відмова створення — у помилках рядка з текстом відмови",
    "POST /xlsx/import/goods — лічильники наявний — пропущено; новий з ціною — створено; без ціни — помилка рядка, не «створено»",
    "POST /xlsx/import/goods — лічильники повтор артикула в межах файла — пропущено, без другого створення",
@@ -9252,6 +9311,7 @@
    "XlsxService applyPricingFromList — CSV парсить CSV з BOM + знаходить good по sku → пише $transaction",
    "XlsxService applyPricingFromList — CSV порожній CSV (тільки header) → BadRequestException",
    "XlsxService applyPricingFromList — CSV розпізнає alternative CSV headers (SKU, Артикул, Штрихкод)",
+   "XlsxService applyPricingFromList — CSV товар без правила: ціна та сама, історії немає, у звіті — «без правила»",
    "XlsxService applyPricingFromList — XLSX парсить XLSX worksheet з колонками sku/barcode/name → знаходить good",
    "XlsxService applyPricingFromList — XLSX порожній XLSX → BadRequestException",
    "XlsxService generatePricingListTemplate повертає Buffer з BOM + header + 2 sample-рядки",
@@ -9303,6 +9363,10 @@
    "append-only тригери — поведінка (жива БД) stock_movements: UPDATE quantity (не-batchId) заборонено",
    "append-only тригери — поведінка (жива БД) stock_movements: одноразове \"batchId\" NULL→value ДОЗВОЛЕНО (createMovement flow)"
   ],
+  "apps/api/src/prisma/brand-name-lower-unique.migration.integration.spec.ts": [
+   "міграція 20261114150000 — назва бренду унікальна без регістру без дублів: індекс частковий за lower(name), другий «BOSCH» відхиляє, видалений тезка — ні",
+   "міграція 20261114150000 — назва бренду унікальна без регістру з дублями: міграція не падає, друкує дублі NOTICE, індексу не створює"
+  ],
   "apps/api/src/prisma/field-encryption.extension.spec.ts": [
    "Шифрування секретів at-rest — справжній PrismaService поверх фейкового драйвера BranchProviderConfig.credentials — усі write-операції create: credentials — шифротекст; несекретні поля (provider) лишаються як є",
    "Шифрування секретів at-rest — справжній PrismaService поверх фейкового драйвера BranchProviderConfig.credentials — усі write-операції createMany: кожен рядок шифрується окремо",
@@ -9353,6 +9417,7 @@
    "Schema integrity — manual-SQL конструкти живі у БД (TD2 guard, integration) append-only immutability тригери живі (ledger — фізична незмінність)",
    "Schema integrity — manual-SQL конструкти живі у БД (TD2 guard, integration) partial-unique / інваріантні індекси існують (fiscal doc-number + business invariants)",
    "Schema integrity — manual-SQL конструкти живі у БД (TD2 guard, integration) джерело платежу: FK payments.bankAccountId / cashRegisterId — ON DELETE SET NULL",
+   "Schema integrity — manual-SQL конструкти живі у БД (TD2 guard, integration) назва бренду: унікальність за lower(name) і лише серед активних (міграція 20261114150000)",
    "Schema integrity — manual-SQL конструкти живі у БД (TD2 guard, integration) одне CHARGE на документ: індекс частковий — лише CHARGE з документом (SUPPLIER_CHARGE вільний)",
    "Schema integrity — manual-SQL конструкти живі у БД (TD2 guard, integration) передумова: dev-БД доступна",
    "Schema integrity — manual-SQL конструкти живі у БД (TD2 guard, integration) розширення pg_trgm і btree_gist встановлені",
