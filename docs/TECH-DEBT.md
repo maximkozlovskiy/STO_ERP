@@ -181,6 +181,10 @@
 - (2026-11-14, tester №98) Сервер не відрізняє «межі не чіпали» від «користувач свідомо повернув збережені межі»:
   PATCH ручного запису з новим підйомником іншої філії й збереженими межами завжди перераховує кінець від нормогодин
   (BR-CAL-020); у формі — лише якщо змінити підйомник і вручну ввести старий кінець — S, за потреби — прапорець у DTO.
+- (2026-11-15, optimize) Загальний бюджет бандла web — 1,74 MB при ліміті 1,75 MB (`pnpm size`), запас ~10 KB:
+  наступне зростання локалей ударить по ньому. Статичний `*EditModal` у first load ще на 4 сторінках
+  (`catalog/GoodsTab.tsx`, `employees/page.tsx`, `settings/automation/page.tsx`, `tasks/page.tsx`) — перевірити,
+  чи картка там основна дія; інакше `next/dynamic`, як `reports/ReportGoodCard.tsx` (`df1577b20`) — S.
 - (2026-11-15, tester блоку 4) `GET /pricing-rules/category-goods` без параметра (і ще audit, comments, batches,
   cash-shift) — англійський текст `ParseUUIDPipe`; `POST /brands/:id/restore` відповідає 201, у Swagger — 200;
   `apply-all` повертає `message` українським рядком із коду (UI вже бере ключ) — S.
