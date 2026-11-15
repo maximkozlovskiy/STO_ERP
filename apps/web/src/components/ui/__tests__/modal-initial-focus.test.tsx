@@ -168,7 +168,8 @@ describe('Modal — повернення фокуса після закритт�
 
     await user.keyboard('{Escape}');
     await waitFor(() => expect(screen.queryByLabelText('Пошук товару')).toBeNull());
-    expect(screen.getByRole('button', { name: 'Додати товар' })).toHaveFocus();
+    // Фокус повертає прибиральник пастки після зникнення вкладеної з DOM — чекати (flaky у CI, 76d4e27c5).
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Додати товар' })).toHaveFocus());
   });
 
   it('змонтована одразу відкритою: Tab циклить у ній, Escape повертає на відкривача', async () => {
@@ -184,7 +185,8 @@ describe('Modal — повернення фокуса після закритт�
 
     await user.keyboard('{Escape}');
     expect(screen.queryByRole('dialog', { name: 'Оберіть товар' })).toBeNull();
-    expect(screen.getByRole('button', { name: 'Додати товар' })).toHaveFocus();
+    // Фокус повертає прибиральник пастки після зникнення вкладеної з DOM — чекати (flaky у CI, 76d4e27c5).
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Додати товар' })).toHaveFocus());
   });
 
   // Mutation-verify (2026-11-05, review): запасний шлях на перший фокусований елемент нижньої
