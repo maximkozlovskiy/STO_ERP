@@ -286,8 +286,20 @@ describe('GoodMatcherService — пошук товару за рядком фа�
   });
 
   // guards: BR-GOOD-008
+  // Рішення власника 2026-11-15: штрихкод вибирає лише СЕРЕД кандидатів «артикул + бренд».
+  it('штрихкод спільний із товаром іншого артикула — обирає того, хто серед кандидатів (№16)', async () => {
+    goods.push(good('g1', { sku: 'A1', brandId: BOSCH }));
+    goods.push(good('g2', { sku: 'A1', brandId: BOSCH }));
+    goods.push(good('other', { sku: 'Z9' }));
+    for (const goodId of ['g1', 'other']) barcodes.push({ orgId: ORG, goodId, barcode: '777' });
+    const res = await match({ article: 'A1', brand: 'Bosch', barcode: '777' });
+    expect(res).toMatchObject({ status: 'matched', matchedBy: 'barcode', good: { id: 'g1' } });
+  });
+
+  // guards: BR-GOOD-008
   it.each([
-    ['штрихкод кількох товарів', ['g1', 'other']],
+    ['штрихкод товару ІНШОГО артикула', ['other']],
+    ['штрихкод двох кандидатів', ['g1', 'g2']],
     ['штрихкод невідомий', []],
   ])(
     'кілька товарів «артикул + бренд», %s → вибір із кандидатів «артикул + бренд»',

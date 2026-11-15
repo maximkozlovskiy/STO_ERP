@@ -125,10 +125,16 @@ export class GoodMatcherService {
 
       const barcode = clean(row.barcode);
       const byBarcodeHits = barcode ? (byBarcode.get(barcode) ?? []) : [];
+      // №16: кілька товарів «артикул + бренд» не зупиняють каскад — штрихкод вибирає СЕРЕД НИХ
+      // (рішення власника 2026-11-15: штрихкод іншого артикула не підставляє чужий товар); не вибрав
+      // однозначно — вибір між товарами «артикул + бренд», а не між товарами штрихкоду.
+      if (byArticleBrand.length > 1) {
+        const ids = new Set(byArticleBrand.map(g => g.id));
+        const among = byBarcodeHits.filter(g => ids.has(g.id));
+        if (among.length === 1) return this.matched(among[0], 'barcode');
+        return this.ambiguous(byArticleBrand, 'articleBrand');
+      }
       if (byBarcodeHits.length === 1) return this.matched(byBarcodeHits[0], 'barcode');
-      // №16: кілька товарів «артикул + бренд» не зупиняють каскад — однозначний штрихкод вище
-      // розв'язав би рядок; інакше вибір лишається між ними, а не між товарами штрихкоду.
-      if (byArticleBrand.length > 1) return this.ambiguous(byArticleBrand, 'articleBrand');
       if (byBarcodeHits.length > 1) return this.ambiguous(byBarcodeHits, 'barcode');
 
       if (sameArticle.length > 0) {
