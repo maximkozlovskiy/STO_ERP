@@ -3,12 +3,21 @@
 import { useCallback, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
+import dynamic from 'next/dynamic';
 import { apiFetch } from '@/lib/api-client';
 import { getCached } from '@/lib/ref-cache';
 import { toast } from '@/lib/toast';
-import { GoodEditModal, type GoodForModal } from '@/components/ui/GoodEditModal';
+import type { GoodForModal } from '@/components/ui/GoodEditModal';
 import type { CategoryNode } from '@/components/ui/category-tree';
 import { reportsKeys } from '@/hooks/api/useReports';
+
+// Картка товару відкривається лише кліком по рядку «Звіту по складу» (і лише OWNER/ADMIN), а тягне
+// за собою react-hook-form, схеми @sto/shared і вкладену картку контрагента — ~75 KB gzip. Статичний
+// імпорт тримав їх у first load звітів (бюджет сторінки 560 KB; 2026-11-15 — 561 KB у CI).
+const loadGoodEditModal = () => import('@/components/ui/GoodEditModal');
+const GoodEditModal = dynamic(() => loadGoodEditModal().then(m => m.GoodEditModal), {
+  ssr: false,
+});
 
 type Brand = { id: string; name: string };
 type UnitRef = {
@@ -53,6 +62,8 @@ export function useReportGoodCard() {
           getCached<UnitRef[]>('cache:units') ?? apiFetch<UnitRef[]>('/units'),
           getCached<CategoryNode[]>('cache:good-categories') ??
             apiFetch<CategoryNode[]>('/good-categories'),
+          // Чанк картки вантажиться паралельно з даними — відкриття не чекає на нього окремо.
+          loadGoodEditModal(),
         ]);
         setCard({ good, brands, units, goodCatTree });
         setIsOpen(true);
