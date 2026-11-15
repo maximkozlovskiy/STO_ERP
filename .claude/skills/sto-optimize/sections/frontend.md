@@ -89,6 +89,24 @@ const HeavyChart = dynamic(() => import('./HeavyChart'), {
 });
 ```
 
+**Картка/модалка, що відкривається лише дією (клік по рядку), статично в first load сторінки.**
+Часто сховано в хуку сторінки (`use*Card()` повертає `{ open, element }`), тож grep по `page.tsx`
+її не бачить. Картка тягне `react-hook-form`, схеми `@sto/shared` (з каталогом `err.*`) і вкладені
+картки — десятки KB gzip. Фікс: `dynamic(() => load().then(m => m.X), { ssr: false })`, а `load()`
+покласти в той самий `Promise.all`, що вантажить дані картки, — відкриття не чекає чанк окремо.
+
+```bash
+# хуки/компоненти сторінки зі статичним імпортом *EditModal
+grep -rln "^import { [A-Za-z]*EditModal" apps/web/src/app --include="*.tsx" | grep -v __tests__
+```
+
+**Замір бюджету — лише свіжий `out/`.** `pnpm size` і `size:pages` читають `apps/web/out/`. З Next 16
+`NEXT_DIST_DIR=.next-x` кладе static export у саму `.next-x/`, а не в `out/` — скрипти тоді міряють
+СТАРИЙ `out/` і дають однакові «до» й «після». Будувати `rm -rf out && NEXT_DIST_DIR=out pnpm build`
+(dev `:3001` тримає `.next`, його не чіпати) і звіряти дату `out/<page>/index.html`. Хто з чанків
+сторінки чий — вивід `size:pages` не каже: зібрати чанки з HTML сторінки й шукати в них рядкові
+маркери (`data-testid`, ключі i18n `ns:key`).
+
 ### 2.6 React.memo на list items
 
 ```bash
