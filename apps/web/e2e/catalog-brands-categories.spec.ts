@@ -45,11 +45,21 @@ async function createBrandViaUi(page: Page, name: string, synonyms: string[]) {
 }
 
 test.describe('Бренди — відновлення з синонімами (BR-GOOD-007, №10)', () => {
-  const brandA = `000 E2E Бренд ${run}`;
-  const kept = `000e2e-a-${run}`;
+  // Назви — на КОЖЕН повтор (`--repeat-each` лишає модуль завантаженим у тому ж воркері: спільна
+  // мітка давала «Бренд з такою назвою вже існує» на другому повторі, 2026-11-15).
+  let brandA = '';
+  let kept = '';
   // Синонім бренду A, який поки A видалений, стає назвою бренду B.
-  const brandB = `000 E2E Власник ${run}`;
-  const taken = brandB;
+  let brandB = '';
+  let taken = '';
+
+  test.beforeAll(({}, testInfo) => {
+    const tag = `${run}-${testInfo.repeatEachIndex}`;
+    brandA = `000 E2E Бренд ${tag}`;
+    kept = `000e2e-a-${tag}`;
+    brandB = `000 E2E Власник ${tag}`;
+    taken = brandB;
+  });
 
   test.afterAll(async ({ browser }) => {
     const ctx = await browser.newContext({ storageState: 'e2e/.auth/admin.json' });
@@ -110,12 +120,15 @@ test.describe('Бренди — відновлення з синонімами (
 });
 
 test.describe('Категорії товарів — категорію з правилом ціни не видалити (BR-GOOD-010, №14)', () => {
-  const categoryName = `000 E2E Категорія ${run}`;
-  const ruleName = `000 E2E Правило категорії ${run}`;
+  let categoryName = '';
+  let ruleName = '';
   let categoryId = '';
   let ruleId = '';
 
-  test.beforeAll(async ({ browser }) => {
+  test.beforeAll(async ({ browser }, testInfo) => {
+    const tag = `${run}-${testInfo.repeatEachIndex}`;
+    categoryName = `000 E2E Категорія ${tag}`;
+    ruleName = `000 E2E Правило категорії ${tag}`;
     const ctx = await browser.newContext({ storageState: 'e2e/.auth/admin.json' });
     const p = await ctx.newPage();
     await p.goto('/catalog');
@@ -159,9 +172,13 @@ test.describe('Категорії товарів — категорію з пр�
   }) => {
     expect(categoryId && ruleId, 'beforeAll має створити категорію й правило').toBeTruthy();
     await gotoCatalogTab(page, 'Товари');
-    await page.getByTitle('Управління категоріями').first().click();
     const manager = page.getByRole('dialog', { name: /Управління — Категорії товарів/ });
-    await expect(manager).toBeVisible({ timeout: 10_000 });
+    // Кнопка є і в прихованих вкладках, а перший клік до гідратації панелі губиться (flaky 4/5
+    // при --repeat-each, 2026-11-15) — лише видима кнопка й повтор, доки вікно не відкрилось.
+    await expect(async () => {
+      await page.getByTitle('Управління категоріями').filter({ visible: true }).first().click();
+      await expect(manager).toBeVisible({ timeout: 3_000 });
+    }).toPass({ timeout: 20_000 });
 
     const node = manager.locator('li', { has: page.getByText(categoryName, { exact: true }) });
     await node.getByText(categoryName, { exact: true }).hover();
